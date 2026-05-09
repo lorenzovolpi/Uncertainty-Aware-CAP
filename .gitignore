@@ -10,7 +10,7 @@ wheels/
 .venv
 
 # Project
-# output/
+output/
 tools
 env.json
 
