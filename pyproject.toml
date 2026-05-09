@@ -1,0 +1,29 @@
+[project]
+name = "uncawe"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Lorenzo Volpi", email = "lorenzo.volpi@outlook.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cap-ml",
+    "datasets>=4.8.5",
+    "requests>=2.33.1",
+    "tqdm>=4.67.3",
+    "transformers>=5.8.0",
+]
+
+[project.scripts]
+uncawe = "uncawe:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv.sources]
+cap-ml = { git = "https://github.com/lorenzovolpi/cap-ml.git", rev = "devel" }
+
+[tool.ruff]
+line-length = 120
