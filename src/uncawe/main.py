@@ -1,4 +1,8 @@
 import os
+
+os.environ["JAX_PLATFORMS"] = "cuda"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from logging import Logger
@@ -290,14 +294,19 @@ def run_experiment_args(log: Logger, experiment_args: list[tuple[str, str, CAPWi
     if not experiment_args:
         return
 
-    results_gen: Iterable[list[EXP]] = parallel(
-        func=exp_protocol,
-        args_list=experiment_args,
-        n_jobs=n_jobs,
-        return_as="generator_unordered",
-        max_nbytes=None,
-    )
-    save_experiment_results(log, results_gen)
+    if n_jobs == 1:
+        for args in experiment_args:
+            results = exp_protocol(args)
+            save_experiment_results(log, [results])
+    else:
+        results_gen: Iterable[list[EXP]] = parallel(
+            func=exp_protocol,
+            args_list=experiment_args,
+            n_jobs=n_jobs,
+            return_as="generator_unordered",
+            max_nbytes=None,
+        )
+        save_experiment_results(log, results_gen)
 
 
 def experiments(log: Logger, domain: str):

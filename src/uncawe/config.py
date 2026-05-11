@@ -25,7 +25,7 @@ from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.util import all_results_exist
 
 BAYES_WARMUPS = 500
-BAYES_N_JOBS = 2
+BAYES_N_JOBS = 1
 BOOTSTRAP_ITERS = 1000
 JAX_COMPILATION_CACHE_DIR = "./output/jax_cache"
 
