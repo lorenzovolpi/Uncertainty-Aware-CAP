@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "cap-ml",
     "datasets>=4.8.5",
+    "pandatex",
     "requests>=2.33.1",
     "tqdm>=4.67.3",
     "transformers>=5.8.0",
@@ -24,6 +25,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv.sources]
 cap-ml = { git = "https://github.com/lorenzovolpi/cap-ml.git", rev = "devel" }
+pandatex = { git = "https://github.com/lorenzovolpi/pandatex.git" }
 
 [tool.ruff]
 line-length = 120
