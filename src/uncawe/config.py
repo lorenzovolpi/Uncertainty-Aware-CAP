@@ -9,12 +9,13 @@ from cap.error import f1, f1_macro, k_bin, k_macro, smooth, vanilla_acc
 from cap.models.base import CAP
 from cap.models.confidence import (
     RQBS,
-    BayesCAP,
+    ACC_BayesCAP,
     BootstrapCTCAP,
     BootstrapDirectCAP,
     CAPWithConfidence,
+    HD_BayesCAP,
 )
-from cap.models.cont_table import O_LEAP
+from cap.models.cont_table import O_LEAP, QuAcc1xN2, QuAccNxN
 from cap.models.direct import DoC
 from quapy.data.datasets import UCI_BINARY_DATASETS, UCI_MULTICLASS_DATASETS
 from quapy.method.aggregative import PACC, KDEyML
@@ -80,8 +81,23 @@ def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
     _, acc = next(gen_acc_measure(True))
     yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
     yield "DoC", BootstrapDirectCAP(DoC(acc), num_samples=BOOTSTRAP_ITERS)
-    yield "BayesCAP", BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
+    yield "BayesCAP", ACC_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
+    yield "HD_BayesCAP", HD_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
     yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS)
+    yield (
+        "QuAcc_1xN2",
+        BootstrapCTCAP(
+            QuAcc1xN2(acc, kdey(), add_maxconf=True, add_negentropy=True, add_maxinfsoft=True),
+            num_samples=BOOTSTRAP_ITERS,
+        ),
+    )
+    yield (
+        "QuAcc_NxN",
+        BootstrapCTCAP(
+            QuAccNxN(acc, kdey(), add_maxconf=True, add_negentropy=True, add_maxinfsoft=True),
+            num_samples=BOOTSTRAP_ITERS,
+        ),
+    )
 
 
 def get_existing_dataset_names(experiment: str, domain: str, sort=True):

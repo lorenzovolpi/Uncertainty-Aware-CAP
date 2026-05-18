@@ -139,7 +139,7 @@ def exp_protocol(args: tuple[str, str, CAPWithConfidence]) -> EXP:
                 method.predict_ct_range(Ui.X, Ui_P) for Ui, Ui_P in zip(D.test_prot(), D.test_prot_posteriors)
             ]
             t_test_ave = (time() - tinit) / D.test_prot.total()
-            estim_cts = [cts.mean(axis=0) for cts in estim_ct_ranges]
+            estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
         except Exception as e:
             print_exception(e)
             results.append(EXP.ERROR(e, p, "ct", method_name))
@@ -161,7 +161,7 @@ def exp_protocol(args: tuple[str, str, CAPWithConfidence]) -> EXP:
             method.switch(acc_fn)
             estim_acc_cis = [method.ci_from_cts(cts) for cts in estim_ct_ranges]
             estim_acc_ranges = [ci.samples for ci in estim_acc_cis]
-            estim_accs = [ci._mean for ci in estim_acc_cis]
+            estim_accs = [ci.point_estimate for ci in estim_acc_cis]
             true_accs = [acc_fn(ct) for ct in tp_true_cts]
             acc_err = cap.error.ae(np.array(true_accs), np.array(estim_accs)).tolist()
 
@@ -336,7 +336,7 @@ def experiments(log: Logger, domain: str):
     for info_path in filtered_paths:
         for method_name, method in gen_methods():
             args = (info_path, method_name, method)
-            if method_name == "BayesCAP":
+            if "BayesCAP" in method_name:
                 bayes_args.append(args)
             else:
                 regular_args.append(args)
