@@ -334,7 +334,11 @@ def _draw_simplex_panel(
 
 
 def _prev_array(value: Any) -> np.ndarray:
-    arr = np.asarray(value, dtype=float)
+    arr = np.asarray(value)
+    if arr.dtype == object:
+        arr = np.stack([np.asarray(v, dtype=float) for v in arr])
+    else:
+        arr = arr.astype(float)
     if arr.ndim == 1:
         return arr.reshape(1, -1)
     return arr
