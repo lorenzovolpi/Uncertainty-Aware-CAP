@@ -11,6 +11,7 @@ wheels/
 
 # Project
 output/
+bcuda_out/
 tools
 env.json
 
