@@ -14,6 +14,7 @@ from cap.models.confidence import (
     BootstrapDirectCAP,
     CAPWithConfidence,
     HD_BayesCAP,
+    PrediQuant,
 )
 from cap.models.cont_table import O_LEAP, QuAcc1xN2, QuAccNxN
 from cap.models.direct import DoC
@@ -84,6 +85,7 @@ def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
     yield "BayesCAP", ACC_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
     yield "HD_BayesCAP", HD_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
     yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS)
+    yield "PQ", PrediQuant(acc, kdey(), num_samples=BOOTSTRAP_ITERS, alpha=0.1, distance="l1", predict_train_prev=True)
     yield (
         "QuAcc_1xN2",
         BootstrapCTCAP(
