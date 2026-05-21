@@ -6,12 +6,15 @@ from time import time
 from traceback import print_exception
 from typing import Any
 
+from uncawe.env import root_dir
+
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matplotlib"))
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import quapy as qp
+from cap.models import utils as cap_utils
 from cap.models.confidence import PrediQuant
 from cap.utils.commons import contingency_table, parallel
 from matplotlib.patches import Polygon
@@ -33,7 +36,7 @@ DEFAULT_NUM_TEST = 5
 DEFAULT_SAMPLE_SIZE = 1000
 DEFAULT_SEED = 0
 DEFAULT_N_JOBS = 1
-RESULT_SCHEMA_VERSION = 2
+RESULT_SCHEMA_VERSION = 3
 THREE_CLASS_DATASETS = [
     "connect-4",
     "page_block",
@@ -45,6 +48,11 @@ THREE_CLASS_DATASETS = [
     "mhr",
 ]
 LR_ALIASES = {"lr", "logisticregression", "logistic_regression", "logistic regression"}
+PREDIQUANT_DISTANCE_FNS = {
+    "l1": cap_utils.l1_dist,
+    "hellinger": cap_utils.hellinger_dist,
+    "jensen-shannon": cap_utils.jensen_shannon_dist,
+}
 
 
 @dataclass(frozen=True)
@@ -87,7 +95,7 @@ def _safe_name(name: str) -> str:
 
 
 def _plot_stem(dataset: str, classifier: str, acc_name: str, sample_id: int) -> str:
-    parent = os.path.join(env.cap.env["OUT_DIR"], "plots", EXPERIMENT, dataset)
+    parent = os.path.join(root_dir, "plots", EXPERIMENT, dataset)
     os.makedirs(parent, exist_ok=True)
     filename = f"{_safe_name(acc_name)}_{_safe_name(classifier)}_{METHOD_NAME}_{sample_id:02d}"
     return os.path.join(parent, filename)
@@ -111,7 +119,7 @@ def _load_existing(path: str) -> pd.DataFrame:
     df = pd.read_parquet(path)
     if "schema_version" not in df.columns:
         return pd.DataFrame()
-    if not (df["schema_version"] == RESULT_SCHEMA_VERSION).all():
+    if not (df["schema_version"] >= RESULT_SCHEMA_VERSION).all():
         return pd.DataFrame()
     return df
 
@@ -203,6 +211,10 @@ def _parse_distances(raw_distances: list[str] | None) -> list[str]:
     return distances
 
 
+def _set_prediquant_distance(method: PrediQuant, distance: str):
+    method.error = PREDIQUANT_DISTANCE_FNS[distance]
+
+
 def _prediction_summary(prediction: Any) -> tuple[float | None, float | None, float | None]:
     if hasattr(prediction, "point_estimate"):
         point = prediction.point_estimate
@@ -215,7 +227,29 @@ def _prediction_summary(prediction: Any) -> tuple[float | None, float | None, fl
         return None, None, None
     if arr.ndim == 0:
         return float(arr), None, None
-    return float(np.nanmean(arr)), float(np.nanmin(arr)), float(np.nanmax(arr))
+    alpha = 1 - CONFIDENCE_LEVEL
+    low, high = np.nanpercentile(arr, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return float(np.nanmean(arr)), float(low), float(high)
+
+
+def _interval_metrics(
+    true_value: float,
+    low: float | None,
+    high: float | None,
+) -> tuple[float | None, float | None, float | None]:
+    if low is None or high is None:
+        return None, None, None
+
+    coverage = float(low <= true_value <= high)
+    amplitude = float(high - low)
+    alpha = 1 - CONFIDENCE_LEVEL
+    winkler = amplitude
+    if true_value < low:
+        winkler += (2 / alpha) * (low - true_value)
+    elif true_value > high:
+        winkler += (2 / alpha) * (true_value - high)
+
+    return coverage, amplitude, float(winkler)
 
 
 def _maybe_float(value: Any) -> float | None:
@@ -278,6 +312,10 @@ def _draw_simplex_panel(
     predicted_val_prevs: np.ndarray,
     true_val_prevs: np.ndarray,
     dist_max: float,
+    acc_abs_error: float,
+    ci_coverage: float,
+    ci_amplitude: float,
+    ci_winkler: float,
 ):
     triangle = _ternary_xy(np.eye(3))
     true_test_xy = _ternary_xy(true_test_prev.reshape(1, 3))[0]
@@ -330,6 +368,15 @@ def _draw_simplex_panel(
     ax.set_aspect("equal")
     ax.set_xlim(-0.08, 1.08)
     ax.set_ylim(-0.08, np.sqrt(3) / 2 + 0.08)
+    ax.text(
+        0.5,
+        -0.11,
+        f"AE={acc_abs_error:.3f}  cov={ci_coverage:.0f}  amp={ci_amplitude:.3f}  W={ci_winkler:.3f}",
+        transform=ax.transAxes,
+        ha="center",
+        va="top",
+        fontsize=9,
+    )
     ax.axis("off")
 
 
@@ -344,7 +391,26 @@ def _prev_array(value: Any) -> np.ndarray:
     return arr
 
 
+def _ensure_plot_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    if "acc_abs_error" not in df.columns:
+        df["acc_abs_error"] = np.abs(df["true_acc"] - df["pred_acc"])
+
+    if {"ci_coverage", "ci_amplitude", "ci_winkler"}.issubset(df.columns):
+        return df
+
+    metrics = [
+        _interval_metrics(row.true_acc, row.interval_low, row.interval_high)
+        for row in df.itertuples(index=False)
+    ]
+    df["ci_coverage"] = [coverage for coverage, _, _ in metrics]
+    df["ci_amplitude"] = [amplitude for _, amplitude, _ in metrics]
+    df["ci_winkler"] = [winkler for _, _, winkler in metrics]
+    return df
+
+
 def _plot_grouped_sample(df: pd.DataFrame, dataset: str, classifier: str, acc_name: str, sample_id: int):
+    df = _ensure_plot_metrics(df)
     rows = df.loc[df["sample_id"] == sample_id, :].copy()
     if rows.empty:
         return
@@ -362,13 +428,17 @@ def _plot_grouped_sample(df: pd.DataFrame, dataset: str, classifier: str, acc_na
             _prev_array(row["selected_val_prevs"]),
             _prev_array(row["selected_val_true_prevs"]),
             row["dist_max"],
+            row["acc_abs_error"],
+            row["ci_coverage"],
+            row["ci_amplitude"],
+            row["ci_winkler"],
         )
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=4, frameon=False, fontsize=9)
     fig.suptitle(f"{dataset} | {acc_name} | {classifier} | sample {sample_id:02d}", fontsize=12)
     fig.tight_layout()
-    fig.subplots_adjust(bottom=0.14, top=0.86)
+    fig.subplots_adjust(bottom=0.20, top=0.86)
 
     stem = _plot_stem(dataset, classifier, acc_name, sample_id)
     fig.savefig(f"{stem}.png", dpi=180)
@@ -394,6 +464,7 @@ def _record(
     ct = contingency_table(sample.collection.y, y_hat, sample.collection.n_classes)
     true_acc = acc_from_ct(acc_name, ct, type="evaluation")
     pred_acc, interval_low, interval_high = _prediction_summary(prediction)
+    ci_coverage, ci_amplitude, ci_winkler = _interval_metrics(true_acc, interval_low, interval_high)
     return {
         "dataset": p.d_info.name,
         "collection": p.d_info.collection,
@@ -421,6 +492,9 @@ def _record(
         "acc_abs_error": None if pred_acc is None else float(abs(true_acc - pred_acc)),
         "interval_low": interval_low,
         "interval_high": interval_high,
+        "ci_coverage": ci_coverage,
+        "ci_amplitude": ci_amplitude,
+        "ci_winkler": ci_winkler,
         "runtime": elapsed,
         "confidence_level": CONFIDENCE_LEVEL,
     }
@@ -448,20 +522,21 @@ def _run_one_pretrain(
     acc_fn = lambda ct: acc_from_ct(acc_name, ct, type="selection")
     requested_prevs = _simplex_points(np.random.RandomState(seed), num_test)
     samples = _make_test_samples(D, h, requested_prevs, sample_size, seed)
+    method = PrediQuant(
+        acc_fn,
+        # PACC(h),
+        kdey(),
+        num_samples=num_samples,
+        sample_size=sample_size,
+        distance=distances[0],
+        # reuse_h=h,
+        random_state=seed,
+    )
+    method.fit(D.V, val_posteriors)
 
     rows = []
     for distance in distances:
-        method = PrediQuant(
-            acc_fn,
-            # PACC(h),
-            kdey(),
-            num_samples=num_samples,
-            sample_size=sample_size,
-            distance=distance,
-            # reuse_h=h,
-            random_state=seed,
-        )
-        method.fit(D.V, val_posteriors)
+        _set_prediquant_distance(method, distance)
         distance_rows = []
         for sample in samples:
             key = (distance, sample.sample_id)
@@ -594,6 +669,8 @@ def run(args):
                 log.info(f"[{classifier}@{dataset}] completed")
             else:
                 log.warning(f"[{classifier}@{dataset}] failed: {err}")
+
+    log.info(f"finished {EXPERIMENT}: processed {len(experiment_args)} pretrain artifact(s)")
 
 
 def parse_args():
