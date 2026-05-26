@@ -1,6 +1,6 @@
 import os
 import tempfile
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 from typing import Iterable
 
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matplotlib"))
@@ -8,6 +8,7 @@ os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 from matplotlib.patches import Ellipse
 
 import uncawe.env as env
@@ -15,10 +16,9 @@ from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names
 from uncawe.results import Results
 
 EXPERIMENT = "main"
-PLOT_NAME = "acc_err_vs_wrinkler"
+PLOT_NAME = "ae_vs_winkler"
 DEFAULT_DOMAIN = "classic"
 DEFAULT_METHODS = ["O-LEAP", "BayesCAP", "PQ", "RQBS", "DoC"]
-DEFAULT_FORMATS = ["png", "svg"]
 METHOD_COLORS = {
     "O-LEAP": "#4C78A8",
     "BayesCAP": "#F58518",
@@ -205,7 +205,7 @@ def _plot_classifier(
     fig, axes = plt.subplots(1, len(acc_names), figsize=(5.0 * len(acc_names), 4.6), squeeze=False)
     axes = axes[0]
     xlim, ylim = _axis_limits(df)
-    legend_handles = {}
+    visible_methods = set()
 
     for ax, acc_name in zip(axes, acc_names):
         acc_df = df.loc[df["acc_name"].astype(str) == acc_name, :]
@@ -215,9 +215,8 @@ def _plot_classifier(
                 continue
             color = METHOD_COLORS.get(method, None)
             _draw_group(ax, method_df, method, color, sample_alpha, ellipse_n_std)
+            visible_methods.add(method)
 
-        handles, labels = ax.get_legend_handles_labels()
-        legend_handles.update(dict(zip(labels, handles)))
         ax.set_title(str(acc_name), fontsize=11)
         ax.set_xlim(*xlim)
         ax.set_ylim(*ylim)
@@ -226,9 +225,22 @@ def _plot_classifier(
 
     axes[0].set_ylabel("Winkler score")
     fig.suptitle(f"{dataset} | {classifier}", fontsize=13)
-    if legend_handles:
-        labels = [method for method in methods if method in legend_handles]
-        handles = [legend_handles[label] for label in labels]
+    if visible_methods:
+        labels = [method for method in methods if method in visible_methods]
+        handles = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="",
+                markersize=7,
+                markerfacecolor=METHOD_COLORS.get(method, "#4C78A8"),
+                markeredgecolor="#1f1f1f",
+                markeredgewidth=0.6,
+                alpha=1.0,
+            )
+            for method in labels
+        ]
         fig.legend(handles, labels, loc="lower center", ncol=min(len(labels), 5), frameon=False, fontsize=9)
 
     fig.tight_layout()
@@ -279,9 +291,11 @@ def parse_args():
     parser.add_argument("--methods", nargs="*", default=DEFAULT_METHODS)
     parser.add_argument("--alpha", type=float, default=0.18)
     parser.add_argument("--ellipse-n-std", type=float, default=1.0)
-    parser.add_argument("--formats", nargs="*", default=DEFAULT_FORMATS)
-    parser.add_argument("--dpi", type=int, default=180)
-    return parser.parse_args()
+    parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
+    parser.add_argument("--dpi", type=int, default=300)
+    args = parser.parse_args()
+    args.formats = ["png", "svg"] if args.svg else ["png"]
+    return args
 
 
 def main():
