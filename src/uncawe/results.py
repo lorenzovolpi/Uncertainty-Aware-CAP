@@ -62,20 +62,24 @@ class Results(ABC):
     def load(
         cls,
         base_dir,
+        domain="*",
         acc_name="*",
         dataset="*",
-        domain="*",
-        stem=None,
+        filter_classifiers: list[str] | None = None,
         filter_methods: list[str] | None = None,
     ) -> "Results":
         dfs = []
-        filename = "*.parquet" if stem is None else f"{stem}.parquet"
+        filename = "*.parquet"
         for path in glob(
             os.path.join(base_dir, domain, acc_name, dataset, "**", filename),
             recursive=True,
         ):
-            if filter_methods is None or Path(path).parent.name in filter_methods:
-                dfs.append(RDF.load_result(path))
+            if filter_classifiers is not None and Path(path).parent.name not in filter_classifiers:
+                continue
+            if filter_methods is not None and Path(path).stem not in filter_methods:
+                continue
+
+            dfs.append(RDF.load_result(path))
 
         return Results(pd.concat(dfs, axis=0))
 

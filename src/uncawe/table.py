@@ -15,11 +15,14 @@ from uncawe.main import EXPERIMENT
 from uncawe.results import Results
 from uncawe.util import decorate_dataset
 
-METRICS = ("acc_err", "coverage", "amplitude")
-LOWER_IS_BETTER = {"acc_err": True, "coverage": False, "amplitude": True}
+METRICS = ("acc_err", "coverage", "amplitude", "winkler")
+LOWER_IS_BETTER = {"acc_err": True, "coverage": False, "amplitude": True, "winkler": True}
 VALUE_FORMAT = "{:.3f}"
 COLORMAP_SATURATION = 0.65
 COLORMAP_LIGHTNESS = 0.35
+CLASSIFIER_FILTER = ("LR", "kNN", "SVM", "MLP")
+WORST_RGB = (251, 160, 159)
+BEST_RGB = (154, 254, 154)
 
 dataset_map = {
     "poker_hand": "poker-hand",
@@ -38,6 +41,13 @@ dataset_map = {
     "ethz__food101": "food101",
 }
 
+metrics_map = {
+    "acc_err": "$\\Delta$",
+    "coverage": "$\\mathcal{C}$",
+    "amplitude": "$\\mathcal{A}$",
+    "winkler": "$\\mathcal{W}$",
+}
+
 
 def get_acc_coverage(true_acc: float, accs_range: np.ndarray) -> float:
     ci = ConfidenceInterval(accs_range, CONFIDENCE_LEVEL)
@@ -48,22 +58,33 @@ def get_acc_amplitude(accs_range: np.ndarray) -> float:
     return float(accs_range.max() - accs_range.min())
 
 
-def _ordered_columns(methods: list[str]) -> pd.MultiIndex:
-    return pd.MultiIndex.from_product([methods, METRICS], names=["method", "metric"])
+def get_acc_winkler(true_acc: float, accs_range: np.ndarray) -> float:
+    ci = ConfidenceInterval(accs_range, CONFIDENCE_LEVEL)
+    cov = ci.coverage(true_acc)
+    amp = float(accs_range.max() - accs_range.min())
+    alpha = 1 - CONFIDENCE_LEVEL
+    return amp + (2 / alpha) * (1 - cov)
 
 
-def _latex_column_format(methods: list[str]) -> str:
-    return "l|" + "|".join("c" * len(METRICS) for _ in methods) + "|"
+def _ordered_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIndex:
+    return pd.MultiIndex.from_product([methods, metrics], names=["method", "metric"])
 
 
-def _format_mean_std(mean: pd.DataFrame, std: pd.DataFrame) -> pd.DataFrame:
+def _latex_column_format(methods: list[str], metrics: tuple[str, ...]) -> str:
+    return "l|" + "|".join("c" * len(metrics) for _ in methods) + "|"
+
+
+def _format_mean_std(mean: pd.DataFrame, std: pd.DataFrame, show_std: bool = True) -> pd.DataFrame:
     formatted = pd.DataFrame("", index=mean.index, columns=mean.columns)
 
     for col in mean.columns:
-        formatted[col] = [
-            "" if pd.isna(m) else f"{_format_value(m)} $\\pm$ {('--' if pd.isna(s) else _format_value(s))}"
-            for m, s in zip(mean[col], std[col])
-        ]
+        if show_std:
+            formatted[col] = [
+                "" if pd.isna(m) else f"{_format_value(m)} $\\pm$ {('--' if pd.isna(s) else _format_value(s))}"
+                for m, s in zip(mean[col], std[col])
+            ]
+        else:
+            formatted[col] = ["" if pd.isna(m) else _format_value(m) for m in mean[col]]
 
     return formatted
 
@@ -78,22 +99,23 @@ def _format_value(value: float) -> str:
 
 
 def _rdylgn_hex(value: float, vmin: float, vmax: float) -> str:
-    worst = (251, 160, 159)
-    best = (154, 254, 154)
-
     norm = Normalize(vmin=vmin, vmax=vmax)
     if norm(value) < 0.5:
-        red, green, blue = np.array(worst).astype(float) / 256.0
+        red, green, blue = np.array(WORST_RGB).astype(float) / 256.0
         alpha = 1 - (norm(value) / 0.5)
     elif norm(value) > 0.5:
-        red, green, blue = np.array(best).astype(float) / 256.0
+        red, green, blue = np.array(BEST_RGB).astype(float) / 256.0
         alpha = (norm(value) - 0.5) / 0.5
     else:
-        red, green, blue = np.array(best).astype(float) / 256.0
+        red, green, blue = np.array(BEST_RGB).astype(float) / 256.0
         alpha = 0.0
 
     red, green, blue = np.array([red, green, blue]) * alpha + (1 - alpha)
     return rgb2hex((red, green, blue))
+
+
+def _rgb_hex(rgb: tuple[int, int, int]) -> str:
+    return rgb2hex(np.array(rgb).astype(float) / 256.0)
 
 
 def _text_color(background: str) -> str:
@@ -104,24 +126,35 @@ def _text_color(background: str) -> str:
     return "#f1f1f1" if luminance < 0.45 else "#000000"
 
 
-def _cell_styles(mean: pd.DataFrame) -> pd.DataFrame:
+def _cell_styles(mean: pd.DataFrame, metrics: tuple[str, ...]) -> pd.DataFrame:
     styles = pd.DataFrame("", index=mean.index, columns=mean.columns)
 
-    for metric in METRICS:
+    for metric in metrics:
         metric_values = mean.xs(metric, axis=1, level="metric")
 
         for dataset, values in metric_values.iterrows():
-            scores = -values if LOWER_IS_BETTER[metric] else values
-            vmin = scores.min(skipna=True)
-            vmax = scores.max(skipna=True)
+            if metric in ["acc_err", "winkler"]:
+                scores = -values
+                vmin = scores.min(skipna=True)
+                vmax = scores.max(skipna=True)
 
-            if pd.isna(vmin) or pd.isna(vmax):
-                continue
+                if pd.isna(vmin) or pd.isna(vmax):
+                    continue
 
-            if np.isclose(vmin, vmax):
-                colors = pd.Series("#ffffbf", index=scores.index)
+                if np.isclose(vmin, vmax):
+                    colors = pd.Series("#ffffbf", index=scores.index)
+                else:
+                    colors = scores.apply(lambda value: "" if pd.isna(value) else _rdylgn_hex(value, vmin, vmax))
+            elif metric == "coverage":
+                colors = values.apply(
+                    lambda value: "" if pd.isna(value) else _rgb_hex(BEST_RGB if value >= 0.95 else WORST_RGB)
+                )
+            elif metric == "amplitude":
+                colors = values.apply(
+                    lambda value: "" if pd.isna(value) else _rgb_hex(BEST_RGB if value <= 0.05 else WORST_RGB)
+                )
             else:
-                colors = scores.apply(lambda value: "" if pd.isna(value) else _rdylgn_hex(value, vmin, vmax))
+                continue
 
             for method, color in colors.items():
                 if color:
@@ -139,32 +172,32 @@ def _cell_styles(mean: pd.DataFrame) -> pd.DataFrame:
     return styles
 
 
-def _results_latex_table(df: pd.DataFrame) -> str:
-    stats = df.groupby(["dataset", "method"], sort=False)[list(METRICS)].agg(["mean", "std"])
+def _results_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, show_std: bool = True) -> str:
+    stats = df.groupby(["dataset", "method"], sort=False)[list(metrics)].agg(["mean", "std"])
     mean = stats.xs("mean", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
     std = stats.xs("std", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
 
     methods = [method for method in get_method_names() if method in mean.columns.get_level_values("method")]
-    columns = _ordered_columns(methods)
+    columns = _ordered_columns(methods, metrics)
     mean = mean.reindex(columns=columns)
     std = std.reindex(columns=columns)
-    table = _format_mean_std(mean, std)
-    styles = _cell_styles(mean)
-    latex_columns = _escape_latex_columns(table.columns)
+    table = _format_mean_std(mean, std, show_std)
+    styles = _cell_styles(mean, metrics)
+    latex_columns = _latex_display_columns(table.columns)
     table.columns = latex_columns
     styles.columns = latex_columns
 
     latex = table.style.apply(lambda _: styles, axis=None).to_latex(
-        column_format=_latex_column_format(methods),
+        column_format=_latex_column_format(methods, metrics),
         hrules=True,
         clines="skip-last;data",
         multicol_align="c|",
         convert_css=True,
     )
-    return _hide_latex_header_names(latex)
+    return _hide_latex_header_names(latex, show_metric_names=len(metrics) > 1)
 
 
-def _hide_latex_header_names(latex: str) -> str:
+def _hide_latex_header_names(latex: str, show_metric_names: bool = True) -> str:
     lines = latex.splitlines()
     formatted = []
     skip_next_dataset_header = False
@@ -172,10 +205,12 @@ def _hide_latex_header_names(latex: str) -> str:
     for line in lines:
         if line.startswith("method & "):
             formatted.append(line.replace("method & ", " & ", 1))
-            formatted.append("\\midrule")
+            if show_metric_names:
+                formatted.append("\\midrule")
             skip_next_dataset_header = False
         elif line.startswith("metric & "):
-            formatted.append(line.replace("metric & ", " & ", 1))
+            if show_metric_names:
+                formatted.append(line.replace("metric & ", " & ", 1))
             skip_next_dataset_header = True
         elif skip_next_dataset_header and line.startswith("dataset & "):
             skip_next_dataset_header = False
@@ -188,6 +223,22 @@ def _hide_latex_header_names(latex: str) -> str:
 
 def _escape_latex_text(text: str) -> str:
     return text.replace("_", "\\_")
+
+
+def _latex_display_columns(columns: pd.Index) -> pd.Index:
+    if isinstance(columns, pd.MultiIndex):
+        return pd.MultiIndex.from_tuples(
+            (
+                tuple(
+                    metrics_map.get(value, _escape_latex_text(value)) if isinstance(value, str) else value
+                    for value in col
+                )
+                for col in columns
+            ),
+            names=columns.names,
+        )
+
+    return _escape_latex_columns(columns)
 
 
 def _escape_latex_columns(columns: pd.Index) -> pd.Index:
@@ -235,12 +286,43 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _ordered_classifiers(base_dir: str, domain: str, acc: str) -> list[str]:
+    acc_dir = os.path.join(base_dir, domain, acc)
+    classifiers = set()
+
+    if not os.path.isdir(acc_dir):
+        return []
+
+    for dataset in os.scandir(acc_dir):
+        if not dataset.is_dir():
+            continue
+        classifiers.update(classifier.name for classifier in os.scandir(dataset.path) if classifier.is_dir())
+
+    return [classifier for classifier in CLASSIFIER_FILTER if classifier in classifiers]
+
+
+def _selected_metrics(pargs) -> tuple[str, ...]:
+    if pargs.metrics is None:
+        return METRICS
+
+    unknown_metrics = [metric for metric in pargs.metrics if metric not in METRICS]
+    if unknown_metrics:
+        raise ValueError(f"Unknown metrics: {', '.join(unknown_metrics)}. Available metrics: {', '.join(METRICS)}.")
+
+    return tuple(metric for metric in METRICS if metric in pargs.metrics)
+
+
+def _table_dir(pargs) -> str:
+    return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables")
+
+
 def gen_tables(pargs):
     experiment = EXPERIMENT
     domain = pargs.domain
+    metrics = _selected_metrics(pargs)
 
     main_base_dir = os.path.join(env.root_dir, "main")
-    table_dir = os.path.join(env.root_dir, "tables")
+    table_dir = _table_dir(pargs)
     tabular_dir = os.path.join(table_dir, "tabular")
     os.makedirs(table_dir, exist_ok=True)
     os.makedirs(tabular_dir, exist_ok=True)
@@ -249,32 +331,46 @@ def gen_tables(pargs):
     document_tables = []
     accs = get_acc_names()
     for acc in accs:
-        name = f"{experiment}_{domain}_{acc}"
-        df = (
-            Results.load(base_dir=main_base_dir, acc_name=acc, domain=domain)
-            .map_column_values("dataset", dataset_map)
-            .apply_to_column("dataset", decorate_dataset)
-            .apply_to_column("true_cts", lambda ct: acc_from_ct(acc, ct), new_col="true_accs")
-            .apply_to_column(["true_accs", "estim_acc_ranges"], get_acc_coverage, new_col="coverage")
-            .apply_to_column("estim_acc_ranges", get_acc_amplitude, new_col="amplitude")
-            .select_columns(["dataset", "method", "acc_err", "true_accs", "coverage", "amplitude"])
-            .df
-        )
-
-        tbl = _results_latex_table(df)
-        tabular_filename = f"{name}.tex"
-        with open(os.path.join(tabular_dir, tabular_filename), "w") as f:
-            f.write(tbl)
-
-        # tbls.append(tbl)
-        document_tables.append(
-            (
-                f"tabular/{tabular_filename}",
-                f"{_escape_latex_text(acc)} results on {_escape_latex_text(domain)} datasets.",
-                f"tab:{experiment}-{domain}-{acc}",
+        for classifier in _ordered_classifiers(main_base_dir, domain, acc):
+            name = f"{experiment}_{domain}_{acc}_{classifier}"
+            df = (
+                Results.load(
+                    base_dir=main_base_dir,
+                    acc_name=acc,
+                    domain=domain,
+                    filter_classifiers=[classifier],
+                    filter_methods=get_method_names(),
+                )
+                .map_column_values("dataset", dataset_map)
+                .apply_to_column("dataset", decorate_dataset)
+                .apply_to_column("true_cts", lambda ct: acc_from_ct(acc, ct), new_col="true_accs")
+                .apply_to_column(["true_accs", "estim_acc_ranges"], get_acc_coverage, new_col="coverage")
+                .apply_to_column("estim_acc_ranges", get_acc_amplitude, new_col="amplitude")
+                .apply_to_column(["true_accs", "estim_acc_ranges"], get_acc_winkler, new_col="winkler")
+                .select_columns(["dataset", "method", "acc_err", "true_accs", "coverage", "amplitude", "winkler"])
+                .df
             )
-        )
-        print(f"table {name} genned")
+
+            tbl = _results_latex_table(df, metrics, pargs.show_std)
+            tabular_filename = f"{name}.tex"
+            with open(os.path.join(tabular_dir, tabular_filename), "w") as f:
+                f.write(tbl)
+
+            # tbls.append(tbl)
+            document_tables.append(
+                (
+                    f"tabular/{tabular_filename}",
+                    (
+                        f"{_escape_latex_text(acc)} results on {_escape_latex_text(domain)} datasets "
+                        f"with {_escape_latex_text(classifier)} classifier."
+                    ),
+                    f"tab:{experiment}-{domain}-{acc}-{classifier}",
+                )
+            )
+            print(f"table {name} genned")
+
+    if not document_tables:
+        raise RuntimeError(f"No tables generated for domain={domain!r}.")
 
     document_path = os.path.join(table_dir, f"{experiment}_{domain}.tex")
     with open(document_path, "w") as f:
@@ -284,7 +380,7 @@ def gen_tables(pargs):
 def gen_pdf(pargs):
     experiment = EXPERIMENT
     domain = pargs.domain
-    table_dir = os.path.join(env.root_dir, "tables")
+    table_dir = _table_dir(pargs)
     tex_filename = f"{experiment}_{domain}.tex"
     tex_path = os.path.join(table_dir, tex_filename)
 
@@ -306,6 +402,15 @@ if __name__ == "__main__":
     parser.add_argument("--text", action="store_const", dest="domain", const="text")
     parser.add_argument("--image", action="store_const", dest="domain", const="image")
     parser.add_argument("--classic", action="store_const", dest="domain", const="classic")
+    parser.add_argument("--metrics", nargs="+", choices=METRICS, default=None, help="Metrics to include in tables")
+    parser.add_argument("--no-std", action="store_false", dest="show_std", help="Show only means, without std")
+    parser.add_argument(
+        "--table-dir",
+        "--output-dir",
+        dest="table_dir",
+        default=None,
+        help="Directory where table documents and tabular fragments are saved",
+    )
     pargs = parser.parse_args()
 
     if pargs.domain is None:
