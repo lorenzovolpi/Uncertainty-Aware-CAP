@@ -1,7 +1,7 @@
 import os
 
-os.environ["JAX_PLATFORMS"] = "cuda"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
 from argparse import ArgumentParser
 from dataclasses import dataclass
