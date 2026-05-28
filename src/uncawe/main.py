@@ -24,6 +24,7 @@ from joblib.externals.loky import get_reusable_executor
 
 from uncawe.config import (
     BAYES_N_JOBS,
+    SAMPLE_SIZE,
     gen_acc_measure,
     gen_methods,
     get_acc_names,
@@ -48,7 +49,7 @@ NUM_TEST = 100
 # jax.config.update("jax_compilation_cache_dir", JAX_COMPILATION_CACHE_DIR)
 # jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 
-qp.environ["SAMPLE_SIZE"] = 1000
+qp.environ["SAMPLE_SIZE"] = SAMPLE_SIZE
 qp.environ["_R_SEED"] = 0
 
 

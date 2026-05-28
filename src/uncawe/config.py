@@ -3,20 +3,18 @@ from functools import lru_cache
 from typing import Callable, Iterable, Literal, Tuple
 
 import numpy as np
-import quapy as qp
 from cap.data.datasets import fetch_UCIBinaryDataset, fetch_UCIMulticlassDataset
 from cap.error import f1, f1_macro, k_bin, k_macro, smooth, vanilla_acc
-from cap.models.base import CAP
 from cap.models.confidence import (
+    CBPE,
     RQBS,
     ACC_BayesCAP,
     BootstrapCTCAP,
     BootstrapDirectCAP,
     CAPWithConfidence,
-    HD_BayesCAP,
     PrediQuant,
 )
-from cap.models.cont_table import O_LEAP, QuAcc1xN2, QuAccNxN
+from cap.models.cont_table import O_LEAP, QuAccNxN
 from cap.models.direct import DoC
 from quapy.data.datasets import UCI_BINARY_DATASETS, UCI_MULTICLASS_DATASETS
 from quapy.method.aggregative import PACC, KDEyML
@@ -29,6 +27,7 @@ from uncawe.util import all_results_exist
 BAYES_WARMUPS = 500
 BAYES_N_JOBS = 1
 BOOTSTRAP_ITERS = 1000
+SAMPLE_SIZE = 1000
 JAX_COMPILATION_CACHE_DIR = "./output/jax_cache"
 CONFIDENCE_LEVEL = 0.95
 METHOD_CLASS = {
@@ -38,6 +37,7 @@ METHOD_CLASS = {
     "RQBS": RQBS,
     "PQ": PrediQuant,
     "BayesCAP": ACC_BayesCAP,
+    "CBPE": CBPE,
 }
 
 
@@ -87,7 +87,7 @@ def gen_acc_measure(is_multiclass: bool):
 
 
 def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
-    _, acc = next(gen_acc_measure(True))
+    acc_name, acc = next(gen_acc_measure(True))
     yield "DoC", BootstrapDirectCAP(DoC(acc), num_samples=BOOTSTRAP_ITERS)
     yield (
         "QuAcc_NxN",
@@ -97,9 +97,21 @@ def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
         ),
     )
     yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
+    yield "CBPE", CBPE(acc_name)
     #
-    yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS)
-    yield "PQ", PrediQuant(acc, kdey(), num_samples=BOOTSTRAP_ITERS, alpha=0.1, distance="l1", predict_train_prev=True)
+    yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE)
+    yield (
+        "PQ",
+        PrediQuant(
+            acc,
+            kdey(),
+            num_samples=BOOTSTRAP_ITERS,
+            sample_size=SAMPLE_SIZE,
+            alpha=0.1,
+            distance="l1",
+            predict_train_prev=True,
+        ),
+    )
     yield "BayesCAP", ACC_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
     # yield "HD_BayesCAP", HD_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
 
@@ -132,9 +144,7 @@ def get_existing_dataset_names(experiment: str, domain: str, sort=True):
 
 
 def get_method_names():
-    names = [m for m, _ in gen_methods()]
-
-    return names
+    return list(METHOD_CLASS.keys())
 
 
 @lru_cache(maxsize=1)
