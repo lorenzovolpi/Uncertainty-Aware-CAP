@@ -5,13 +5,14 @@ from argparse import ArgumentParser
 
 import numpy as np
 import pandas as pd
-from cap.models import ConfidenceInterval
+from cap.models.confidence import ConfidenceInterval
 from matplotlib import colormaps
 from matplotlib.colors import Normalize, rgb2hex
 
 import uncawe.env as env
-from uncawe.config import CONFIDENCE_LEVEL, METHOD_CLASS, acc_from_ct, get_acc_names, get_method_names
+from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
 from uncawe.main import EXPERIMENT
+from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
 from uncawe.util import decorate_dataset
 
@@ -50,13 +51,11 @@ metrics_map = {
 
 
 def get_acc_coverage(method: str, true_acc: float, accs_range: np.ndarray) -> float:
-    ci = METHOD_CLASS[method].ci_from_accs(accs_range, confidence_level=CONFIDENCE_LEVEL)
-    return ci.coverage(true_acc)
+    return _confidence_interval(accs_range).coverage(true_acc)
 
 
 def get_acc_amplitude(method: str, accs_range: np.ndarray) -> float:
-    ci = METHOD_CLASS[method].ci_from_accs(accs_range, confidence_level=CONFIDENCE_LEVEL)
-    return ci.amplitude()
+    return _confidence_interval(accs_range).amplitude()
 
 
 def get_acc_winkler(method: str, true_acc: float, accs_range: np.ndarray) -> float:
@@ -65,16 +64,11 @@ def get_acc_winkler(method: str, true_acc: float, accs_range: np.ndarray) -> flo
     if arr.size == 0 or not np.isfinite(true_acc):
         return np.nan
 
-    alpha = 1 - CONFIDENCE_LEVEL
-    ci = METHOD_CLASS[method].ci_from_accs(accs_range, confidence_level=CONFIDENCE_LEVEL)
-    ampl = ci.amplitude()
-    low, high = ci.low, ci.high
+    return _confidence_interval(arr).winkler(true_acc)
 
-    if true_acc < low:
-        ampl += (2 / alpha) * (low - true_acc)
-    elif true_acc > high:
-        ampl += (2 / alpha) * (true_acc - high)
-    return float(ampl)
+
+def _confidence_interval(accs_range: np.ndarray) -> ConfidenceInterval:
+    return ConfidenceInterval(accs_range, confidence_level=CONFIDENCE_LEVEL)
 
 
 def _ordered_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIndex:
@@ -82,10 +76,21 @@ def _ordered_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIn
 
 
 def _latex_column_format(methods: list[str], metrics: tuple[str, ...], index_columns: int = 1) -> str:
-    method_formats = ["c" * len(metrics) for _ in methods]
-    if len(method_formats) > 3:
-        return "l" * index_columns + "|" + "|".join(method_formats[:3]) + "||" + "|".join(method_formats[3:]) + "|"
-    return "l" * index_columns + "|" + "|".join(method_formats) + "|"
+    metric_formats = []
+    for _ in metrics:
+        if len(methods) > 3:
+            metric_formats.append("c" * 3 + "||" + "c" * (len(methods) - 3))
+        else:
+            metric_formats.append("c" * len(methods))
+    return "l" * index_columns + "|" + "|".join(metric_formats) + "|"
+
+
+def _display_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIndex:
+    return pd.MultiIndex.from_product([metrics, methods], names=["metric", "method"])
+
+
+def _to_display_column_order(df: pd.DataFrame, methods: list[str], metrics: tuple[str, ...]) -> pd.DataFrame:
+    return df.swaplevel("method", "metric", axis=1).reindex(columns=_display_columns(methods, metrics))
 
 
 def _format_mean_std(mean: pd.DataFrame, std: pd.DataFrame, show_std: bool = True) -> pd.DataFrame:
@@ -219,12 +224,48 @@ def _row_levels(df: pd.DataFrame) -> list[str]:
     return ["classifier", "dataset"] if "classifier" in df.columns else ["dataset"]
 
 
-def _ordered_row_index(index: pd.Index) -> pd.Index:
-    if not isinstance(index, pd.MultiIndex) or "classifier" not in index.names:
-        return index
+def _ordered_dataset_names(df: pd.DataFrame) -> list[str]:
+    ordered = []
+
+    for collection in ("uci_binary", "uci_multiclass"):
+        datasets = list(dict.fromkeys(df.loc[df["collection"] == collection, "dataset"]))
+        if datasets:
+            ordered.extend(sort_datasets_by_size(collection, datasets, descending=True))
+
+    ordered.extend(dataset for dataset in dict.fromkeys(df["dataset"]) if dataset not in ordered)
+    return [decorate_dataset(dataset_map.get(dataset, dataset)) for dataset in ordered]
+
+
+def _order_rows_by_dataset(index: pd.Index, rows: list, dataset_order: list[str] | None) -> list:
+    if not dataset_order:
+        return rows
+
+    dataset_level = index.names.index("dataset") if isinstance(index, pd.MultiIndex) else None
+    ordered_rows = []
+    for dataset in dataset_order:
+        if dataset_level is None:
+            ordered_rows.extend(row for row in rows if row == dataset)
+        else:
+            ordered_rows.extend(row for row in rows if row[dataset_level] == dataset)
+    ordered_rows.extend(row for row in rows if row not in ordered_rows)
+    return ordered_rows
+
+
+def _ordered_row_index(index: pd.Index, dataset_order: list[str] | None = None) -> pd.Index:
+    if not isinstance(index, pd.MultiIndex):
+        return pd.Index(_order_rows_by_dataset(index, list(index), dataset_order), name=index.name)
+
+    if "classifier" not in index.names:
+        return pd.MultiIndex.from_tuples(
+            _order_rows_by_dataset(index, list(index), dataset_order),
+            names=index.names,
+        )
 
     classifier_level = index.names.index("classifier")
-    ordered_rows = [row for classifier in CLASSIFIER_FILTER for row in index if row[classifier_level] == classifier]
+    ordered_rows = []
+    for classifier in CLASSIFIER_FILTER:
+        rows = [row for row in index if row[classifier_level] == classifier]
+        ordered_rows.extend(_order_rows_by_dataset(index, rows, dataset_order))
     ordered_rows.extend(row for row in index if row not in ordered_rows)
     return pd.MultiIndex.from_tuples(ordered_rows, names=index.names)
 
@@ -269,7 +310,12 @@ def _winkler_zscores(
     return zscores
 
 
-def _results_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, show_std: bool = True) -> str:
+def _results_latex_table(
+    df: pd.DataFrame,
+    metrics: tuple[str, ...] = METRICS,
+    show_std: bool = True,
+    dataset_order: list[str] | None = None,
+) -> str:
     row_levels = _row_levels(df)
     stats = df.groupby(row_levels + ["method"], sort=False)[list(metrics)].agg(["mean", "std"])
     mean = stats.xs("mean", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
@@ -277,7 +323,7 @@ def _results_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, s
 
     methods = [method for method in get_method_names() if method in mean.columns.get_level_values("method")]
     columns = _ordered_columns(methods, metrics)
-    rows = _ordered_row_index(mean.index)
+    rows = _ordered_row_index(mean.index, dataset_order)
     mean = mean.reindex(index=rows)
     std = std.reindex(index=rows)
     mean = mean.reindex(columns=columns)
@@ -285,6 +331,8 @@ def _results_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, s
     table = _format_mean_std(mean, std, show_std)
     winkler_zscores = _winkler_zscores(df, row_levels, mean, methods) if "winkler" in metrics else None
     styles = _cell_styles(mean, metrics, winkler_zscores)
+    table = _to_display_column_order(table, methods, metrics)
+    styles = _to_display_column_order(styles, methods, metrics)
     latex_columns = _latex_display_columns(table.columns)
     table.columns = latex_columns
     styles.columns = latex_columns
@@ -305,23 +353,21 @@ def _hide_latex_header_names(latex: str, show_metric_names: bool = True) -> str:
     skip_next_dataset_header = False
 
     for line in lines:
-        if line.startswith("method & "):
-            formatted.append(_add_method_group_separator(line.replace("method & ", " & ", 1)))
-            if show_metric_names:
-                formatted.append("\\midrule")
-            skip_next_dataset_header = False
-        elif line.startswith(" & method & "):
-            formatted.append(_add_method_group_separator(line.replace(" & method & ", " &  & ", 1)))
-            if show_metric_names:
-                formatted.append("\\midrule")
-            skip_next_dataset_header = False
-        elif line.startswith("metric & "):
+        if line.startswith("metric & "):
             if show_metric_names:
                 formatted.append(line.replace("metric & ", " & ", 1))
-            skip_next_dataset_header = True
+                formatted.append("\\midrule")
+            skip_next_dataset_header = False
         elif line.startswith(" & metric & "):
             if show_metric_names:
                 formatted.append(line.replace(" & metric & ", " &  & ", 1))
+                formatted.append("\\midrule")
+            skip_next_dataset_header = False
+        elif line.startswith("method & "):
+            formatted.append(line.replace("method & ", " & ", 1))
+            skip_next_dataset_header = True
+        elif line.startswith(" & method & "):
+            formatted.append(line.replace(" & method & ", " &  & ", 1))
             skip_next_dataset_header = True
         elif skip_next_dataset_header and line.startswith("dataset & "):
             skip_next_dataset_header = False
@@ -332,16 +378,6 @@ def _hide_latex_header_names(latex: str, show_metric_names: bool = True) -> str:
             skip_next_dataset_header = False
 
     return "\n".join(formatted) + "\n"
-
-
-def _add_method_group_separator(line: str) -> str:
-    multicol = "\\multicolumn"
-    if line.count(multicol) <= 3:
-        return line
-
-    pieces = line.split(multicol)
-    pieces[3] = pieces[3].replace("{c|}", "{c||}", 1)
-    return multicol.join(pieces)
 
 
 def _escape_latex_text(text: str) -> str:
@@ -460,14 +496,16 @@ def gen_tables(pargs):
             continue
 
         name = f"{experiment}_{domain}_{acc}"
+        results = Results.load(
+            base_dir=main_base_dir,
+            acc_name=acc,
+            domain=domain,
+            filter_classifiers=classifiers,
+            filter_methods=get_method_names(),
+        )
+        dataset_order = _ordered_dataset_names(results.df)
         df = (
-            Results.load(
-                base_dir=main_base_dir,
-                acc_name=acc,
-                domain=domain,
-                filter_classifiers=classifiers,
-                filter_methods=get_method_names(),
-            )
+            results
             .map_column_values("dataset", dataset_map)
             .apply_to_column("dataset", decorate_dataset)
             .apply_to_column("true_cts", lambda ct: acc_from_ct(acc, ct), new_col="true_accs")
@@ -480,7 +518,7 @@ def gen_tables(pargs):
             .df
         )
 
-        tbl = _results_latex_table(df, metrics, pargs.show_std)
+        tbl = _results_latex_table(df, metrics, pargs.show_std, dataset_order)
         tabular_filename = f"{name}.tex"
         with open(os.path.join(tabular_dir, tabular_filename), "w") as f:
             f.write(tbl)

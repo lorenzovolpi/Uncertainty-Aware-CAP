@@ -23,7 +23,7 @@ from uncawe.plots.common import (
     classifier_markers,
     fmt_tick,
     font_size,
-    interval_from_samples,
+    interval_metrics,
     load_main_results,
     ordered_classifiers,
     plot_dir,
@@ -51,14 +51,14 @@ def _ensure_interval_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
     for row in df.itertuples(index=False):
         true_acc = acc_from_ct(row.acc_name, row.true_cts, type="selection")
-        low, high = interval_from_samples(row.estim_acc_ranges)
-        if not np.isfinite(true_acc) or not np.isfinite(low) or not np.isfinite(high):
+        coverage, amplitude, _, _, _ = interval_metrics(true_acc, row.estim_acc_ranges)
+        if not np.isfinite(coverage) or not np.isfinite(amplitude):
             coverages.append(np.nan)
             amplitudes.append(np.nan)
             continue
 
-        coverages.append(float(low <= true_acc <= high))
-        amplitudes.append(float(high - low))
+        coverages.append(coverage)
+        amplitudes.append(amplitude)
 
     df["coverage"] = coverages
     df["amplitude"] = amplitudes

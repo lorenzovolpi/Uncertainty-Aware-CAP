@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import pandas as pd
+from cap.models.confidence import ConfidenceInterval
 from matplotlib.lines import Line2D
 
 import uncawe.env as env
@@ -57,15 +58,21 @@ def as_float_array(value) -> np.ndarray:
     return arr.ravel()
 
 
-def interval_from_samples(samples) -> tuple[float, float]:
+def confidence_interval_from_samples(samples) -> ConfidenceInterval | None:
     arr = as_float_array(samples)
     arr = arr[np.isfinite(arr)]
     if arr.size == 0:
+        return None
+
+    return ConfidenceInterval(arr, confidence_level=CONFIDENCE_LEVEL)
+
+
+def interval_from_samples(samples) -> tuple[float, float]:
+    ci = confidence_interval_from_samples(samples)
+    if ci is None:
         return np.nan, np.nan
 
-    alpha = 1 - CONFIDENCE_LEVEL
-    low, high = np.nanpercentile(arr, [100 * alpha / 2, 100 * (1 - alpha / 2)])
-    return float(low), float(high)
+    return ci.interval()
 
 
 def winkler_score(true_value: float, low: float, high: float) -> float:
@@ -81,24 +88,48 @@ def winkler_score(true_value: float, low: float, high: float) -> float:
     return float(score)
 
 
+def interval_metrics(true_value: float, samples) -> tuple[float, float, float, float, float]:
+    if not np.isfinite(true_value):
+        return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    ci = confidence_interval_from_samples(samples)
+    if ci is None:
+        return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    low, high = ci.interval()
+    return (
+        ci.coverage(true_value),
+        ci.amplitude(),
+        ci.winkler(true_value),
+        low,
+        high,
+    )
+
+
 def ensure_tradeoff_metrics(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     true_accs = []
     lows = []
     highs = []
+    coverages = []
+    amplitudes = []
     winklers = []
     for row in df.itertuples(index=False):
         true_acc = acc_from_ct(row.acc_name, row.true_cts, type="selection")
-        low, high = interval_from_samples(row.estim_acc_ranges)
+        coverage, amplitude, winkler, low, high = interval_metrics(true_acc, row.estim_acc_ranges)
         true_accs.append(true_acc)
         lows.append(low)
         highs.append(high)
-        winklers.append(winkler_score(true_acc, low, high))
+        coverages.append(coverage)
+        amplitudes.append(amplitude)
+        winklers.append(winkler)
 
     df["true_accs"] = true_accs
     df["interval_low"] = lows
     df["interval_high"] = highs
+    df["coverage"] = coverages
+    df["amplitude"] = amplitudes
     df["winkler_score"] = winklers
     return df.loc[np.isfinite(df["acc_err"]) & np.isfinite(df["winkler_score"]), :]
 
