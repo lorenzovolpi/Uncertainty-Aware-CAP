@@ -1,298 +1,219 @@
 import os
 import tempfile
 from argparse import ArgumentParser, BooleanOptionalAction
+from copy import copy
 from typing import Iterable
 
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matplotlib"))
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-from matplotlib.lines import Line2D
-from matplotlib.patches import Ellipse
+import seaborn as sns
 
-import uncawe.env as env
-from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names
-from uncawe.results import Results
+from uncawe.plots.common import (
+    ACC_NAME,
+    DEFAULT_DOMAIN,
+    DEFAULT_METHODS,
+    FACET_COL_WRAP,
+    FACET_LEGEND_ANCHOR,
+    FONT_SCALE,
+    METHOD_COLORS,
+    axis_limits,
+    classifier_legend_handles,
+    classifier_markers,
+    fmt_tick,
+    font_size,
+    load_tradeoff_source,
+    mean_sample_ranks,
+    ordered_classifiers,
+    plot_dir,
+    rank_test_samples,
+    safe_name,
+)
 
-EXPERIMENT = "main"
+_load_rank_source = load_tradeoff_source
+_rank_test_samples = rank_test_samples
+_mean_sample_ranks = mean_sample_ranks
+
 PLOT_NAME = "ae_vs_winkler"
-DEFAULT_DOMAIN = "classic"
-DEFAULT_METHODS = ["O-LEAP", "BayesCAP", "PQ", "RQBS", "DoC"]
-METHOD_COLORS = {
-    "O-LEAP": "#4C78A8",
-    "BayesCAP": "#F58518",
-    "PQ": "#54A24B",
-    "RQBS": "#B279A2",
-    "DoC": "#E45756",
-}
-
-
-def _safe_name(name: str) -> str:
-    return str(name).replace(os.sep, "__").replace(" ", "_")
+SYMLIM = 0.05
 
 
 def _plot_dir() -> str:
-    path = os.path.join(env.root_dir, "plots", EXPERIMENT, PLOT_NAME)
-    os.makedirs(path, exist_ok=True)
-    return path
+    return plot_dir(PLOT_NAME)
 
 
-def _plot_stem(domain: str, dataset: str, classifier: str) -> str:
-    filename = f"{_safe_name(domain)}_{_safe_name(dataset)}_{_safe_name(classifier)}"
+def _plot_stem(domain: str, acc_name: str) -> str:
+    filename = f"{safe_name(domain)}_{safe_name(acc_name)}"
     return os.path.join(_plot_dir(), filename)
 
 
-def _as_float_array(value) -> np.ndarray:
-    arr = np.asarray(value, dtype=float)
-    return arr.ravel()
-
-
-def _interval_from_samples(samples) -> tuple[float, float]:
-    arr = _as_float_array(samples)
-    arr = arr[np.isfinite(arr)]
-    if arr.size == 0:
-        return np.nan, np.nan
-
-    alpha = 1 - CONFIDENCE_LEVEL
-    low, high = np.nanpercentile(arr, [100 * alpha / 2, 100 * (1 - alpha / 2)])
-    return float(low), float(high)
-
-
-def _winkler_score(true_value: float, low: float, high: float) -> float:
-    if not np.isfinite(true_value) or not np.isfinite(low) or not np.isfinite(high):
-        return np.nan
-
-    alpha = 1 - CONFIDENCE_LEVEL
-    score = high - low
-    if true_value < low:
-        score += (2 / alpha) * (low - true_value)
-    elif true_value > high:
-        score += (2 / alpha) * (true_value - high)
-    return float(score)
-
-
-def _ensure_plot_metrics(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-
-    true_accs = []
-    lows = []
-    highs = []
-    winklers = []
-    for row in df.itertuples(index=False):
-        true_acc = acc_from_ct(row.acc_name, row.true_cts, type="selection")
-        low, high = _interval_from_samples(row.estim_acc_ranges)
-        true_accs.append(true_acc)
-        lows.append(low)
-        highs.append(high)
-        winklers.append(_winkler_score(true_acc, low, high))
-
-    df["true_accs"] = true_accs
-    df["interval_low"] = lows
-    df["interval_high"] = highs
-    df["winkler_score"] = winklers
-    return df.loc[np.isfinite(df["acc_err"]) & np.isfinite(df["winkler_score"]), :]
-
-
-def _load_main_results(domain: str, methods: list[str]) -> pd.DataFrame:
-    base_dir = os.path.join(env.root_dir, EXPERIMENT)
-    if not os.path.exists(base_dir):
-        raise FileNotFoundError(f"Results directory not found: {base_dir}")
-
-    frames = []
-    for acc_name in get_acc_names():
-        try:
-            res = Results.load(base_dir=base_dir, acc_name=acc_name, domain=domain, filter_methods=methods)
-        except ValueError:
-            continue
-        if not res.df.empty:
-            frames.append(res.df)
-
-    if not frames:
-        return pd.DataFrame()
-
-    df = pd.concat(frames, axis=0, ignore_index=True)
-    df["method"] = pd.Categorical(df["method"], categories=methods, ordered=True)
-    df["acc_name"] = pd.Categorical(df["acc_name"], categories=get_acc_names(), ordered=True)
-    return df.sort_values(["dataset", "classifier", "acc_name", "method"])
-
-
-def _ellipse_patch(points: np.ndarray, color: str, n_std: float) -> Ellipse | None:
-    if points.shape[0] < 3:
-        return None
-
-    cov = np.cov(points, rowvar=False)
-    if cov.shape != (2, 2) or not np.isfinite(cov).all():
-        return None
-
-    vals, vecs = np.linalg.eigh(cov)
-    vals = np.maximum(vals, 0)
-    if np.isclose(vals.max(), 0):
-        return None
-
-    order = vals.argsort()[::-1]
-    vals = vals[order]
-    vecs = vecs[:, order]
-    angle = np.degrees(np.arctan2(vecs[1, 0], vecs[0, 0]))
-    width, height = 2 * n_std * np.sqrt(vals)
-    center = points.mean(axis=0)
-    return Ellipse(
-        xy=center,
-        width=width,
-        height=height,
-        angle=angle,
-        facecolor=color,
-        edgecolor=color,
-        linewidth=1.4,
-        alpha=0.16,
-        zorder=2,
+def _aggregate_values(df: pd.DataFrame) -> pd.DataFrame:
+    return (
+        df.groupby(["dataset", "classifier", "acc_name", "method"], observed=True, sort=False)
+        .agg(mean_acc_err=("acc_err", "mean"), mean_winkler=("winkler_score", "mean"))
+        .reset_index()
     )
 
 
-def _axis_limits(df: pd.DataFrame) -> tuple[tuple[float, float], tuple[float, float]]:
-    max_x = df["acc_err"].max(skipna=True)
-    max_y = df["winkler_score"].max(skipna=True)
-    xlim = (0.0, float(max_x * 1.08 if max_x > 0 else 1.0))
-    ylim = (0.0, float(max_y * 1.08 if max_y > 0 else 1.0))
-    return xlim, ylim
+def _scale_ticks(limit: float) -> list[float]:
+    ticks = [0, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50, 100]
+    return [tick for tick in ticks if tick <= limit]
 
 
-def _draw_group(
-    ax,
-    group: pd.DataFrame,
-    method: str,
-    color: str,
-    sample_alpha: float,
-    ellipse_n_std: float,
-):
-    xs = group["acc_err"].to_numpy(dtype=float)
-    ys = group["winkler_score"].to_numpy(dtype=float)
-    ax.scatter(xs, ys, s=18, alpha=sample_alpha, color=color, edgecolors="none", label=method, zorder=1)
-
-    points = np.column_stack([xs, ys])
-    ellipse = _ellipse_patch(points, color, ellipse_n_std)
-    if ellipse is not None:
-        ax.add_patch(ellipse)
-
-    mean_x = float(np.mean(xs))
-    mean_y = float(np.mean(ys))
-    ax.scatter(
-        [mean_x],
-        [mean_y],
-        s=92,
-        color=color,
-        edgecolors="#1f1f1f",
-        linewidths=0.8,
-        zorder=4,
-    )
+def _apply_axis_scale(ax, axis: str, scale: str, limit: float):
+    if scale == "symlog":
+        ticks = _scale_ticks(limit)
+        if axis == "x":
+            ax.set_xscale("symlog", linthresh=SYMLIM, linscale=1.0)
+            ax.set_xticks(ticks)
+            ax.set_xticklabels([fmt_tick(tick) for tick in ticks])
+        else:
+            ax.set_yscale("symlog", linthresh=SYMLIM, linscale=1.0)
+            ax.set_yticks(ticks)
+            ax.set_yticklabels([fmt_tick(tick) for tick in ticks])
 
 
-def _plot_classifier(
-    df: pd.DataFrame,
-    domain: str,
-    dataset: str,
-    classifier: str,
-    methods: list[str],
-    sample_alpha: float,
-    ellipse_n_std: float,
-    formats: Iterable[str],
-    dpi: int,
-):
-    acc_names = [acc for acc in get_acc_names() if acc in set(df["acc_name"].astype(str))]
-    if not acc_names:
+def _draw_facet(data: pd.DataFrame, sample_alpha: float, classifiers: list[str], **_):
+    if data.empty:
         return
 
-    fig, axes = plt.subplots(1, len(acc_names), figsize=(5.0 * len(acc_names), 4.6), squeeze=False)
-    axes = axes[0]
-    xlim, ylim = _axis_limits(df)
-    visible_methods = set()
+    method = str(data["method"].iloc[0])
+    sns.scatterplot(
+        data=data,
+        x="mean_acc_err",
+        y="mean_winkler",
+        style="classifier",
+        style_order=classifiers,
+        markers=classifier_markers(classifiers),
+        color=METHOD_COLORS.get(method, "#4C78A8"),
+        alpha=sample_alpha,
+        s=34,
+        edgecolor=None,
+        legend=False,
+        ax=plt.gca(),
+        zorder=2,
+    )
+    sns.kdeplot(
+        data=data,
+        x="mean_acc_err",
+        y="mean_winkler",
+        color=METHOD_COLORS.get(method, "#4C78A8"),
+        legend=False,
+        ax=plt.gca(),
+        zorder=3,
+        alpha=sample_alpha - 0.2,
+        fill=True,
+    )
 
-    for ax, acc_name in zip(axes, acc_names):
-        acc_df = df.loc[df["acc_name"].astype(str) == acc_name, :]
-        for method in methods:
-            method_df = acc_df.loc[acc_df["method"].astype(str) == method, :]
-            if method_df.empty:
-                continue
-            color = METHOD_COLORS.get(method, None)
-            _draw_group(ax, method_df, method, color, sample_alpha, ellipse_n_std)
-            visible_methods.add(method)
 
-        ax.set_title(str(acc_name), fontsize=11)
+def _plot(
+    df: pd.DataFrame,
+    domain: str,
+    acc_name: str,
+    methods: list[str],
+    sample_alpha: float,
+    x_scale: str,
+    y_scale: str,
+    formats: Iterable[str],
+    dpi: int,
+    add_stem: str | None,
+):
+    present_methods = [method for method in methods if method in set(df["method"].astype(str))]
+    if not present_methods:
+        return
+
+    sns.set_theme(style="whitegrid", context="notebook", font_scale=FONT_SCALE)
+    classifiers = ordered_classifiers(df)
+    xlim, ylim = axis_limits(df, "mean_acc_err", "mean_winkler")
+
+    grid = sns.FacetGrid(
+        df,
+        col="method",
+        col_order=present_methods,
+        col_wrap=FACET_COL_WRAP,
+        sharex=True,
+        sharey=True,
+        height=4.4,
+        # aspect=0.74,
+        aspect=1,
+        despine=False,
+    )
+    grid.map_dataframe(_draw_facet, sample_alpha=sample_alpha, classifiers=classifiers)
+    grid.set_titles(col_template="{col_name}", size=font_size(14))
+    grid.set_axis_labels("Absolute error", "Winkler score")
+
+    for ax in grid.axes.flat:
         ax.set_xlim(*xlim)
         ax.set_ylim(*ylim)
+        _apply_axis_scale(ax, "x", x_scale, xlim[1])
+        _apply_axis_scale(ax, "y", y_scale, ylim[1])
         ax.grid(True, color="#d9d9d9", linewidth=0.7, alpha=0.7)
-        ax.set_xlabel("Absolute error")
+        ax.tick_params(axis="both", labelsize=font_size(12))
+        ax.xaxis.label.set_size(font_size(13))
+        ax.yaxis.label.set_size(font_size(13))
 
-    axes[0].set_ylabel("Winkler score")
-    fig.suptitle(f"{dataset} | {classifier}", fontsize=13)
-    if visible_methods:
-        labels = [method for method in methods if method in visible_methods]
-        handles = [
-            Line2D(
-                [0],
-                [0],
-                marker="o",
-                linestyle="",
-                markersize=7,
-                markerfacecolor=METHOD_COLORS.get(method, "#4C78A8"),
-                markeredgecolor="#1f1f1f",
-                markeredgewidth=0.6,
-                alpha=1.0,
-            )
-            for method in labels
-        ]
-        fig.legend(handles, labels, loc="lower center", ncol=min(len(labels), 5), frameon=False, fontsize=9)
+    fig = grid.figure
+    handles = classifier_legend_handles(classifiers)
+    fig.legend(
+        handles,
+        classifiers,
+        loc="upper left",
+        bbox_to_anchor=FACET_LEGEND_ANCHOR,
+        ncol=1,
+        frameon=True,
+        fontsize=font_size(12),
+    )
 
     fig.tight_layout()
-    fig.subplots_adjust(bottom=0.17, top=0.86)
+    fig.subplots_adjust(top=0.92, right=0.88, hspace=0.15)
 
-    stem = _plot_stem(domain, dataset, classifier)
+    stem = _plot_stem(domain, acc_name)
+    if add_stem is not None:
+        stem = f"{stem}_{add_stem}"
     for fmt in formats:
         fig.savefig(f"{stem}.{fmt}", dpi=dpi if fmt.lower() == "png" else None)
     plt.close(fig)
 
 
 def generate_plots(args):
-    df = _load_main_results(args.domain, args.methods)
-    if df.empty:
-        raise RuntimeError(f"No results found for domain={args.domain!r} and methods={args.methods}")
+    plot_args = copy(args)
+    plot_args.acc_names = [ACC_NAME]
+    values = _aggregate_values(_load_rank_source(plot_args))
+    if values.empty:
+        raise RuntimeError("No aggregated acc_err/Winkler rows available for plotting.")
 
-    if args.datasets:
-        df = df.loc[df["dataset"].isin(args.datasets), :]
-    if args.classifiers:
-        df = df.loc[df["classifier"].isin(args.classifiers), :]
-    if df.empty:
-        raise RuntimeError("No results left after applying dataset/classifier filters.")
+    acc_df = values.loc[values["acc_name"].astype(str) == ACC_NAME, :]
+    if acc_df.empty:
+        raise RuntimeError(f"No {ACC_NAME!r} rows available after aggregation.")
 
-    df = _ensure_plot_metrics(df)
-    if df.empty:
-        raise RuntimeError("No finite acc_err/Winkler rows available for plotting.")
-
-    for (dataset, classifier), group in df.groupby(["dataset", "classifier"], sort=True, observed=True):
-        _plot_classifier(
-            group,
-            args.domain,
-            str(dataset),
-            str(classifier),
-            args.methods,
-            args.alpha,
-            args.ellipse_n_std,
-            args.formats,
-            args.dpi,
-        )
-        print(f"plot generated: {args.domain}/{dataset}/{classifier}")
+    _plot(
+        acc_df,
+        args.domain,
+        ACC_NAME,
+        args.methods,
+        args.alpha,
+        args.x_scale,
+        args.y_scale,
+        args.formats,
+        args.dpi,
+        args.add_stem,
+    )
+    print(f"plot generated: {args.domain}/{ACC_NAME}")
 
 
 def parse_args():
-    parser = ArgumentParser(description="Generate acc_err vs Winkler scatter plots from main experiment results.")
+    parser = ArgumentParser(description="Generate absolute-error vs Winkler trade-off plots.")
     parser.add_argument("--domain", default=DEFAULT_DOMAIN)
     parser.add_argument("--datasets", nargs="*", default=None)
     parser.add_argument("--classifiers", nargs="*", default=None)
     parser.add_argument("--methods", nargs="*", default=DEFAULT_METHODS)
-    parser.add_argument("--alpha", type=float, default=0.18)
-    parser.add_argument("--ellipse-n-std", type=float, default=1.0)
+    parser.add_argument("--alpha", type=float, default=0.6)
+    parser.add_argument("--x-scale", choices=["symlog", "linear"], default="symlog")
+    parser.add_argument("--y-scale", choices=["symlog", "linear"], default="symlog")
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
+    parser.add_argument("--add-stem", default=None)
     args = parser.parse_args()
     args.formats = ["png", "svg"] if args.svg else ["png"]
     return args

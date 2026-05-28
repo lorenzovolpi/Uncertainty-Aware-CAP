@@ -9,13 +9,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-import uncawe.env as env
 from uncawe.config import get_acc_names
-from uncawe.plots.ae_vs_winkler import DEFAULT_DOMAIN, DEFAULT_METHODS, EXPERIMENT, _safe_name
-from uncawe.plots.mean_tradeoff import _load_rank_source, _mean_sample_ranks, _rank_test_samples
+from uncawe.plots.common import (
+    DEFAULT_DOMAIN,
+    DEFAULT_METHODS,
+    CLASSIFIER_MARKERS,
+    font_size,
+    load_tradeoff_source,
+    mean_sample_ranks,
+    plot_dir,
+    rank_test_samples,
+    safe_name,
+)
 
 PLOT_NAME = "rank_heatmap"
-CLASSIFIER_ORDER = ["LR", "kNN", "SVM", "MLP", "RF"]
+CLASSIFIER_ORDER = list(CLASSIFIER_MARKERS)
 RANK_METRICS = {
     "ae": ("rank_acc_err", "AE mean sample-rank"),
     "winkler": ("rank_winkler", "Winkler mean sample-rank"),
@@ -23,13 +31,11 @@ RANK_METRICS = {
 
 
 def _plot_dir() -> str:
-    path = os.path.join(env.root_dir, "plots", EXPERIMENT, PLOT_NAME)
-    os.makedirs(path, exist_ok=True)
-    return path
+    return plot_dir(PLOT_NAME)
 
 
 def _plot_stem(domain: str, acc_name: str, metric: str) -> str:
-    filename = f"{_safe_name(domain)}_{_safe_name(acc_name)}_{metric}"
+    filename = f"{safe_name(domain)}_{safe_name(acc_name)}_{metric}"
     return os.path.join(_plot_dir(), filename)
 
 
@@ -111,10 +117,10 @@ def _plot_heatmap(
     im = ax.imshow(masked_values, cmap=cmap, vmin=1, vmax=n_methods, aspect="auto")
 
     ax.set_xticks(np.arange(len(matrix.columns)))
-    ax.set_xticklabels(_method_labels(matrix.columns), rotation=90, ha="center", fontsize=7)
+    ax.set_xticklabels(_method_labels(matrix.columns), rotation=90, ha="center", fontsize=font_size(7))
     ax.set_yticks(np.arange(len(matrix.index)))
-    ax.set_yticklabels(matrix.index, fontsize=8)
-    ax.set_title(f"{acc_name} | {title_suffix}", fontsize=12)
+    ax.set_yticklabels(matrix.index, fontsize=font_size(8))
+    ax.set_title(f"{acc_name} | {title_suffix}", fontsize=font_size(12))
     ax.tick_params(axis="both", length=0, grid_alpha=0)
     ax.tick_params(axis="both", which="minor", length=0, grid_alpha=0)
 
@@ -127,7 +133,7 @@ def _plot_heatmap(
             transform=ax.get_xaxis_transform(),
             ha="center",
             va="bottom",
-            fontsize=9,
+            fontsize=font_size(9),
             fontweight="bold",
             clip_on=False,
         )
@@ -146,8 +152,8 @@ def _plot_heatmap(
 
 
 def generate_plots(args):
-    df = _load_rank_source(args)
-    ranked = _mean_sample_ranks(_rank_test_samples(df))
+    df = load_tradeoff_source(args)
+    ranked = mean_sample_ranks(rank_test_samples(df))
     if ranked.empty:
         raise RuntimeError("No rank rows available for plotting.")
 
