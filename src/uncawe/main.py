@@ -1,6 +1,6 @@
 import os
 
-os.environ.setdefault("JAX_PLATFORMS", "cpu")
+os.environ.setdefault("JAX_PLATFORMS", "cuda")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
 from argparse import ArgumentParser
@@ -20,10 +20,10 @@ from cap.models.confidence import BootstrapCAP, CAPWithConfidence
 from cap.models.cont_table import CAPContingencyTable
 from cap.models.direct import CAPDirect
 from cap.utils.commons import get_shift, parallel
+from joblib.externals.loky import get_reusable_executor
 
 from uncawe.config import (
     BAYES_N_JOBS,
-    JAX_COMPILATION_CACHE_DIR,
     gen_acc_measure,
     gen_methods,
     get_acc_names,
@@ -45,8 +45,8 @@ DOMAIN = "classic"
 
 NUM_TEST = 100
 
-jax.config.update("jax_compilation_cache_dir", JAX_COMPILATION_CACHE_DIR)
-jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+# jax.config.update("jax_compilation_cache_dir", JAX_COMPILATION_CACHE_DIR)
+# jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 
 qp.environ["SAMPLE_SIZE"] = 1000
 qp.environ["_R_SEED"] = 0
@@ -226,7 +226,8 @@ def exp_protocol(args: tuple[str, str, CAPWithConfidence]) -> EXP:
                 results.append(EXP.ERROR(e, p, acc_name, method_name))
                 continue
 
-            estim_accs = [accs.mean() for accs in estim_acc_ranges]
+            estim_acc_cis = [method.ci_from_accs(acc_range) for acc_range in estim_acc_ranges]
+            estim_accs = [ci.point_estimate for ci in estim_acc_cis]
             true_accs = [acc_fn(ct) for ct in tp_true_cts]
             acc_err = cap.error.ae(np.array(true_accs), np.array(estim_accs)).tolist()
 
@@ -309,6 +310,13 @@ def run_experiment_args(log: Logger, experiment_args: list[tuple[str, str, CAPWi
         save_experiment_results(log, results_gen)
 
 
+def shutdown_parallel_workers(log: Logger):
+    try:
+        get_reusable_executor().shutdown(wait=True, kill_workers=True)
+    except Exception as e:
+        log.warning(f"Could not shut down joblib workers: {e}")
+
+
 def experiments(log: Logger, domain: str):
     regular_args = []
     bayes_args = []
@@ -341,7 +349,10 @@ def experiments(log: Logger, domain: str):
             else:
                 regular_args.append(args)
 
-    run_experiment_args(log, regular_args, n_jobs=capenv["N_JOBS"])
+    regular_n_jobs = capenv["N_JOBS"]
+    run_experiment_args(log, regular_args, n_jobs=regular_n_jobs)
+    if regular_n_jobs != 1:
+        shutdown_parallel_workers(log)
     run_experiment_args(log, bayes_args, n_jobs=BAYES_N_JOBS)
 
 

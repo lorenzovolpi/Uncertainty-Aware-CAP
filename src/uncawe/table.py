@@ -10,7 +10,7 @@ from matplotlib import colormaps
 from matplotlib.colors import Normalize, rgb2hex
 
 import uncawe.env as env
-from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
+from uncawe.config import CONFIDENCE_LEVEL, METHOD_CLASS, acc_from_ct, get_acc_names, get_method_names
 from uncawe.main import EXPERIMENT
 from uncawe.results import Results
 from uncawe.util import decorate_dataset
@@ -20,7 +20,7 @@ LOWER_IS_BETTER = {"acc_err": True, "coverage": False, "amplitude": True, "winkl
 VALUE_FORMAT = "{:.3f}"
 COLORMAP_SATURATION = 0.65
 COLORMAP_LIGHTNESS = 0.35
-CLASSIFIER_FILTER = ("LR", "kNN", "SVM", "MLP")
+CLASSIFIER_FILTER = ("LR", "kNN", "SVM", "MLP", "RF")
 WORST_RGB = (251, 160, 159)
 BEST_RGB = (154, 254, 154)
 
@@ -49,25 +49,27 @@ metrics_map = {
 }
 
 
-def get_acc_coverage(true_acc: float, accs_range: np.ndarray) -> float:
-    ci = ConfidenceInterval(accs_range, CONFIDENCE_LEVEL)
+def get_acc_coverage(method: str, true_acc: float, accs_range: np.ndarray) -> float:
+    ci = METHOD_CLASS[method].ci_from_accs(accs_range, confidence_level=CONFIDENCE_LEVEL)
     return ci.coverage(true_acc)
 
 
-def get_acc_amplitude(accs_range: np.ndarray) -> float:
-    return float(accs_range.max() - accs_range.min())
+def get_acc_amplitude(method: str, accs_range: np.ndarray) -> float:
+    ci = METHOD_CLASS[method].ci_from_accs(accs_range, confidence_level=CONFIDENCE_LEVEL)
+    return ci.amplitude()
 
 
-def get_acc_winkler(true_acc: float, accs_range: np.ndarray) -> float:
+def get_acc_winkler(method: str, true_acc: float, accs_range: np.ndarray) -> float:
     arr = np.asarray(accs_range, dtype=float).ravel()
     arr = arr[np.isfinite(arr)]
     if arr.size == 0 or not np.isfinite(true_acc):
         return np.nan
 
     alpha = 1 - CONFIDENCE_LEVEL
-    low, high = np.nanpercentile(arr, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    ci = METHOD_CLASS[method].ci_from_accs(accs_range, confidence_level=CONFIDENCE_LEVEL)
+    ampl = ci.amplitude()
+    low, high = ci.low, ci.high
 
-    ampl = high - low
     if true_acc < low:
         ampl += (2 / alpha) * (low - true_acc)
     elif true_acc > high:
@@ -80,7 +82,10 @@ def _ordered_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIn
 
 
 def _latex_column_format(methods: list[str], metrics: tuple[str, ...], index_columns: int = 1) -> str:
-    return "l" * index_columns + "|" + "|".join("c" * len(metrics) for _ in methods) + "|"
+    method_formats = ["c" * len(metrics) for _ in methods]
+    if len(method_formats) > 3:
+        return "l" * index_columns + "|" + "|".join(method_formats[:3]) + "||" + "|".join(method_formats[3:]) + "|"
+    return "l" * index_columns + "|" + "|".join(method_formats) + "|"
 
 
 def _format_mean_std(mean: pd.DataFrame, std: pd.DataFrame, show_std: bool = True) -> pd.DataFrame:
@@ -135,14 +140,43 @@ def _text_color(background: str) -> str:
     return "#f1f1f1" if luminance < 0.45 else "#000000"
 
 
-def _cell_styles(mean: pd.DataFrame, metrics: tuple[str, ...]) -> pd.DataFrame:
+def _winkler_zscore_hex(zscore: float) -> str:
+    if pd.isna(zscore):
+        return ""
+    if zscore <= -1:
+        return _rgb_hex(WORST_RGB)
+    if zscore >= 1:
+        return _rgb_hex(BEST_RGB)
+    return _rdylgn_hex(zscore, -1, 1)
+
+
+def _cell_styles(
+    mean: pd.DataFrame,
+    metrics: tuple[str, ...],
+    winkler_zscores: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     styles = pd.DataFrame("", index=mean.index, columns=mean.columns)
 
     for metric in metrics:
         metric_values = mean.xs(metric, axis=1, level="metric")
 
         for dataset, values in metric_values.iterrows():
-            if metric in ["acc_err", "winkler"]:
+            if metric == "acc_err":
+                scores = -values
+                vmin = scores.min(skipna=True)
+                vmax = scores.max(skipna=True)
+
+                if pd.isna(vmin) or pd.isna(vmax):
+                    continue
+
+                if np.isclose(vmin, vmax):
+                    colors = pd.Series("#ffffbf", index=scores.index)
+                else:
+                    colors = scores.apply(lambda value: "" if pd.isna(value) else _rdylgn_hex(value, vmin, vmax))
+            elif metric == "winkler" and winkler_zscores is not None:
+                zscores = winkler_zscores.xs("winkler", axis=1, level="metric").loc[dataset]
+                colors = zscores.apply(_winkler_zscore_hex)
+            elif metric == "winkler":
                 scores = -values
                 vmin = scores.min(skipna=True)
                 vmax = scores.max(skipna=True)
@@ -190,14 +224,49 @@ def _ordered_row_index(index: pd.Index) -> pd.Index:
         return index
 
     classifier_level = index.names.index("classifier")
-    ordered_rows = [
-        row
-        for classifier in CLASSIFIER_FILTER
-        for row in index
-        if row[classifier_level] == classifier
-    ]
+    ordered_rows = [row for classifier in CLASSIFIER_FILTER for row in index if row[classifier_level] == classifier]
     ordered_rows.extend(row for row in index if row not in ordered_rows)
     return pd.MultiIndex.from_tuples(ordered_rows, names=index.names)
+
+
+def _as_row_key(key):
+    return key if isinstance(key, tuple) else key
+
+
+def _winkler_zscores(
+    df: pd.DataFrame,
+    row_levels: list[str],
+    mean: pd.DataFrame,
+    methods: list[str],
+) -> pd.DataFrame | None:
+    if "winkler" not in df.columns or ("winkler" not in mean.columns.get_level_values("metric")):
+        return None
+
+    zscores = pd.DataFrame(np.nan, index=mean.index, columns=mean.columns)
+
+    for key, group in df.groupby(row_levels, sort=False):
+        row_key = _as_row_key(key)
+        if row_key not in mean.index:
+            continue
+
+        pooled_scores = -pd.to_numeric(group["winkler"], errors="coerce")
+        pooled_scores = pooled_scores[np.isfinite(pooled_scores)]
+        if pooled_scores.empty:
+            continue
+
+        mu = pooled_scores.mean()
+        sigma = pooled_scores.std(ddof=0)
+
+        for method in methods:
+            mean_winkler = mean.loc[row_key, (method, "winkler")]
+            if pd.isna(mean_winkler):
+                continue
+            if pd.isna(sigma) or np.isclose(sigma, 0):
+                zscores.loc[row_key, (method, "winkler")] = 0.0
+            else:
+                zscores.loc[row_key, (method, "winkler")] = ((-mean_winkler) - mu) / sigma
+
+    return zscores
 
 
 def _results_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, show_std: bool = True) -> str:
@@ -214,7 +283,8 @@ def _results_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, s
     mean = mean.reindex(columns=columns)
     std = std.reindex(columns=columns)
     table = _format_mean_std(mean, std, show_std)
-    styles = _cell_styles(mean, metrics)
+    winkler_zscores = _winkler_zscores(df, row_levels, mean, methods) if "winkler" in metrics else None
+    styles = _cell_styles(mean, metrics, winkler_zscores)
     latex_columns = _latex_display_columns(table.columns)
     table.columns = latex_columns
     styles.columns = latex_columns
@@ -236,12 +306,12 @@ def _hide_latex_header_names(latex: str, show_metric_names: bool = True) -> str:
 
     for line in lines:
         if line.startswith("method & "):
-            formatted.append(line.replace("method & ", " & ", 1))
+            formatted.append(_add_method_group_separator(line.replace("method & ", " & ", 1)))
             if show_metric_names:
                 formatted.append("\\midrule")
             skip_next_dataset_header = False
         elif line.startswith(" & method & "):
-            formatted.append(line.replace(" & method & ", " &  & ", 1))
+            formatted.append(_add_method_group_separator(line.replace(" & method & ", " &  & ", 1)))
             if show_metric_names:
                 formatted.append("\\midrule")
             skip_next_dataset_header = False
@@ -262,6 +332,16 @@ def _hide_latex_header_names(latex: str, show_metric_names: bool = True) -> str:
             skip_next_dataset_header = False
 
     return "\n".join(formatted) + "\n"
+
+
+def _add_method_group_separator(line: str) -> str:
+    multicol = "\\multicolumn"
+    if line.count(multicol) <= 3:
+        return line
+
+    pieces = line.split(multicol)
+    pieces[3] = pieces[3].replace("{c|}", "{c||}", 1)
+    return multicol.join(pieces)
 
 
 def _escape_latex_text(text: str) -> str:
@@ -318,7 +398,7 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
                 "\\centering",
                 f"\\caption{{{caption}}}",
                 f"\\label{{{label}}}",
-                "\\begin{adjustbox}{max width=\\textwidth}",
+                "\\begin{adjustbox}{max width=0.8\\textwidth}",
                 f"\\input{{{input_path}}}",
                 "\\end{adjustbox}",
                 "\\end{table}",
@@ -391,10 +471,12 @@ def gen_tables(pargs):
             .map_column_values("dataset", dataset_map)
             .apply_to_column("dataset", decorate_dataset)
             .apply_to_column("true_cts", lambda ct: acc_from_ct(acc, ct), new_col="true_accs")
-            .apply_to_column(["true_accs", "estim_acc_ranges"], get_acc_coverage, new_col="coverage")
-            .apply_to_column("estim_acc_ranges", get_acc_amplitude, new_col="amplitude")
-            .apply_to_column(["true_accs", "estim_acc_ranges"], get_acc_winkler, new_col="winkler")
-            .select_columns(["classifier", "dataset", "method", "acc_err", "true_accs", "coverage", "amplitude", "winkler"])
+            .apply_to_column(["method", "true_accs", "estim_acc_ranges"], get_acc_coverage, new_col="coverage")
+            .apply_to_column(["method", "estim_acc_ranges"], get_acc_amplitude, new_col="amplitude")
+            .apply_to_column(["method", "true_accs", "estim_acc_ranges"], get_acc_winkler, new_col="winkler")
+            .select_columns(
+                ["classifier", "dataset", "method", "acc_err", "true_accs", "coverage", "amplitude", "winkler"]
+            )
             .df
         )
 

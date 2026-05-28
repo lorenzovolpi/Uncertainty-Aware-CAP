@@ -31,6 +31,14 @@ BAYES_N_JOBS = 1
 BOOTSTRAP_ITERS = 1000
 JAX_COMPILATION_CACHE_DIR = "./output/jax_cache"
 CONFIDENCE_LEVEL = 0.95
+METHOD_CLASS = {
+    "DoC": DoC,
+    "QuAcc_NxN": QuAccNxN,
+    "O-LEAP": O_LEAP,
+    "RQBS": RQBS,
+    "PQ": PrediQuant,
+    "BayesCAP": ACC_BayesCAP,
+}
 
 
 def kdey():
@@ -80,19 +88,7 @@ def gen_acc_measure(is_multiclass: bool):
 
 def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
     _, acc = next(gen_acc_measure(True))
-    yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
     yield "DoC", BootstrapDirectCAP(DoC(acc), num_samples=BOOTSTRAP_ITERS)
-    yield "BayesCAP", ACC_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
-    # yield "HD_BayesCAP", HD_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
-    yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS)
-    yield "PQ", PrediQuant(acc, kdey(), num_samples=BOOTSTRAP_ITERS, alpha=0.1, distance="l1", predict_train_prev=True)
-    # yield (
-    #     "QuAcc_1xN2",
-    #     BootstrapCTCAP(
-    #         QuAcc1xN2(acc, kdey(), add_maxconf=True, add_negentropy=True, add_maxinfsoft=True),
-    #         num_samples=BOOTSTRAP_ITERS,
-    #     ),
-    # )
     yield (
         "QuAcc_NxN",
         BootstrapCTCAP(
@@ -100,6 +96,12 @@ def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
             num_samples=BOOTSTRAP_ITERS,
         ),
     )
+    yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
+    #
+    yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS)
+    yield "PQ", PrediQuant(acc, kdey(), num_samples=BOOTSTRAP_ITERS, alpha=0.1, distance="l1", predict_train_prev=True)
+    yield "BayesCAP", ACC_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
+    # yield "HD_BayesCAP", HD_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
 
 
 def get_existing_dataset_names(experiment: str, domain: str, sort=True):
