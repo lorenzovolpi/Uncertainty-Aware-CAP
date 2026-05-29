@@ -11,7 +11,7 @@ from uncawe.results import Results
 
 EXPERIMENT = "main"
 DEFAULT_DOMAIN = "classic"
-DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "RQBS", "PQ", "BayesCAP"]
+DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "B-CBPE", "BE-CBPE", "L-CBPE", "RQBS", "PQ", "BayesCAP"]
 METHOD_COLORS = {
     "O-LEAP": "#4C78A8",
     "BayesCAP": "#F58518",
@@ -19,6 +19,9 @@ METHOD_COLORS = {
     "RQBS": "#B279A2",
     "DoC": "#54A24B",
     "QuAcc_NxN": "#72B7B2",
+    "B-CBPE": "#FF0000",
+    "BE-CBPE": "#00FF00",
+    "L-CBPE": "#0000FF",
 }
 
 ACC_NAME = "vanilla_accuracy"

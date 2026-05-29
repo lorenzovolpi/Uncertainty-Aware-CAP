@@ -34,10 +34,12 @@ METHOD_CLASS = {
     "DoC": DoC,
     "QuAcc_NxN": QuAccNxN,
     "O-LEAP": O_LEAP,
+    "B-CBPE": CBPE,
+    "BE-CBPE": CBPE,
+    "L-CBPE": CBPE,
     "RQBS": RQBS,
     "PQ": PrediQuant,
     "BayesCAP": ACC_BayesCAP,
-    "CBPE": CBPE,
 }
 
 
@@ -97,7 +99,9 @@ def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
         ),
     )
     yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
-    yield "CBPE", CBPE(acc_name)
+    yield "B-CBPE", CBPE(acc_name, calib_method="bcts")
+    yield "BE-CBPE", CBPE(acc_name, calib_method="bcts+emq")
+    yield "L-CBPE", CBPE(acc_name, calib_method="lascal")
     #
     yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE)
     yield (

@@ -92,7 +92,7 @@ def gen_datasets(
         "haberman",
         "ionosphere",
         "mammographic",
-        "semeion",
+        # "semeion",
         "sonar",
         "spambase",
         "spectf",

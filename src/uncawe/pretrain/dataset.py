@@ -40,12 +40,8 @@ def load_dataset(domain, dataset_name, model_name=None):
     _data = np.load(path)
     _classes = _data["classes"]
     L_prevalence = _data["L_prevalence"]
-    V = LabelledCollection(
-        instances=_data["validation_X"], labels=_data["validation_y"], classes=_classes
-    )
-    U = LabelledCollection(
-        instances=_data["test_X"], labels=_data["test_y"], classes=_classes
-    )
+    V = LabelledCollection(instances=_data["validation_X"], labels=_data["validation_y"], classes=_classes)
+    U = LabelledCollection(instances=_data["test_X"], labels=_data["test_y"], classes=_classes)
     return L_prevalence, V, U
 
 
@@ -59,9 +55,7 @@ def download_imagenet_split(name):
     basedir = local_dataset_dir()
     with open(os.path.join(basedir, "imagenet_urls.txt"), "r") as f:
         for line in f.readlines():
-            _split, _url = tuple(
-                map(lambda s: s.strip(), line.strip().split(" ", maxsplit=1))
-            )
+            _split, _url = tuple(map(lambda s: s.strip(), line.strip().split(" ", maxsplit=1)))
             urls[_split] = _url
     url = urls[name]
 
@@ -202,9 +196,7 @@ def extract_imagenet_val():
     class_map = {}
     with open(lt_tes_path, "r") as f:
         for line in f.readlines():
-            dest_path, _ = tuple(
-                map(lambda s: s.strip(), line.strip().split(" ", maxsplit=1))
-            )
+            dest_path, _ = tuple(map(lambda s: s.strip(), line.strip().split(" ", maxsplit=1)))
             parts = dest_path.split("/")
             class_map[parts[2]] = parts[1]
 
@@ -234,9 +226,7 @@ def build_imagenet_lt():
         X, y = [], []
         with open(path, "r") as f:
             for line in f.readlines():
-                id, label = tuple(
-                    map(lambda s: s.strip(), line.strip().split(" ", maxsplit=1))
-                )
+                id, label = tuple(map(lambda s: s.strip(), line.strip().split(" ", maxsplit=1)))
                 X.append(id)
                 y.append(int(label))
 
@@ -311,9 +301,7 @@ def cut_imagenet_lt(n_classes=200):
         classes_map[lbl] += 1
 
     # sort and cut classes based on frequency
-    cut_classes_map = sorted(
-        list(classes_map.items()), key=lambda x: x[1], reverse=True
-    )[:n_classes]
+    cut_classes_map = sorted(list(classes_map.items()), key=lambda x: x[1], reverse=True)[:n_classes]
     # remap classes to span (0,n_classes-1)
     remap_classes = {k: i for i, (k, _) in enumerate(cut_classes_map)}
 
@@ -323,22 +311,14 @@ def cut_imagenet_lt(n_classes=200):
         return [label in cut_classes for label in batch["label"]]
 
     cut_set = DatasetDict(
-        {
-            split: d.filter(filter_labels, batched=True, num_proc=8)
-            for split, d in ds.items()
-        },
+        {split: d.filter(filter_labels, batched=True, num_proc=8) for split, d in ds.items()},
     )
 
     def remap_labels(batch):
         batch["label"] = [remap_classes[label] for label in batch["label"]]
         return batch
 
-    remapped_set = DatasetDict(
-        {
-            split: d.map(remap_labels, batched=True, num_proc=8)
-            for split, d in cut_set.items()
-        }
-    )
+    remapped_set = DatasetDict({split: d.map(remap_labels, batched=True, num_proc=8) for split, d in cut_set.items()})
 
     remapped_set.save_to_disk(cut_dir)
 
@@ -363,9 +343,7 @@ def build_yelp_reviews():
     _tmp_set = d.train_test_split(train_size=225000, seed=qp.environ["_R_SEED"])
     trainval = _tmp_set["train"]
     test = _tmp_set["test"]
-    _tmp_trainval = trainval.train_test_split(
-        train_size=200000, seed=qp.environ["_R_SEED"]
-    )
+    _tmp_trainval = trainval.train_test_split(train_size=200000, seed=qp.environ["_R_SEED"])
     train = _tmp_trainval["train"]
     val = _tmp_trainval["test"]
 
@@ -377,12 +355,7 @@ def build_yelp_reviews():
         }
     )
 
-    dd = DatasetDict(
-        {
-            split: d.map(lambda x: {"text": x["text"], "label": x["label"] - 1})
-            for split, d in dd.items()
-        }
-    )
+    dd = DatasetDict({split: d.map(lambda x: {"text": x["text"], "label": x["label"] - 1}) for split, d in dd.items()})
 
     dd.save_to_disk(dest_path)
 
@@ -523,9 +496,7 @@ def build_rcv1(min_examples=10):
 
 
 def build_caltech_256():
-    source_dir = os.path.join(
-        local_dataset_dir(), "caltech_256_raw", "256_ObjectCategories"
-    )
+    source_dir = os.path.join(local_dataset_dir(), "caltech_256_raw", "256_ObjectCategories")
     dest_dir = os.path.join(local_dataset_dir(), "caltech256")
     if os.path.exists(dest_dir):
         return
@@ -552,9 +523,7 @@ def lt_power_law(dataset: Dataset, n_classes: int, imb_factor: float):
         cls_indices[y].append(i)
 
     n_max = len(cls_indices[0])
-    num_per_cls = [
-        int(n_max * (1 / imb_factor) ** (i / (n_classes - 1))) for i in range(n_classes)
-    ]
+    num_per_cls = [int(n_max * (1 / imb_factor) ** (i / (n_classes - 1))) for i in range(n_classes)]
 
     selected_indices = []
     with temp_np_seed(qp.environ["_R_SEED"]):
@@ -739,9 +708,7 @@ def get_local_hf_dataset(
 
     if name in _split_size:
         train_size = _split_size[name]
-        _tmp_dataset = dataset["train"].train_test_split(
-            train_size=train_size, seed=qp.environ["_R_SEED"]
-        )
+        _tmp_dataset = dataset["train"].train_test_split(train_size=train_size, seed=qp.environ["_R_SEED"])
         dataset["train"] = _tmp_dataset["train"]
         dataset["validation"] = _tmp_dataset["test"]
 
@@ -810,13 +777,9 @@ def get_hf_dataset(
             _whole_set = concatenate_datasets([dataset["train"], dataset["test"]])
 
         train_size, val_size = _split_size[d_name]
-        _tmp_split = _whole_set.train_test_split(
-            train_size=train_size + val_size, seed=qp.environ["_R_SEED"]
-        )
+        _tmp_split = _whole_set.train_test_split(train_size=train_size + val_size, seed=qp.environ["_R_SEED"])
         dataset["test"] = _tmp_split["test"]
-        _tmp_trainval = _tmp_split["train"].train_test_split(
-            train_size=train_size, seed=qp.environ["_R_SEED"]
-        )
+        _tmp_trainval = _tmp_split["train"].train_test_split(train_size=train_size, seed=qp.environ["_R_SEED"])
         dataset["train"] = _tmp_trainval["train"]
         dataset["validation"] = _tmp_trainval["test"]
     elif d_name in ["stanfordnlp/imdb", "mnist", "cifar10", "cifar100", "ethz/food101"]:
@@ -824,22 +787,16 @@ def get_hf_dataset(
             dataset["test"] = dataset["validation"]
 
         _, val_size = _split_size[d_name]
-        _tmp_dataset = dataset["train"].train_test_split(
-            test_size=val_size, seed=qp.environ["_R_SEED"]
-        )
+        _tmp_dataset = dataset["train"].train_test_split(test_size=val_size, seed=qp.environ["_R_SEED"])
         dataset["train"] = _tmp_dataset["train"]
         dataset["validation"] = _tmp_dataset["test"]
         if d_name == "stanfordnlp/imdb":
             del dataset["unsupervised"]
     elif d_name == "ljnlonoljpiljm/caltech256":
         train_size, val_size = _split_size[d_name]
-        _tmp_split = dataset["train"].train_test_split(
-            train_size=train_size + val_size, seed=qp.environ["_R_SEED"]
-        )
+        _tmp_split = dataset["train"].train_test_split(train_size=train_size + val_size, seed=qp.environ["_R_SEED"])
         dataset["test"] = _tmp_split["test"]
-        _tmp_trainval = _tmp_split["train"].train_test_split(
-            train_size=train_size, seed=qp.environ["_R_SEED"]
-        )
+        _tmp_trainval = _tmp_split["train"].train_test_split(train_size=train_size, seed=qp.environ["_R_SEED"])
         dataset["train"] = _tmp_trainval["train"]
         dataset["validation"] = _tmp_trainval["test"]
 
@@ -850,9 +807,7 @@ def get_hf_dataset(
         elif d_name == "fancyzhx/dbpedia_14":
             split["text"] = f"{split['title']}\n{split['content']}"
         elif d_name == "community-datasets/yahoo_answers_topics":
-            split["text"] = (
-                f"{split['question_title']}\n{split['question_content']}\n{split['best_answer']}"
-            )
+            split["text"] = f"{split['question_title']}\n{split['question_content']}\n{split['best_answer']}"
             split["label"] = split["topic"]
         # --- image ---
         elif d_name == "cifar10":
@@ -869,12 +824,8 @@ def get_hf_dataset(
     return dataset
 
 
-def sort_datasets_by_size(
-    dataset_coll: str | list[str], dataset_names: list[str], descending=True
-):
-    @functools.lru_cache(
-        maxsize=len(UCI_BINARY_DATASETS) + len(UCI_MULTICLASS_DATASETS)
-    )
+def sort_datasets_by_size(dataset_coll: str | list[str], dataset_names: list[str], descending=True) -> list[str]:
+    @functools.lru_cache(maxsize=len(UCI_BINARY_DATASETS) + len(UCI_MULTICLASS_DATASETS))
     def get_dataset_size(name, coll):
         _len = 0
         if coll == "uci_binary":
@@ -894,15 +845,9 @@ def sort_datasets_by_size(
 
         return _len
 
-    dataset_colls = (
-        dataset_coll
-        if isinstance(dataset_coll, list)
-        else [dataset_coll] * len(dataset_names)
-    )
+    dataset_colls = dataset_coll if isinstance(dataset_coll, list) else [dataset_coll] * len(dataset_names)
 
-    datasets = [
-        (d, get_dataset_size(d, c)) for d, c in zip(dataset_names, dataset_colls)
-    ]
+    datasets = [(d, get_dataset_size(d, c)) for d, c in zip(dataset_names, dataset_colls)]
     datasets.sort(key=(lambda d: d[1]), reverse=descending)
     return [d for (d, _) in datasets]
 

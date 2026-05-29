@@ -1,12 +1,10 @@
 import os
-import pickle
 import subprocess
 from argparse import ArgumentParser
 
 import numpy as np
 import pandas as pd
 from cap.models.confidence import ConfidenceInterval
-from matplotlib import colormaps
 from matplotlib.colors import Normalize, rgb2hex
 
 import uncawe.env as env
@@ -49,6 +47,8 @@ metrics_map = {
     "winkler": "$\\mathcal{W}$",
 }
 
+methods_map = {}
+
 
 def get_acc_coverage(method: str, true_acc: float, accs_range: np.ndarray) -> float:
     return _confidence_interval(accs_range).coverage(true_acc)
@@ -76,13 +76,14 @@ def _ordered_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIn
 
 
 def _latex_column_format(methods: list[str], metrics: tuple[str, ...], index_columns: int = 1) -> str:
+    numeric_column = "S[table-format=1.3,table-align-text-post=false]"
     metric_formats = []
     for _ in metrics:
-        if len(methods) > 3:
-            metric_formats.append("c" * 3 + "||" + "c" * (len(methods) - 3))
+        if len(methods) > 4:
+            metric_formats.append(numeric_column * 4 + "|" + numeric_column * (len(methods) - 4))
         else:
-            metric_formats.append("c" * len(methods))
-    return "l" * index_columns + "|" + "|".join(metric_formats) + "|"
+            metric_formats.append(numeric_column * len(methods))
+    return "l" * index_columns + "|" + "||".join(metric_formats) + "|"
 
 
 def _display_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIndex:
@@ -99,7 +100,11 @@ def _format_mean_std(mean: pd.DataFrame, std: pd.DataFrame, show_std: bool = Tru
     for col in mean.columns:
         if show_std:
             formatted[col] = [
-                "" if pd.isna(m) else f"{_format_value(m)} $\\pm$ {('--' if pd.isna(s) else _format_value(s))}"
+                ""
+                if pd.isna(m)
+                else f"{_format_value(m)}"
+                if pd.isna(s)
+                else f"{_format_value(m)} \\pm {_format_value(s)}"
                 for m, s in zip(mean[col], std[col])
             ]
         else:
@@ -109,12 +114,7 @@ def _format_mean_std(mean: pd.DataFrame, std: pd.DataFrame, show_std: bool = Tru
 
 
 def _format_value(value: float) -> str:
-    formatted = VALUE_FORMAT.format(value)
-    if formatted.startswith("-0."):
-        return "-" + formatted[2:]
-    if formatted.startswith("0."):
-        return formatted[1:]
-    return formatted
+    return VALUE_FORMAT.format(value)
 
 
 def _rdylgn_hex(value: float, vmin: float, vmax: float) -> str:
@@ -344,10 +344,15 @@ def _results_latex_table(
         multicol_align="c|",
         convert_css=True,
     )
-    return _hide_latex_header_names(latex, show_metric_names=len(metrics) > 1)
+    return _hide_latex_header_names(latex, methods, metrics, show_metric_names=len(metrics) > 1)
 
 
-def _hide_latex_header_names(latex: str, show_metric_names: bool = True) -> str:
+def _hide_latex_header_names(
+    latex: str,
+    methods: list[str],
+    metrics: tuple[str, ...],
+    show_metric_names: bool = True,
+) -> str:
     lines = latex.splitlines()
     formatted = []
     skip_next_dataset_header = False
@@ -355,19 +360,23 @@ def _hide_latex_header_names(latex: str, show_metric_names: bool = True) -> str:
     for line in lines:
         if line.startswith("metric & "):
             if show_metric_names:
-                formatted.append(line.replace("metric & ", " & ", 1))
+                formatted.append(_format_metric_header_separators(line.replace("metric & ", " & ", 1), len(metrics)))
                 formatted.append("\\midrule")
             skip_next_dataset_header = False
         elif line.startswith(" & metric & "):
             if show_metric_names:
-                formatted.append(line.replace(" & metric & ", " &  & ", 1))
+                formatted.append(
+                    _format_metric_header_separators(line.replace(" & metric & ", " &  & ", 1), len(metrics))
+                )
                 formatted.append("\\midrule")
             skip_next_dataset_header = False
         elif line.startswith("method & "):
-            formatted.append(line.replace("method & ", " & ", 1))
+            formatted.append(_protect_numeric_header_cells(line.replace("method & ", " & ", 1), 1, methods, metrics))
             skip_next_dataset_header = True
         elif line.startswith(" & method & "):
-            formatted.append(line.replace(" & method & ", " &  & ", 1))
+            formatted.append(
+                _protect_numeric_header_cells(line.replace(" & method & ", " &  & ", 1), 2, methods, metrics)
+            )
             skip_next_dataset_header = True
         elif skip_next_dataset_header and line.startswith("dataset & "):
             skip_next_dataset_header = False
@@ -380,6 +389,52 @@ def _hide_latex_header_names(latex: str, show_metric_names: bool = True) -> str:
     return "\n".join(formatted) + "\n"
 
 
+def _format_metric_header_separators(line: str, metric_count: int) -> str:
+    if metric_count <= 1 or "\\multicolumn" not in line:
+        return line
+
+    pieces = line.split("\\multicolumn")
+    for idx in range(1, len(pieces)):
+        separator = "||" if idx < len(pieces) - 1 else "|"
+        pieces[idx] = pieces[idx].replace("{c|}", f"{{c{separator}}}", 1)
+    return "\\multicolumn".join(pieces)
+
+
+def _protect_numeric_header_cells(
+    line: str,
+    index_columns: int,
+    methods: list[str],
+    metrics: tuple[str, ...],
+) -> str:
+    if " \\\\" not in line:
+        return line
+
+    body, suffix = line.rsplit(" \\\\", 1)
+    cells = body.split(" & ")
+    for idx in range(index_columns, len(cells)):
+        cell = cells[idx].strip()
+        if cell and not cell.startswith("\\multicolumn"):
+            cells[idx] = f"\\multicolumn{{1}}{{{_method_header_align(idx - index_columns, methods, metrics)}}}{{{cell}}}"
+    return " & ".join(cells) + " \\\\" + suffix
+
+
+def _method_header_align(position: int, methods: list[str], metrics: tuple[str, ...]) -> str:
+    method_count = len(methods)
+    if method_count == 0:
+        return "c"
+
+    metric_index = position // method_count
+    method_index = position % method_count
+    is_last_method = method_index == method_count - 1
+    is_last_metric = metric_index == len(metrics) - 1
+
+    if is_last_method:
+        return "c|" if is_last_metric else "c||"
+    if method_index == 3:
+        return "c|"
+    return "c"
+
+
 def _escape_latex_text(text: str) -> str:
     return text.replace("_", "\\_")
 
@@ -389,8 +444,8 @@ def _latex_display_columns(columns: pd.Index) -> pd.Index:
         return pd.MultiIndex.from_tuples(
             (
                 tuple(
-                    metrics_map.get(value, _escape_latex_text(value)) if isinstance(value, str) else value
-                    for value in col
+                    _latex_display_column_value(value, columns.names[level]) if isinstance(value, str) else value
+                    for level, value in enumerate(col)
                 )
                 for col in columns
             ),
@@ -400,10 +455,24 @@ def _latex_display_columns(columns: pd.Index) -> pd.Index:
     return _escape_latex_columns(columns)
 
 
+def _latex_display_column_value(value: str, level_name: str | None) -> str:
+    if level_name == "metric":
+        return metrics_map.get(value, _escape_latex_text(value))
+    if level_name == "method":
+        return _escape_latex_text(methods_map.get(value, value))
+    return _escape_latex_text(value)
+
+
 def _escape_latex_columns(columns: pd.Index) -> pd.Index:
     if isinstance(columns, pd.MultiIndex):
         return pd.MultiIndex.from_tuples(
-            (tuple(_escape_latex_text(value) if isinstance(value, str) else value for value in col) for col in columns),
+            (
+                tuple(
+                    _escape_latex_text(value) if isinstance(value, str) else value
+                    for value in col
+                )
+                for col in columns
+            ),
             names=columns.names,
         )
 
@@ -421,7 +490,9 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\usepackage{booktabs}",
         "\\usepackage{geometry}",
         "\\usepackage{multirow}",
+        "\\usepackage{siunitx}",
         "\\geometry{margin=1in}",
+        "\\sisetup{detect-all=true, separate-uncertainty=true}",
         "",
         "\\begin{document}",
         "",
@@ -505,8 +576,7 @@ def gen_tables(pargs):
         )
         dataset_order = _ordered_dataset_names(results.df)
         df = (
-            results
-            .map_column_values("dataset", dataset_map)
+            results.map_column_values("dataset", dataset_map)
             .apply_to_column("dataset", decorate_dataset)
             .apply_to_column("true_cts", lambda ct: acc_from_ct(acc, ct), new_col="true_accs")
             .apply_to_column(["method", "true_accs", "estim_acc_ranges"], get_acc_coverage, new_col="coverage")
