@@ -36,6 +36,7 @@ GRADIENT_TO_WHITE = "white"
 GRADIENT_TO_WORST = "worst"
 GRADIENT_END = GRADIENT_TO_WORST
 BEST_TO_SIGMA_FACTOR = 1.0
+TABLE_COLUMN_SEP = "6pt"
 
 METRIC_COLOR_STRATEGY = {
     # "acc_err": COLOR_MINMAX,
@@ -663,6 +664,7 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\usepackage{siunitx}",
         "\\geometry{margin=1in}",
         "\\sisetup{detect-all=true, separate-uncertainty=true}",
+        f"\\setlength{{\\tabcolsep}}{{{TABLE_COLUMN_SEP}}}",
         "",
         "\\newcommand{\\pq}{PrediQuant}",
         "\\newcommand{\\bcap}{BayesCAP}",
