@@ -6,10 +6,12 @@ import numpy as np
 import pandas as pd
 from cap.models.confidence import ConfidenceInterval
 from matplotlib.colors import Normalize, rgb2hex
+from scipy.stats import wilcoxon
 
 import uncawe.env as env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
 from uncawe.main import EXPERIMENT
+from uncawe.plots.common import METHOD_LATEX_LABELS
 from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
 from uncawe.util import decorate_dataset
@@ -22,6 +24,27 @@ COLORMAP_LIGHTNESS = 0.35
 CLASSIFIER_FILTER = ("LR", "kNN", "SVM", "MLP", "RF")
 WORST_RGB = (251, 160, 159)
 BEST_RGB = (154, 254, 154)
+# BEST_RGB = (235, 215, 52)
+WILCOXON_ALPHA = 0.01
+DAGGER_MARK = " $^{\\dag}$"
+EMPTY_CELL = "\\multicolumn{1}{c}{-}"
+COLOR_MINMAX = "minmax"
+COLOR_SIGMA_ZSCORE = "sigma_zscore"
+COLOR_BEST_TO_SIGMA = "best_to_sigma"
+COLOR_THRESHOLD = "threshold"
+GRADIENT_TO_WHITE = "white"
+GRADIENT_TO_WORST = "worst"
+GRADIENT_END = GRADIENT_TO_WORST
+BEST_TO_SIGMA_FACTOR = 1.0
+
+METRIC_COLOR_STRATEGY = {
+    # "acc_err": COLOR_MINMAX,
+    "acc_err": COLOR_BEST_TO_SIGMA,
+    "coverage": COLOR_THRESHOLD,
+    "amplitude": COLOR_THRESHOLD,
+    # "winkler": COLOR_SIGMA_ZSCORE,
+    "winkler": COLOR_BEST_TO_SIGMA,
+}
 
 dataset_map = {
     "poker_hand": "poker-hand",
@@ -41,13 +64,11 @@ dataset_map = {
 }
 
 metrics_map = {
-    "acc_err": "$\\Delta$",
+    "acc_err": "$\\mathrm{AE}$",
     "coverage": "$\\mathcal{C}$",
     "amplitude": "$\\mathcal{A}$",
     "winkler": "$\\mathcal{W}$",
 }
-
-methods_map = {}
 
 
 def get_acc_coverage(method: str, true_acc: float, accs_range: np.ndarray) -> float:
@@ -79,10 +100,7 @@ def _latex_column_format(methods: list[str], metrics: tuple[str, ...], index_col
     numeric_column = "S[table-format=1.3,table-align-text-post=false]"
     metric_formats = []
     for _ in metrics:
-        if len(methods) > 4:
-            metric_formats.append(numeric_column * 4 + "|" + numeric_column * (len(methods) - 4))
-        else:
-            metric_formats.append(numeric_column * len(methods))
+        metric_formats.append(numeric_column * len(methods))
     return "l" * index_columns + "|" + "||".join(metric_formats) + "|"
 
 
@@ -100,7 +118,7 @@ def _format_mean_std(mean: pd.DataFrame, std: pd.DataFrame, show_std: bool = Tru
     for col in mean.columns:
         if show_std:
             formatted[col] = [
-                ""
+                EMPTY_CELL
                 if pd.isna(m)
                 else f"{_format_value(m)}"
                 if pd.isna(s)
@@ -108,29 +126,49 @@ def _format_mean_std(mean: pd.DataFrame, std: pd.DataFrame, show_std: bool = Tru
                 for m, s in zip(mean[col], std[col])
             ]
         else:
-            formatted[col] = ["" if pd.isna(m) else _format_value(m) for m in mean[col]]
+            formatted[col] = [EMPTY_CELL if pd.isna(m) else _format_value(m) for m in mean[col]]
 
     return formatted
+
+
+def _apply_significance_markers(table: pd.DataFrame, markers: pd.DataFrame) -> pd.DataFrame:
+    marked = table.copy()
+    for col in marked.columns:
+        marked[col] = [
+            f"{value}{DAGGER_MARK}" if bool(marker) and value else value
+            for value, marker in zip(marked[col], markers[col])
+        ]
+    return marked
 
 
 def _format_value(value: float) -> str:
     return VALUE_FORMAT.format(value)
 
 
-def _rdylgn_hex(value: float, vmin: float, vmax: float) -> str:
-    norm = Normalize(vmin=vmin, vmax=vmax)
-    if norm(value) < 0.5:
-        red, green, blue = np.array(WORST_RGB).astype(float) / 256.0
-        alpha = 1 - (norm(value) / 0.5)
-    elif norm(value) > 0.5:
-        red, green, blue = np.array(BEST_RGB).astype(float) / 256.0
-        alpha = (norm(value) - 0.5) / 0.5
-    else:
-        red, green, blue = np.array(BEST_RGB).astype(float) / 256.0
-        alpha = 0.0
+def _gradient_hex(value: float, vmin: float, vmax: float) -> str:
+    if pd.isna(value):
+        return ""
 
-    red, green, blue = np.array([red, green, blue]) * alpha + (1 - alpha)
+    if np.isclose(vmin, vmax):
+        alpha = 1.0
+    else:
+        norm = Normalize(vmin=vmin, vmax=vmax)
+        alpha = float(np.clip(norm(value), 0.0, 1.0))
+
+    best = np.array(BEST_RGB).astype(float) / 256.0
+    if GRADIENT_END == GRADIENT_TO_WORST:
+        red, green, blue = _best_white_worst_rgb(alpha, best)
+    else:
+        red, green, blue = np.ones(3) * (1 - alpha) + best * alpha
     return rgb2hex((red, green, blue))
+
+
+def _best_white_worst_rgb(alpha: float, best: np.ndarray) -> np.ndarray:
+    worst = np.array(WORST_RGB).astype(float) / 256.0
+    white = np.ones(3)
+    if alpha < 0.5:
+        return worst * (1 - 2 * alpha) + white * (2 * alpha)
+    return white * (2 - 2 * alpha) + best * (2 * alpha - 1)
 
 
 def _rgb_hex(rgb: tuple[int, int, int]) -> str:
@@ -145,20 +183,67 @@ def _text_color(background: str) -> str:
     return "#f1f1f1" if luminance < 0.45 else "#000000"
 
 
-def _winkler_zscore_hex(zscore: float) -> str:
+def _sigma_zscore_hex(zscore: float) -> str:
     if pd.isna(zscore):
         return ""
     if zscore <= -1:
-        return _rgb_hex(WORST_RGB)
+        return "#ffffff"
     if zscore >= 1:
         return _rgb_hex(BEST_RGB)
-    return _rdylgn_hex(zscore, -1, 1)
+    return _gradient_hex(zscore, -1, 1)
+
+
+def _metric_scores(values: pd.Series, metric: str) -> pd.Series:
+    values = pd.to_numeric(values, errors="coerce")
+    return -values if LOWER_IS_BETTER[metric] else values
+
+
+def _minmax_gradient_colors(values: pd.Series, metric: str) -> pd.Series:
+    scores = _metric_scores(values, metric)
+    vmin = scores.min(skipna=True)
+    vmax = scores.max(skipna=True)
+    if pd.isna(vmin) or pd.isna(vmax):
+        return pd.Series("", index=values.index)
+
+    return scores.apply(lambda value: _gradient_hex(value, vmin, vmax))
+
+
+def _sigma_zscore_gradient_colors(zscores: pd.Series) -> pd.Series:
+    return zscores.apply(_sigma_zscore_hex)
+
+
+def _best_to_sigma_gradient_colors(
+    values: pd.Series,
+    metric: str,
+    sigma: float,
+    factor: float = BEST_TO_SIGMA_FACTOR,
+) -> pd.Series:
+    scores = _metric_scores(values, metric)
+    best_score = scores.max(skipna=True)
+    if pd.isna(best_score):
+        return pd.Series("", index=values.index)
+
+    if pd.isna(sigma) or np.isclose(sigma, 0):
+        return scores.apply(lambda value: "" if pd.isna(value) else _rgb_hex(BEST_RGB))
+
+    worst_score = best_score - factor * sigma
+    return scores.apply(lambda value: _gradient_hex(value, worst_score, best_score))
+
+
+def _threshold_colors(values: pd.Series, metric: str) -> pd.Series:
+    if metric == "coverage":
+        return values.apply(lambda value: "" if pd.isna(value) else _rgb_hex(BEST_RGB) if value >= 0.95 else "#ffffff")
+    if metric == "amplitude":
+        return values.apply(lambda value: "" if pd.isna(value) else _rgb_hex(BEST_RGB) if value <= 0.05 else "#ffffff")
+
+    return pd.Series("", index=values.index)
 
 
 def _cell_styles(
     mean: pd.DataFrame,
     metrics: tuple[str, ...],
-    winkler_zscores: pd.DataFrame | None = None,
+    sigma_zscores: pd.DataFrame | None = None,
+    sigmas: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     styles = pd.DataFrame("", index=mean.index, columns=mean.columns)
 
@@ -166,43 +251,7 @@ def _cell_styles(
         metric_values = mean.xs(metric, axis=1, level="metric")
 
         for dataset, values in metric_values.iterrows():
-            if metric == "acc_err":
-                scores = -values
-                vmin = scores.min(skipna=True)
-                vmax = scores.max(skipna=True)
-
-                if pd.isna(vmin) or pd.isna(vmax):
-                    continue
-
-                if np.isclose(vmin, vmax):
-                    colors = pd.Series("#ffffbf", index=scores.index)
-                else:
-                    colors = scores.apply(lambda value: "" if pd.isna(value) else _rdylgn_hex(value, vmin, vmax))
-            elif metric == "winkler" and winkler_zscores is not None:
-                zscores = winkler_zscores.xs("winkler", axis=1, level="metric").loc[dataset]
-                colors = zscores.apply(_winkler_zscore_hex)
-            elif metric == "winkler":
-                scores = -values
-                vmin = scores.min(skipna=True)
-                vmax = scores.max(skipna=True)
-
-                if pd.isna(vmin) or pd.isna(vmax):
-                    continue
-
-                if np.isclose(vmin, vmax):
-                    colors = pd.Series("#ffffbf", index=scores.index)
-                else:
-                    colors = scores.apply(lambda value: "" if pd.isna(value) else _rdylgn_hex(value, vmin, vmax))
-            elif metric == "coverage":
-                colors = values.apply(
-                    lambda value: "" if pd.isna(value) else _rgb_hex(BEST_RGB if value >= 0.95 else WORST_RGB)
-                )
-            elif metric == "amplitude":
-                colors = values.apply(
-                    lambda value: "" if pd.isna(value) else _rgb_hex(BEST_RGB if value <= 0.05 else WORST_RGB)
-                )
-            else:
-                continue
+            colors = _metric_colors(metric, values, dataset, sigma_zscores, sigmas)
 
             for method, color in colors.items():
                 if color:
@@ -218,6 +267,29 @@ def _cell_styles(
                 styles.loc[dataset, (method, metric)] += " font-weight: bold;"
 
     return styles
+
+
+def _metric_colors(
+    metric: str,
+    values: pd.Series,
+    row_key,
+    sigma_zscores: pd.DataFrame | None,
+    sigmas: pd.DataFrame | None,
+) -> pd.Series:
+    strategy = METRIC_COLOR_STRATEGY.get(metric, COLOR_MINMAX)
+
+    if strategy == COLOR_MINMAX:
+        return _minmax_gradient_colors(values, metric)
+    if strategy == COLOR_SIGMA_ZSCORE and sigma_zscores is not None:
+        zscores = sigma_zscores.xs(metric, axis=1, level="metric").loc[row_key]
+        return _sigma_zscore_gradient_colors(zscores)
+    if strategy == COLOR_BEST_TO_SIGMA and sigmas is not None:
+        sigma = sigmas.loc[row_key, metric] if row_key in sigmas.index and metric in sigmas.columns else np.nan
+        return _best_to_sigma_gradient_colors(values, metric, sigma)
+    if strategy == COLOR_THRESHOLD:
+        return _threshold_colors(values, metric)
+
+    return pd.Series("", index=values.index)
 
 
 def _row_levels(df: pd.DataFrame) -> list[str]:
@@ -274,40 +346,117 @@ def _as_row_key(key):
     return key if isinstance(key, tuple) else key
 
 
-def _winkler_zscores(
+def _metric_sigma_context(
     df: pd.DataFrame,
     row_levels: list[str],
     mean: pd.DataFrame,
     methods: list[str],
-) -> pd.DataFrame | None:
-    if "winkler" not in df.columns or ("winkler" not in mean.columns.get_level_values("metric")):
-        return None
-
+    metrics: tuple[str, ...],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     zscores = pd.DataFrame(np.nan, index=mean.index, columns=mean.columns)
+    sigmas = pd.DataFrame(np.nan, index=mean.index, columns=metrics)
+
+    available_metrics = [metric for metric in metrics if metric in df.columns]
 
     for key, group in df.groupby(row_levels, sort=False):
         row_key = _as_row_key(key)
         if row_key not in mean.index:
             continue
 
-        pooled_scores = -pd.to_numeric(group["winkler"], errors="coerce")
-        pooled_scores = pooled_scores[np.isfinite(pooled_scores)]
-        if pooled_scores.empty:
+        for metric in available_metrics:
+            if metric not in mean.columns.get_level_values("metric"):
+                continue
+
+            pooled_scores = _metric_scores(group[metric], metric)
+            pooled_scores = pooled_scores[np.isfinite(pooled_scores)]
+            if pooled_scores.empty:
+                continue
+
+            mu = pooled_scores.mean()
+            sigma = pooled_scores.std(ddof=0)
+            sigmas.loc[row_key, metric] = sigma
+
+            for method in methods:
+                mean_value = mean.loc[row_key, (method, metric)]
+                if pd.isna(mean_value):
+                    continue
+
+                mean_score = -mean_value if LOWER_IS_BETTER[metric] else mean_value
+                if pd.isna(sigma) or np.isclose(sigma, 0):
+                    zscores.loc[row_key, (method, metric)] = 0.0
+                else:
+                    zscores.loc[row_key, (method, metric)] = (mean_score - mu) / sigma
+
+    return zscores, sigmas
+
+
+def _significance_markers(
+    df: pd.DataFrame,
+    row_levels: list[str],
+    mean: pd.DataFrame,
+    methods: list[str],
+    metrics: tuple[str, ...],
+) -> pd.DataFrame:
+    markers = pd.DataFrame(False, index=mean.index, columns=mean.columns)
+
+    for key, group in df.groupby(row_levels, sort=False):
+        row_key = _as_row_key(key)
+        if row_key not in mean.index:
             continue
 
-        mu = pooled_scores.mean()
-        sigma = pooled_scores.std(ddof=0)
+        group = group.copy()
+        group["_sample_id"] = group.groupby("method", sort=False).cumcount()
 
-        for method in methods:
-            mean_winkler = mean.loc[row_key, (method, "winkler")]
-            if pd.isna(mean_winkler):
+        for metric in metrics:
+            values = mean.xs(metric, axis=1, level="metric").loc[row_key]
+            best_method = _best_method(values, metric, methods)
+            if best_method is None:
                 continue
-            if pd.isna(sigma) or np.isclose(sigma, 0):
-                zscores.loc[row_key, (method, "winkler")] = 0.0
-            else:
-                zscores.loc[row_key, (method, "winkler")] = ((-mean_winkler) - mu) / sigma
 
-    return zscores
+            samples = group.pivot(index="_sample_id", columns="method", values=metric)
+            if best_method not in samples:
+                continue
+
+            best_samples = pd.to_numeric(samples[best_method], errors="coerce")
+            for method in methods:
+                if method == best_method or method not in samples:
+                    continue
+
+                method_samples = pd.to_numeric(samples[method], errors="coerce")
+                paired = pd.concat([best_samples, method_samples], axis=1).dropna()
+                if paired.empty:
+                    continue
+
+                if _wilcoxon_not_significantly_different(paired.iloc[:, 0], paired.iloc[:, 1]):
+                    markers.loc[row_key, (method, metric)] = True
+
+    return markers
+
+
+def _best_method(values: pd.Series, metric: str, methods: list[str]) -> str | None:
+    values = values.dropna()
+    if values.empty:
+        return None
+
+    best_value = values.min() if LOWER_IS_BETTER[metric] else values.max()
+    best_methods = [method for method in methods if method in values.index and np.isclose(values[method], best_value)]
+    return best_methods[0] if best_methods else None
+
+
+def _wilcoxon_not_significantly_different(best_samples: pd.Series, method_samples: pd.Series) -> bool:
+    differences = np.asarray(best_samples, dtype=float) - np.asarray(method_samples, dtype=float)
+    differences = differences[np.isfinite(differences)]
+    if differences.size == 0:
+        return False
+    if np.allclose(differences, 0):
+        return True
+
+    try:
+        pvalue = wilcoxon(differences, alternative="two-sided").pvalue
+    except ValueError:
+        return False
+
+    return bool(np.isfinite(pvalue) and pvalue >= WILCOXON_ALPHA)
 
 
 def _results_latex_table(
@@ -329,8 +478,10 @@ def _results_latex_table(
     mean = mean.reindex(columns=columns)
     std = std.reindex(columns=columns)
     table = _format_mean_std(mean, std, show_std)
-    winkler_zscores = _winkler_zscores(df, row_levels, mean, methods) if "winkler" in metrics else None
-    styles = _cell_styles(mean, metrics, winkler_zscores)
+    significance_markers = _significance_markers(df, row_levels, mean, methods, metrics)
+    table = _apply_significance_markers(table, significance_markers)
+    sigma_zscores, sigmas = _metric_sigma_context(df, row_levels, mean, methods, metrics)
+    styles = _cell_styles(mean, metrics, sigma_zscores, sigmas)
     table = _to_display_column_order(table, methods, metrics)
     styles = _to_display_column_order(styles, methods, metrics)
     latex_columns = _latex_display_columns(table.columns)
@@ -362,12 +513,16 @@ def _hide_latex_header_names(
             if show_metric_names:
                 formatted.append(_format_metric_header_separators(line.replace("metric & ", " & ", 1), len(metrics)))
                 formatted.append("\\midrule")
+                formatted.append(_method_family_header_line(1, methods, metrics))
+                formatted.append("\\midrule")
             skip_next_dataset_header = False
         elif line.startswith(" & metric & "):
             if show_metric_names:
                 formatted.append(
                     _format_metric_header_separators(line.replace(" & metric & ", " &  & ", 1), len(metrics))
                 )
+                formatted.append("\\midrule")
+                formatted.append(_method_family_header_line(2, methods, metrics))
                 formatted.append("\\midrule")
             skip_next_dataset_header = False
         elif line.startswith("method & "):
@@ -400,6 +555,23 @@ def _format_metric_header_separators(line: str, metric_count: int) -> str:
     return "\\multicolumn".join(pieces)
 
 
+def _method_family_header_line(index_columns: int, methods: list[str], metrics: tuple[str, ...]) -> str:
+    baseline_count = min(4, len(methods))
+    ours_count = max(len(methods) - baseline_count, 0)
+    cells = [""] * index_columns
+
+    for metric_idx, _ in enumerate(metrics):
+        is_last_metric = metric_idx == len(metrics) - 1
+        if baseline_count:
+            baseline_align = "c|" if ours_count else ("c|" if is_last_metric else "c||")
+            cells.append(f"\\multicolumn{{{baseline_count}}}{{{baseline_align}}}{{Baselines}}")
+        if ours_count:
+            ours_align = "c|" if is_last_metric else "c||"
+            cells.append(f"\\multicolumn{{{ours_count}}}{{{ours_align}}}{{Ours}}")
+
+    return " & ".join(cells) + " \\\\"
+
+
 def _protect_numeric_header_cells(
     line: str,
     index_columns: int,
@@ -414,7 +586,10 @@ def _protect_numeric_header_cells(
     for idx in range(index_columns, len(cells)):
         cell = cells[idx].strip()
         if cell and not cell.startswith("\\multicolumn"):
-            cells[idx] = f"\\multicolumn{{1}}{{{_method_header_align(idx - index_columns, methods, metrics)}}}{{{cell}}}"
+            cell = f"\\rotatebox{{90}}{{{cell}}}"
+            cells[idx] = (
+                f"\\multicolumn{{1}}{{{_method_header_align(idx - index_columns, methods, metrics)}}}{{{cell}}}"
+            )
     return " & ".join(cells) + " \\\\" + suffix
 
 
@@ -430,8 +605,8 @@ def _method_header_align(position: int, methods: list[str], metrics: tuple[str, 
 
     if is_last_method:
         return "c|" if is_last_metric else "c||"
-    if method_index == 3:
-        return "c|"
+    # if method_index == 3:
+    #     return "c|"
     return "c"
 
 
@@ -459,20 +634,14 @@ def _latex_display_column_value(value: str, level_name: str | None) -> str:
     if level_name == "metric":
         return metrics_map.get(value, _escape_latex_text(value))
     if level_name == "method":
-        return _escape_latex_text(methods_map.get(value, value))
+        return _escape_latex_text(METHOD_LATEX_LABELS.get(value, value))
     return _escape_latex_text(value)
 
 
 def _escape_latex_columns(columns: pd.Index) -> pd.Index:
     if isinstance(columns, pd.MultiIndex):
         return pd.MultiIndex.from_tuples(
-            (
-                tuple(
-                    _escape_latex_text(value) if isinstance(value, str) else value
-                    for value in col
-                )
-                for col in columns
-            ),
+            (tuple(_escape_latex_text(value) if isinstance(value, str) else value for value in col) for col in columns),
             names=columns.names,
         )
 
@@ -489,10 +658,14 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\usepackage{adjustbox}",
         "\\usepackage{booktabs}",
         "\\usepackage{geometry}",
+        "\\usepackage{graphicx}",
         "\\usepackage{multirow}",
         "\\usepackage{siunitx}",
         "\\geometry{margin=1in}",
         "\\sisetup{detect-all=true, separate-uncertainty=true}",
+        "",
+        "\\newcommand{\\pq}{PrediQuant}",
+        "\\newcommand{\\bcap}{BayesCAP}",
         "",
         "\\begin{document}",
         "",

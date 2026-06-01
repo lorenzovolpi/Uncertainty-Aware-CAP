@@ -25,6 +25,7 @@ from uncawe.plots.common import (
     font_size,
     load_tradeoff_source,
     mean_sample_ranks,
+    method_plot_label,
     ordered_classifiers,
     plot_dir,
     rank_test_samples,
@@ -140,10 +141,10 @@ def _plot(
         despine=False,
     )
     grid.map_dataframe(_draw_facet, sample_alpha=sample_alpha, classifiers=classifiers)
-    grid.set_titles(col_template="{col_name}", size=font_size(14))
     grid.set_axis_labels("Absolute error", "Winkler score")
 
-    for ax in grid.axes.flat:
+    for ax, method in zip(grid.axes.flat, present_methods):
+        ax.set_title(method_plot_label(method), fontsize=font_size(14))
         ax.set_xlim(*xlim)
         ax.set_ylim(*ylim)
         _apply_axis_scale(ax, "x", x_scale, xlim[1])

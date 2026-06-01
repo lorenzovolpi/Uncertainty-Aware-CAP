@@ -17,6 +17,7 @@ from uncawe.plots.common import (
     font_size,
     load_tradeoff_source,
     mean_sample_ranks,
+    method_plot_label,
     plot_dir,
     rank_test_samples,
     safe_name,
@@ -92,7 +93,7 @@ def _classifier_spans(columns: pd.MultiIndex) -> list[tuple[str, int, int]]:
 
 
 def _method_labels(columns: pd.MultiIndex) -> list[str]:
-    return [method for _, method in columns]
+    return [method_plot_label(method) for _, method in columns]
 
 
 def _plot_heatmap(

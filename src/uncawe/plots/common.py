@@ -11,7 +11,8 @@ from uncawe.results import Results
 
 EXPERIMENT = "main"
 DEFAULT_DOMAIN = "classic"
-DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "B-CBPE", "BE-CBPE", "L-CBPE", "RQBS", "PQ", "BayesCAP"]
+# DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "B-CBPE", "BE-CBPE", "L-CBPE", "RQBS", "PQ", "BayesCAP"]
+DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "RQBS", "PQ", "BayesCAP"]
 METHOD_COLORS = {
     "O-LEAP": "#4C78A8",
     "BayesCAP": "#F58518",
@@ -22,6 +23,17 @@ METHOD_COLORS = {
     "B-CBPE": "#FF0000",
     "BE-CBPE": "#00FF00",
     "L-CBPE": "#0000FF",
+}
+METHOD_LATEX_LABELS = {
+    "QuAcc_NxN": "QuAcc",
+    "PQ": "\\pq",
+    "BayesCAP": "\\bcap",
+    "O-LEAP": "LEAP",
+}
+METHOD_PLOT_LABELS = {
+    "QuAcc_NxN": "QuAcc",
+    "PQ": "PrediQuant",
+    "O-LEAP": "LEAP",
 }
 
 ACC_NAME = "vanilla_accuracy"
@@ -54,6 +66,10 @@ def font_size(size: float) -> float:
 
 def marker_size(size: float) -> float:
     return size * FONT_SCALE
+
+
+def method_plot_label(method: str) -> str:
+    return METHOD_PLOT_LABELS.get(str(method), str(method))
 
 
 def as_float_array(value) -> np.ndarray:

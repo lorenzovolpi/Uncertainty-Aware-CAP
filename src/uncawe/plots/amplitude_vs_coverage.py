@@ -25,6 +25,7 @@ from uncawe.plots.common import (
     font_size,
     interval_metrics,
     load_main_results,
+    method_plot_label,
     ordered_classifiers,
     plot_dir,
     safe_name,
@@ -158,10 +159,10 @@ def _plot(
         despine=False,
     )
     grid.map_dataframe(_draw_facet, sample_alpha=sample_alpha, classifiers=classifiers)
-    grid.set_titles(col_template="{col_name}", size=font_size(14))
     grid.set_axis_labels("Amplitude", "Coverage")
 
-    for ax in grid.axes.flat:
+    for ax, method in zip(grid.axes.flat, present_methods):
+        ax.set_title(method_plot_label(method), fontsize=font_size(14))
         ax.set_xlim(*xlim)
         if x_scale == "symlog":
             ax.set_xscale("symlog", linthresh=0.05, linscale=1.0)
@@ -204,7 +205,7 @@ def _plot(
     )
 
     fig.tight_layout()
-    fig.subplots_adjust(top=0.92, right=0.88, hspace=0.15)
+    fig.subplots_adjust(top=0.96, right=0.88, hspace=0.15)
     stem = _plot_stem(domain, ACC_NAME, add_stem)
     for fmt in formats:
         fig.savefig(f"{stem}.{fmt}", dpi=dpi if fmt.lower() == "png" else None)
