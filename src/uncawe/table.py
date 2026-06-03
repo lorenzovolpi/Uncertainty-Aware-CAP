@@ -565,10 +565,10 @@ def _method_family_header_line(index_columns: int, methods: list[str], metrics: 
         is_last_metric = metric_idx == len(metrics) - 1
         if baseline_count:
             baseline_align = "c|" if ours_count else ("c|" if is_last_metric else "c||")
-            cells.append(f"\\multicolumn{{{baseline_count}}}{{{baseline_align}}}{{Baselines}}")
+            cells.append(f"\\multicolumn{{{baseline_count}}}{{{baseline_align}}}{{Baseline methods}}")
         if ours_count:
             ours_align = "c|" if is_last_metric else "c||"
-            cells.append(f"\\multicolumn{{{ours_count}}}{{{ours_align}}}{{Ours}}")
+            cells.append(f"\\multicolumn{{{ours_count}}}{{{ours_align}}}{{Our methods}}")
 
     return " & ".join(cells) + " \\\\"
 

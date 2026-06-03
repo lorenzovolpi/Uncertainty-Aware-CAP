@@ -28,11 +28,13 @@ METHOD_LATEX_LABELS = {
     "QuAcc_NxN": "QuAcc",
     "PQ": "\\pq",
     "BayesCAP": "\\bcap",
+    "RQBS": "\\rqbs",
     "O-LEAP": "LEAP",
 }
 METHOD_PLOT_LABELS = {
     "QuAcc_NxN": "QuAcc",
-    "PQ": "PrediQuant",
+    "PQ": "SQS-S",
+    "RQBS": "SQS-H",
     "O-LEAP": "LEAP",
 }
 
