@@ -108,7 +108,7 @@ def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
         "PQ",
         PrediQuant(
             acc,
-            kdey(),
+            pacc(),
             num_samples=BOOTSTRAP_ITERS,
             sample_size=SAMPLE_SIZE,
             alpha=0.1,
@@ -116,6 +116,18 @@ def gen_methods() -> Iterable[Tuple[str, CAPWithConfidence]]:
             predict_train_prev=True,
         ),
     )
+    # yield (
+    #     "PQ",
+    #     PrediQuant(
+    #         acc,
+    #         kdey(),
+    #         num_samples=BOOTSTRAP_ITERS,
+    #         sample_size=SAMPLE_SIZE,
+    #         alpha=0.1,
+    #         distance="l1",
+    #         predict_train_prev=True,
+    #     ),
+    # )
     yield "BayesCAP", ACC_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
     # yield "HD_BayesCAP", HD_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
 
