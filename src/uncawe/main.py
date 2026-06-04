@@ -11,7 +11,6 @@ from traceback import print_exception
 from typing import Iterable
 
 import cap
-import jax
 import numpy as np
 import quapy as qp
 from cap import env as capenv
