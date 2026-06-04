@@ -24,13 +24,6 @@ METHOD_COLORS = {
     "BE-CBPE": "#00FF00",
     "L-CBPE": "#0000FF",
 }
-METHOD_LATEX_LABELS = {
-    "QuAcc_NxN": "QuAcc",
-    "PQ": "\\pq",
-    "BayesCAP": "\\bcap",
-    "RQBS": "\\rqbs",
-    "O-LEAP": "LEAP",
-}
 METHOD_PLOT_LABELS = {
     "QuAcc_NxN": "QuAcc",
     "PQ": "SQS-S",
