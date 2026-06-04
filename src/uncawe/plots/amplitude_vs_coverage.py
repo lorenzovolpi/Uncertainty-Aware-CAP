@@ -170,7 +170,7 @@ def _plot(
             ax.set_xticks(x_ticks)
             ax.set_xticklabels([fmt_tick(tick) for tick in x_ticks])
         elif x_scale == "linear":
-            x_ticks = [tick for tick in [0, 0.05, 0.2, 0.4, 0.6] if tick <= xlim[1]]
+            x_ticks = [tick for tick in [0.05, 0.2, 0.4, 0.6] if tick <= xlim[1]]
             ax.set_xticks(x_ticks)
             ax.set_xticklabels([fmt_tick(tick) for tick in x_ticks])
 
@@ -230,10 +230,15 @@ def parse_args():
     parser.add_argument("--alpha", type=float, default=0.6)
     parser.add_argument("--x-scale", choices=["symlog", "linear"], default="linear")
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
+    parser.add_argument("--pdf", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--add-stem", default=None)
     args = parser.parse_args()
-    args.formats = ["png", "svg"] if args.svg else ["png"]
+    args.formats = ["png"]
+    if args.svg:
+        args.formats.append("svg")
+    if args.pdf:
+        args.formats.append("pdf")
     return args
 
 

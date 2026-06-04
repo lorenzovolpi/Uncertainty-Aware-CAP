@@ -29,6 +29,7 @@ METHOD_PLOT_LABELS = {
     "PQ": "SQS-S",
     "RQBS": "SQS-H",
     "O-LEAP": "LEAP",
+    "BayesCAP": "BayCAP",
 }
 
 ACC_NAME = "vanilla_accuracy"
@@ -251,11 +252,11 @@ def fmt_tick(x):
     if float(x).is_integer():
         return str(int(x))
 
-    text = f"{x:g}"
-    if text.startswith("0."):
-        return text[1:]
-    if text.startswith("-0."):
-        return "-" + text[2:]
+    text = f"{x:.2f}"
+    # if text.startswith("0."):
+    #     return text[1:]
+    # if text.startswith("-0."):
+    #     return "-" + text[2:]
     return text
 
 

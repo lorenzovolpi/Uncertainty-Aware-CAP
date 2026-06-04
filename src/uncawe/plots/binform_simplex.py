@@ -10,8 +10,7 @@ import numpy as np
 import quapy as qp
 from cap.data.datasets import fetch_UCIMulticlassDataset
 from matplotlib.lines import Line2D
-from matplotlib.patches import Polygon
-from scipy.stats import gaussian_kde
+from matplotlib.patches import Circle, Polygon
 
 import uncawe.env as env
 from uncawe.binform import (
@@ -31,8 +30,8 @@ BAYESCAP_DRAWS = 1000
 COLORS = {
     "validation": "#4C78A8",
     "c1": "#F58518",
-    "test_kde": "#54A24B",
-    "bayescap_kde": "#B279A2",
+    "test_samples": "#54A24B",
+    "bayescap_samples": "#B279A2",
 }
 
 qp.environ["SAMPLE_SIZE"] = SAMPLE_SIZE
@@ -59,8 +58,12 @@ def _ternary_xy(prevs: np.ndarray) -> np.ndarray:
     return np.stack([x, y], axis=-1)
 
 
-def _inside_simplex(xx: np.ndarray, yy: np.ndarray) -> np.ndarray:
-    return (yy >= 0) & (yy <= np.sqrt(3) * xx) & (yy <= np.sqrt(3) * (1 - xx))
+def _normalize_prev(prev: np.ndarray) -> np.ndarray:
+    prev = np.asarray(prev, dtype=float)
+    total = prev.sum()
+    if not np.isfinite(total) or np.isclose(total, 0):
+        raise ValueError(f"Cannot normalize prevalence vector with sum={total}: {prev}")
+    return prev / total
 
 
 def _validation_prior() -> np.ndarray:
@@ -75,16 +78,15 @@ def _dirichlet_samples(alpha: np.ndarray, size: int) -> np.ndarray:
 
 def _draw_simplex(ax):
     triangle = _ternary_xy(np.eye(3))
-    ax.add_patch(
-        Polygon(
-            triangle,
-            closed=True,
-            facecolor="white",
-            edgecolor="#222222",
-            linewidth=1.2,
-            zorder=1,
-        )
+    patch = Polygon(
+        triangle,
+        closed=True,
+        facecolor="white",
+        edgecolor="#222222",
+        linewidth=1.2,
+        zorder=1,
     )
+    ax.add_patch(patch)
 
     labels = [r"$p_0$", r"$p_1$", r"$p_2$"]
     offsets = [(-0.045, -0.045), (0.025, -0.045), (0.0, 0.035)]
@@ -95,30 +97,39 @@ def _draw_simplex(ax):
     ax.set_xlim(-0.08, 1.08)
     ax.set_ylim(-0.08, np.sqrt(3) / 2 + 0.08)
     ax.axis("off")
+    return patch
 
 
-def _draw_kde(ax, prevs: np.ndarray, color: str, label: str, alpha: float):
+def _distances_from_center(prevs: np.ndarray, center_prev: np.ndarray) -> np.ndarray:
     xy = _ternary_xy(prevs)
-    kde = gaussian_kde(xy.T)
+    center_xy = _ternary_xy(center_prev.reshape(1, 3))[0]
+    return np.linalg.norm(xy - center_xy, axis=1)
 
-    x_grid = np.linspace(0, 1, 180)
-    y_grid = np.linspace(0, np.sqrt(3) / 2, 180)
-    xx, yy = np.meshgrid(x_grid, y_grid)
-    positions = np.vstack([xx.ravel(), yy.ravel()])
-    zz = kde(positions).reshape(xx.shape)
-    zz = np.where(_inside_simplex(xx, yy), zz, np.nan)
 
-    finite = zz[np.isfinite(zz)]
-    if finite.size == 0:
-        return
+def _draw_samples_and_rings(ax, prevs: np.ndarray, center_prev: np.ndarray, color: str, clip_path: Polygon):
+    xy = _ternary_xy(prevs)
+    center_xy = _ternary_xy(center_prev.reshape(1, 3))[0]
+    distances = _distances_from_center(prevs, center_prev)
 
-    levels = np.linspace(np.nanpercentile(finite, 55), np.nanmax(finite), 7)
-    if np.isclose(levels[0], levels[-1]):
-        return
+    ax.scatter(xy[:, 0], xy[:, 1], s=9, color=color, alpha=0.24, edgecolor="none", zorder=2)
 
-    ax.contourf(xx, yy, zz, levels=levels, colors=[color], alpha=alpha, zorder=2)
-    ax.contour(xx, yy, zz, levels=levels, colors=[color], linewidths=1.0, alpha=0.85, zorder=3)
-    ax.scatter(xy[:, 0], xy[:, 1], s=8, color=color, alpha=0.22, edgecolor="none", label=label, zorder=4)
+    for quantile, linestyle, linewidth, alpha in (
+        (0.50, "--", 1.4, 0.90),
+        (0.90, "-", 2.0, 0.95),
+    ):
+        radius = float(np.quantile(distances, quantile))
+        circle = Circle(
+            center_xy,
+            radius,
+            fill=False,
+            edgecolor=color,
+            linestyle=linestyle,
+            linewidth=linewidth,
+            alpha=alpha,
+            zorder=4,
+        )
+        circle.set_clip_path(clip_path)
+        ax.add_patch(circle)
 
 
 def _draw_point(ax, prev: np.ndarray, color: str, label: str, marker: str):
@@ -161,32 +172,39 @@ def _legend_handles() -> list[Line2D]:
         Line2D(
             [0],
             [0],
-            color=COLORS["test_kde"],
-            linewidth=3,
-            label=rf"Dirichlet KDE, $c={TEST_PRIOR_C:g}$, $n={TEST_DRAWS}$",
+            color=COLORS["test_samples"],
+            marker="o",
+            linewidth=2,
+            markersize=5,
+            label=rf"Test Dirichlet samples, $c={TEST_PRIOR_C:g}$, $n={TEST_DRAWS}$",
         ),
         Line2D(
             [0],
             [0],
-            color=COLORS["bayescap_kde"],
-            linewidth=3,
-            label=rf"BayesCAP KDE, $c={BAYESCAP_PRIOR_C:g}$, $n={BAYESCAP_DRAWS}$",
+            color=COLORS["bayescap_samples"],
+            marker="o",
+            linewidth=2,
+            markersize=5,
+            label=rf"BayesCAP Dirichlet samples, $c={BAYESCAP_PRIOR_C:g}$, $n={BAYESCAP_DRAWS}$",
         ),
+        Line2D([0], [0], color="#555555", linestyle="--", linewidth=1.4, label="50% distance ring"),
+        Line2D([0], [0], color="#555555", linestyle="-", linewidth=2.0, label="90% distance ring"),
     ]
 
 
 def _plot(formats: Iterable[str], dpi: int, add_stem: str | None):
     val_prior = _validation_prior()
     transformed_c1 = _transform_prior(val_prior, 1)
+    ring_center = _normalize_prev(transformed_c1)
     test_alpha = _transform_prior(val_prior, TEST_PRIOR_C)
     bayescap_alpha = _transform_prior(val_prior, BAYESCAP_PRIOR_C)
     test_samples = _dirichlet_samples(test_alpha, TEST_DRAWS)
     bayescap_samples = _dirichlet_samples(bayescap_alpha, BAYESCAP_DRAWS)
 
     fig, ax = plt.subplots(figsize=(7.0, 6.0))
-    _draw_simplex(ax)
-    _draw_kde(ax, test_samples, COLORS["test_kde"], "test draw priors", alpha=0.22)
-    _draw_kde(ax, bayescap_samples, COLORS["bayescap_kde"], "BayesCAP prior draws", alpha=0.18)
+    simplex_clip = _draw_simplex(ax)
+    _draw_samples_and_rings(ax, test_samples, ring_center, COLORS["test_samples"], simplex_clip)
+    _draw_samples_and_rings(ax, bayescap_samples, ring_center, COLORS["bayescap_samples"], simplex_clip)
     _draw_point(ax, val_prior, COLORS["validation"], "validation prior", marker="o")
     _draw_point(ax, transformed_c1, COLORS["c1"], "transformed prior", marker="D")
 
@@ -196,7 +214,7 @@ def _plot(formats: Iterable[str], dpi: int, add_stem: str | None):
         bbox_to_anchor=(0.5, -0.02),
         ncol=2,
         frameon=True,
-        fontsize=10,
+        fontsize=9,
     )
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.18)
