@@ -11,12 +11,13 @@ from scipy.stats import wilcoxon
 import uncawe.env as env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
 from uncawe.main import EXPERIMENT
-from uncawe.plots.common import METHOD_LATEX_LABELS
 from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
+from uncawe.tables.common import METHOD_LATEX_LABELS
 from uncawe.util import decorate_dataset
 
-METRICS = ("acc_err", "coverage", "amplitude", "winkler")
+# METRICS = ("acc_err", "coverage", "amplitude", "winkler")
+METRICS = ("acc_err", "winkler")
 LOWER_IS_BETTER = {"acc_err": True, "coverage": False, "amplitude": True, "winkler": True}
 VALUE_FORMAT = "{:.3f}"
 COLORMAP_SATURATION = 0.65
@@ -102,7 +103,7 @@ def _latex_column_format(methods: list[str], metrics: tuple[str, ...], index_col
     metric_formats = []
     for _ in metrics:
         metric_formats.append(numeric_column * len(methods))
-    return "l" * index_columns + "|" + "||".join(metric_formats) + "|"
+    return "l" * index_columns + "|".join(metric_formats)
 
 
 def _display_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIndex:
@@ -508,23 +509,28 @@ def _hide_latex_header_names(
     lines = latex.splitlines()
     formatted = []
     skip_next_dataset_header = False
+    cmidirule = "\\cmidrule(r){3-9}\\cmidrule(l){10-16}"
 
     for line in lines:
         if line.startswith("metric & "):
             if show_metric_names:
                 formatted.append(_format_metric_header_separators(line.replace("metric & ", " & ", 1), len(metrics)))
-                formatted.append("\\midrule")
+                # formatted.append("\\midrule")
+                formatted.append(cmidirule)
                 formatted.append(_method_family_header_line(1, methods, metrics))
-                formatted.append("\\midrule")
+                # formatted.append("\\midrule")
+                formatted.append(cmidirule)
             skip_next_dataset_header = False
         elif line.startswith(" & metric & "):
             if show_metric_names:
                 formatted.append(
                     _format_metric_header_separators(line.replace(" & metric & ", " &  & ", 1), len(metrics))
                 )
-                formatted.append("\\midrule")
+                # formatted.append("\\midrule")
+                formatted.append(cmidirule)
                 formatted.append(_method_family_header_line(2, methods, metrics))
-                formatted.append("\\midrule")
+                # formatted.append("\\midrule")
+                formatted.append(cmidirule)
             skip_next_dataset_header = False
         elif line.startswith("method & "):
             formatted.append(_protect_numeric_header_cells(line.replace("method & ", " & ", 1), 1, methods, metrics))
@@ -542,7 +548,20 @@ def _hide_latex_header_names(
             formatted.append(line)
             skip_next_dataset_header = False
 
-    return "\n".join(formatted) + "\n"
+    return "\n".join(_drop_cmidrule_before_bottomrule(formatted)) + "\n"
+
+
+def _drop_cmidrule_before_bottomrule(lines: list[str]) -> list[str]:
+    cleaned = []
+    for line in lines:
+        if line.startswith("\\bottomrule") and cleaned and _is_horizontal_rule(cleaned[-1]):
+            cleaned.pop()
+        cleaned.append(line)
+    return cleaned
+
+
+def _is_horizontal_rule(line: str) -> bool:
+    return line.startswith("\\cmidrule") or line.startswith("\\cline")
 
 
 def _format_metric_header_separators(line: str, metric_count: int) -> str:
@@ -551,7 +570,7 @@ def _format_metric_header_separators(line: str, metric_count: int) -> str:
 
     pieces = line.split("\\multicolumn")
     for idx in range(1, len(pieces)):
-        separator = "||" if idx < len(pieces) - 1 else "|"
+        separator = "|" if idx < len(pieces) - 1 else ""
         pieces[idx] = pieces[idx].replace("{c|}", f"{{c{separator}}}", 1)
     return "\\multicolumn".join(pieces)
 
@@ -564,10 +583,10 @@ def _method_family_header_line(index_columns: int, methods: list[str], metrics: 
     for metric_idx, _ in enumerate(metrics):
         is_last_metric = metric_idx == len(metrics) - 1
         if baseline_count:
-            baseline_align = "c|" if ours_count else ("c|" if is_last_metric else "c||")
+            baseline_align = "c|" if ours_count or not is_last_metric else "c"
             cells.append(f"\\multicolumn{{{baseline_count}}}{{{baseline_align}}}{{Baseline methods}}")
         if ours_count:
-            ours_align = "c|" if is_last_metric else "c||"
+            ours_align = "c" if is_last_metric else "c|"
             cells.append(f"\\multicolumn{{{ours_count}}}{{{ours_align}}}{{Our methods}}")
 
     return " & ".join(cells) + " \\\\"
@@ -605,7 +624,7 @@ def _method_header_align(position: int, methods: list[str], metrics: tuple[str, 
     is_last_metric = metric_index == len(metrics) - 1
 
     if is_last_method:
-        return "c|" if is_last_metric else "c||"
+        return "c" if is_last_metric else "c|"
     # if method_index == 3:
     #     return "c|"
     return "c"
@@ -666,7 +685,8 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\sisetup{detect-all=true, separate-uncertainty=true}",
         f"\\setlength{{\\tabcolsep}}{{{TABLE_COLUMN_SEP}}}",
         "",
-        "\\newcommand{\\pq}{PrediQuant}",
+        "\\newcommand{\\pq}{SQS-S}",
+        "\\newcommand{\\rqbs}{SQS-H}",
         "\\newcommand{\\bcap}{BayesCAP}",
         "",
         "\\begin{document}",
@@ -719,7 +739,7 @@ def _selected_metrics(pargs) -> tuple[str, ...]:
 
 
 def _table_dir(pargs) -> str:
-    return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables")
+    return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables", "main")
 
 
 def gen_tables(pargs):
