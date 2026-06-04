@@ -37,7 +37,7 @@ DATASET = "connect-4"
 COLLECTION = "uci_multiclass"
 
 NUM_TEST = 100
-BAYESCAP_PRIOR_C = 20.0
+BAYESCAP_PRIOR_C = 3.0
 TEST_PRIOR_C = 10.0
 
 CLASSIFIERS = frozenset({"LR", "kNN", "SVM", "MLP", "RF"})
