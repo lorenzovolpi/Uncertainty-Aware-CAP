@@ -15,10 +15,15 @@ from uncawe.tables import main as main_tables
 METRICS = ("acc_err", "winkler")
 LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
 EXCLUDED_METHODS = {"L-CBPE"}
-BEST_RGB = (154, 254, 154)
+BEST_RGB = (138, 154, 91)
+# BEST_RGB = (172, 207, 173)
 WHITE_RGB = (255, 255, 255)
 WHITE_RANK = 6.0
 VALUE_FORMAT = "{:.2f}"
+VALUE_COLUMN_WIDTH = "1.30cm"
+WILCOXON_ALPHA = 0.05
+DAGGER_MARK = "$^{\\dag}$"
+PHANTOM_DAGGER_MARK = "\\phantom{$^\\dag$}"
 
 
 def _selected_metrics(pargs) -> tuple[str, ...]:
@@ -53,9 +58,31 @@ def _format_rank_table(mean_rank: pd.DataFrame) -> pd.DataFrame:
     formatted = pd.DataFrame("", index=mean_rank.index, columns=mean_rank.columns)
     for col in mean_rank.columns:
         formatted[col] = [
-            main_tables.EMPTY_CELL if pd.isna(value) else VALUE_FORMAT.format(value) for value in mean_rank[col]
+            "-" if pd.isna(value) else VALUE_FORMAT.format(value) for value in mean_rank[col]
         ]
     return formatted
+
+
+def _latex_column_format(methods: list[str], metrics: tuple[str, ...]) -> str:
+    value_column = f"w{{c}}{{{VALUE_COLUMN_WIDTH}}}"
+    metric_formats = [f"*{{{len(methods)}}}{{{value_column}}}" for _ in metrics]
+    return "l" + "|".join(metric_formats)
+
+
+def _apply_significance_markers(table: pd.DataFrame, markers: pd.DataFrame) -> pd.DataFrame:
+    marked = table.copy()
+    for col in marked.columns:
+        marked[col] = [
+            _format_significance_marker(value, bool(marker))
+            for value, marker in zip(marked[col], markers[col])
+        ]
+    return marked
+
+
+def _format_significance_marker(value: str, marker: bool) -> str:
+    if not value or value == "-":
+        return value
+    return f"{value}{DAGGER_MARK if marker else PHANTOM_DAGGER_MARK}"
 
 
 def _rank_cell_styles(mean_rank: pd.DataFrame, metrics: tuple[str, ...]) -> pd.DataFrame:
@@ -87,7 +114,7 @@ def _mean_sample_values(df: pd.DataFrame, metrics: tuple[str, ...]) -> pd.DataFr
     )
 
 
-def _rank_mean_values(df: pd.DataFrame, metrics: tuple[str, ...]) -> pd.DataFrame:
+def _dataset_rank_values(df: pd.DataFrame, metrics: tuple[str, ...]) -> pd.DataFrame:
     mean_values = _mean_sample_values(df, metrics)
     long = mean_values.melt(
         id_vars=["classifier", "dataset", "method"],
@@ -105,15 +132,88 @@ def _rank_mean_values(df: pd.DataFrame, metrics: tuple[str, ...]) -> pd.DataFram
             .rank(method="average", ascending=LOWER_IS_BETTER[metric])
         )
 
+    return long
+
+
+def _rank_mean_values(dataset_ranks: pd.DataFrame) -> pd.DataFrame:
     return (
-        long.groupby(["classifier", "method", "metric"], sort=False, observed=True)["rank"]
+        dataset_ranks.groupby(["classifier", "method", "metric"], sort=False, observed=True)["rank"]
         .mean()
         .unstack(["method", "metric"])
     )
 
 
+def _significance_markers(
+    dataset_ranks: pd.DataFrame,
+    mean_rank: pd.DataFrame,
+    methods: list[str],
+    metrics: tuple[str, ...],
+) -> pd.DataFrame:
+    markers = pd.DataFrame(False, index=mean_rank.index, columns=mean_rank.columns)
+
+    for classifier, group in dataset_ranks.groupby("classifier", sort=False, observed=True):
+        if classifier not in mean_rank.index:
+            continue
+
+        for metric in metrics:
+            if metric not in mean_rank.columns.get_level_values("metric"):
+                continue
+
+            values = mean_rank.xs(metric, axis=1, level="metric").loc[classifier]
+            best_method = _best_rank_method(values, methods)
+            if best_method is None:
+                continue
+
+            metric_ranks = group.loc[group["metric"] == metric, :]
+            ranks = metric_ranks.pivot(index="dataset", columns="method", values="rank")
+            if best_method not in ranks:
+                continue
+
+            best_ranks = pd.to_numeric(ranks[best_method], errors="coerce")
+            for method in methods:
+                if method == best_method or method not in ranks:
+                    continue
+
+                method_ranks = pd.to_numeric(ranks[method], errors="coerce")
+                paired = pd.concat([best_ranks, method_ranks], axis=1).dropna()
+                if paired.empty:
+                    continue
+
+                if _wilcoxon_not_significantly_different(paired.iloc[:, 0], paired.iloc[:, 1]):
+                    markers.loc[classifier, (method, metric)] = True
+
+    return markers
+
+
+def _best_rank_method(values: pd.Series, methods: list[str]) -> str | None:
+    values = values.dropna()
+    if values.empty:
+        return None
+
+    best_value = values.min()
+    best_methods = [method for method in methods if method in values.index and np.isclose(values[method], best_value)]
+    return best_methods[0] if best_methods else None
+
+
+def _wilcoxon_not_significantly_different(best_ranks: pd.Series, method_ranks: pd.Series) -> bool:
+    differences = np.asarray(best_ranks, dtype=float) - np.asarray(method_ranks, dtype=float)
+    differences = differences[np.isfinite(differences)]
+    if differences.size == 0:
+        return False
+    if np.allclose(differences, 0):
+        return True
+
+    try:
+        pvalue = main_tables.wilcoxon(differences, alternative="two-sided").pvalue
+    except ValueError:
+        return False
+
+    return bool(np.isfinite(pvalue) and pvalue >= WILCOXON_ALPHA)
+
+
 def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS) -> str:
-    mean_rank = _rank_mean_values(df, metrics)
+    dataset_ranks = _dataset_rank_values(df, metrics)
+    mean_rank = _rank_mean_values(dataset_ranks)
     methods = [method for method in _methods() if method in mean_rank.columns.get_level_values("method")]
     columns = main_tables._ordered_columns(methods, metrics)
     rows = pd.Index(
@@ -124,6 +224,8 @@ def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS) -> s
 
     mean_rank = mean_rank.reindex(index=rows, columns=columns)
     table = _format_rank_table(mean_rank)
+    significance_markers = _significance_markers(dataset_ranks, mean_rank, methods, metrics)
+    table = _apply_significance_markers(table, significance_markers)
     styles = _rank_cell_styles(mean_rank, metrics)
 
     table = main_tables._to_display_column_order(table, methods, metrics)
@@ -133,7 +235,7 @@ def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS) -> s
     styles.columns = latex_columns
 
     latex = table.style.apply(lambda _: styles, axis=None).to_latex(
-        column_format=main_tables._latex_column_format(methods, metrics, 1),
+        column_format=_latex_column_format(methods, metrics),
         hrules=True,
         clines="skip-last;data",
         multicol_align="c|",
@@ -187,6 +289,7 @@ def _protect_method_header_cells(
     for idx in range(index_columns, len(cells)):
         cell = cells[idx].strip()
         if cell and not cell.startswith("\\multicolumn"):
+            cell = f"\\scriptsize {cell}"
             cells[idx] = (
                 f"\\multicolumn{{1}}{{{main_tables._method_header_align(idx - index_columns, methods, metrics)}}}"
                 f"{{{cell}}}"
@@ -224,13 +327,12 @@ def _rank_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\documentclass{article}",
         "\\usepackage[table]{xcolor}",
         "\\usepackage{adjustbox}",
+        "\\usepackage{array}",
         "\\usepackage{booktabs}",
         "\\usepackage{geometry}",
         "\\usepackage{graphicx}",
         "\\usepackage{multirow}",
-        "\\usepackage{siunitx}",
         "\\geometry{margin=1in}",
-        "\\sisetup{detect-all=true, separate-uncertainty=true}",
         f"\\setlength{{\\tabcolsep}}{{{main_tables.TABLE_COLUMN_SEP}}}",
         "",
         "\\newcommand{\\pq}{SQS-S}",

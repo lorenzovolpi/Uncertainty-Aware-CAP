@@ -101,6 +101,31 @@ def _ordered_classifiers(df: pd.DataFrame) -> list[str]:
     return ordered
 
 
+def _minmax_cell_styles(mean: pd.DataFrame, methods: list[str]) -> pd.DataFrame:
+    styles = pd.DataFrame("", index=mean.index, columns=mean.columns)
+
+    for metric in METRICS:
+        metric_values = mean.xs(metric, axis=1, level="metric")
+
+        for classifier, values in metric_values.iterrows():
+            colors = main_tables._minmax_gradient_colors(values, metric)
+            for method, color in colors.items():
+                if color:
+                    styles.loc[classifier, (method, metric)] = (
+                        f"background-color: {color}; color: {main_tables._text_color(color)};"
+                    )
+
+            best_value = values.min() if main_tables.LOWER_IS_BETTER[metric] else values.max()
+            if pd.isna(best_value):
+                continue
+
+            best_mask = values.apply(lambda value: pd.notna(value) and abs(value - best_value) <= 1e-12)
+            for method in [method for method in methods if method in values.index and best_mask[method]]:
+                styles.loc[classifier, (method, metric)] += " font-weight: bold;"
+
+    return styles
+
+
 def _binform_latex_table(df: pd.DataFrame, methods: list[str], show_std: bool) -> str:
     stats = df.groupby(["classifier", "method"], sort=False)[list(METRICS)].agg(["mean", "std"])
     mean = stats.xs("mean", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
@@ -113,8 +138,7 @@ def _binform_latex_table(df: pd.DataFrame, methods: list[str], show_std: bool) -
     std = std.reindex(index=rows, columns=columns)
 
     table = main_tables._format_mean_std(mean, std, show_std)
-    sigma_zscores, sigmas = main_tables._metric_sigma_context(df, ["classifier"], mean, methods, METRICS)
-    styles = main_tables._cell_styles(mean, METRICS, sigma_zscores, sigmas)
+    styles = _minmax_cell_styles(mean, methods)
 
     table = _to_display_column_order(table, methods, METRICS)
     styles = _to_display_column_order(styles, methods, METRICS)
@@ -266,7 +290,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--coloring",
         choices=(COLOR_BEST_TO_WORST, COLOR_BEST_TO_WHITE),
-        default=COLOR_BEST_TO_WORST,
+        default=COLOR_BEST_TO_WHITE,
         help="Color gradient style for accuracy error and Winkler score",
     )
     parser.add_argument(
