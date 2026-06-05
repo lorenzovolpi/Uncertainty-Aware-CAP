@@ -57,9 +57,7 @@ def _rank_color(value: float) -> str:
 def _format_rank_table(mean_rank: pd.DataFrame) -> pd.DataFrame:
     formatted = pd.DataFrame("", index=mean_rank.index, columns=mean_rank.columns)
     for col in mean_rank.columns:
-        formatted[col] = [
-            "-" if pd.isna(value) else VALUE_FORMAT.format(value) for value in mean_rank[col]
-        ]
+        formatted[col] = ["-" if pd.isna(value) else VALUE_FORMAT.format(value) for value in mean_rank[col]]
     return formatted
 
 
@@ -73,8 +71,7 @@ def _apply_significance_markers(table: pd.DataFrame, markers: pd.DataFrame) -> p
     marked = table.copy()
     for col in marked.columns:
         marked[col] = [
-            _format_significance_marker(value, bool(marker))
-            for value, marker in zip(marked[col], markers[col])
+            _format_significance_marker(value, bool(marker)) for value, marker in zip(marked[col], markers[col])
         ]
     return marked
 
