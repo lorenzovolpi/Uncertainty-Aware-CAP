@@ -13,6 +13,7 @@ wheels/
 output/
 tools
 env.json
+AGENTS.md
 
 # uv files
 uv.lock
