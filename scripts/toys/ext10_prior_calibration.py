@@ -1,4 +1,4 @@
-"""Toy simulation for Extension 2: calibration on average of well- and misspecified priors.
+"""Toy simulation for Extension 10: calibration on average of well- and misspecified priors.
 
 Binary problem with a perfect, known classifier, so the observed data are the class counts
 $n\\sim\\operatorname{Bin}(N,\\pi_1)$ and the posterior of $\\pi_1$ under a Beta prior is conjugate.
@@ -6,9 +6,9 @@ For each bag-generating distribution $G$ and prior, the script draws $\\pi_1\\si
 counts, computes the equal-tailed 95% credible interval, and reports coverage and mean width
 overall and for $\\pi_1\\in[0.4,0.6)$.
 
-Reproduces the table in ``docs/ext2_baycap_priors.md`` (section "Well-specified prior").
+Reproduces the table in ``docs/ext10_baycap_priors_tempering.md`` (section "Well-specified prior and calibration on average").
 
-Usage: ``uv run python scripts/toys/ext2_prior_calibration.py [--bags 200000] [--seed 0]``
+Usage: ``uv run python scripts/toys/ext10_prior_calibration.py [--bags 200000] [--seed 0]``
 """
 
 import argparse

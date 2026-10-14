@@ -14,15 +14,15 @@ Its own analysis is analysis-only on existing `main` results: per-metric point a
 
 The full protocol and analyses are described in [ext1_metrics.md](ext1_metrics.md). No new runs are required.
 
-## 2. [[ext2_baycap_priors|Calibrating BayCAP: realised-table predictive, tempering, and priors]]
+## 2. [[ext2_baycap|A deeper study of BayCAP: estimand, sources of miscalibration, realised-table predictive]]
 
-The paper names two unexplored features of BayCAP: informative priors and posterior tempering. This extension narrows them to one question: can BayCAP's intervals be calibrated without target labels? The candidate *Calibrated BayCAP* is a realised-table posterior predictive: for each posterior draw, it samples the true classes behind the observed target predictions and applies the metric to the resulting table of $U$, rather than to the population table $C\operatorname{diag}(\pi^Q)$. Tempering is studied as a diagnostic: a sweep over the temperature $\tau$, evaluated with target labels, gives the oracle-best $\tau$, an upper bound on what tempering can achieve. Selecting $\tau$ without target labels is set aside in [[optional_extensions]], to be revived only if tempering clearly beats the predictive.
+This extension asks what BayCAP's interval actually estimates and why it is miscalibrated with respect to the quantity CAP is scored on. BayCAP's posterior describes the population table $C\operatorname{diag}(\pi^Q)$, while the evaluation scores the realised table of the target sample $U$. The candidate *Calibrated BayCAP* is a realised-table posterior predictive: for each posterior draw, it samples the true classes behind the observed target predictions and applies the metric to the resulting table of $U$.
 
-A new hypothesis drives the design. BayCAP's miscalibration has three sources: the APP protocol fixes the class counts that the model treats as random (intervals too wide), the interval targets the population table while the evaluation scores the realised table of $U$ (intervals too narrow), and finite $V$ leaves uncertainty on $C$ (modelled). In a binary toy simulation, the estimand gap dominates once $V$ has many instances per class, causing strong under-coverage, and the realised-table predictive restores near-nominal coverage without tuning. The first step is therefore a gate (Q0) that decides whether the predictive is worth studying: its effect on accuracy intervals is first approximated on stored `main` results, at no run cost, and then checked exactly on a few datasets with a copy of `ACC_BayesCAP` that supports both estimands through a hyperparameter. A diagnosis of the direction of miscalibration follows; tempering may need $\tau>1$ rather than $\tau<1$.
+A new hypothesis drives the design. BayCAP's miscalibration has four sources: the APP protocol fixes the class counts that the model treats as random (intervals too wide); the interval targets the population table while the evaluation scores the realised table of $U$ (too narrow); finite $V$ leaves uncertainty on $C$ (modelled); and the uniform $\operatorname{Dir}(\mathbf 1)$ prior on the columns of $C$ pulls recalls towards $1/K$, displacing the interval on datasets with many classes and few validation instances per class (biased). In a binary toy simulation, the estimand gap dominates once $V$ has many instances per class, and the realised-table predictive restores near-nominal coverage without tuning. On stored `main` results, BayCAP's coverage is $0$ on `isolet` and `letter` for every classifier, and widening the interval does not recover it, as the fourth source predicts.
 
-Informative priors are kept as a minimal check. The paper's bags are drawn uniformly from the simplex, so its uniform prior is already the correctly specified one, and the prior's weight is about $c/(c+|U|/\tau)$, negligible at $|U|=1000$. The check therefore uses one non-uniform bag-generating distribution, three priors (uniform, well-specified, confidently wrong), and $|U|\in\{100,1000\}$. The full prior study is set aside in [[optional_extensions]].
+The first step is a gate (Q0) that decides whether the predictive is worth studying: its effect on accuracy intervals is approximated on stored `main` results, at no run cost, and then checked exactly on a few datasets with `BayCAP`, a copy of `ACC_BayesCAP` that supports both estimands through a hyperparameter. A diagnosis of the direction of miscalibration, a factorial isolating the estimand gap and the fixed counts, and a decomposition of BayCAP's bias into a recall and a prevalence term follow. Tempering and the choice of priors are in Extension 10.
 
-The full formulation, hypotheses, and design are described in [ext2_baycap_priors.md](ext2_baycap_priors.md). `ACC_BayesCAP` already accepts a prior, and the `binform` experiment covers one prior configuration; tempered BayCAP and the realised-table predictive are not implemented.
+The full formulation, hypotheses, and design are described in [ext2_baycap.md](ext2_baycap.md). `BayCAP` is implemented but not evaluated; the approximate gate is implemented in `tables/estimand_gap.py` (in review).
 
 ## 3. [[ext3_uncertainty_budget|The uncertainty budget of CAP under PPS]]
 
@@ -137,6 +137,16 @@ For vanilla accuracy this collapses into a single linear map $\operatorname{Acc}
 
 The full formulation, theory, limitations, and decisive ablations are described in [baycap_kdey.md](baycap_kdey.md). BayCAP-KDEy is implemented in UNCAWE as `uncawe.methods.BayCAPKDEy`, but it has not yet been experimentally evaluated.
 
+## 10. [[ext10_baycap_priors_tempering|Informative priors and posterior tempering for BayCAP]]
+
+The paper names two unexplored features of BayCAP: informative priors and posterior tempering. This extension studies both, using the estimands and the realised-table predictive of Extension 2.
+
+Tempering is studied first as a diagnostic: a sweep over the temperature $\tau$, evaluated with target labels, gives the oracle-best $\tau$, an upper bound on what tempering can achieve, which is compared with the realised-table predictive. Selecting $\tau$ without target labels is run only if tempering clearly beats the predictive.
+
+Priors are studied on both parameters. On $\pi^Q$, the paper's bags are drawn uniformly from the simplex, so its uniform prior is already the correctly specified one, and the prior's weight is about $c/(c+|U|/\tau)$, negligible at $|U|=1000$; a minimal check (one non-uniform bag-generating distribution, uniform, well-specified and confidently wrong priors, $|U|\in\{100,1000\}$) precedes the full study. On $C$, a new hypothesis: the uniform prior on each column is informative, since its weight of $K$ imaginary validation instances per class grows with the number of classes; a prior whose total weight does not grow with $K$ (Perks' $\operatorname{Dir}(1/K)$) or a diagonal-aware prior should remove BayCAP's bias on large-$K$ datasets. Tempering with $\tau>1$ increases the weight of the prior, and so this bias.
+
+The full formulation, hypotheses, and design are described in [ext10_baycap_priors_tempering.md](ext10_baycap_priors_tempering.md). `ACC_BayesCAP` accepts a prior on $\pi^Q$ and the `binform` experiment covers one prior configuration; tempered BayCAP and a configurable prior on $C$ are not implemented. It revives two studies previously set aside in [[optional_extensions]] (full informative-prior study, label-free temperature selection).
+
 ## Extensions under evaluation
 
 Further candidate extensions are collected in
@@ -156,7 +166,7 @@ Additional proposals for extending the paper [Uncertainty-Aware Classifier Accur
 
 ### Incremental and manageable extension
 
-Evaluate multiple metrics, use the uncertainty budget of Extension 3 as the frame and its $(|U|,|V|)$ regime map as the main experiment, add the calibration study of BayCAP (realised-table predictive and tempering diagnostic), and verify the main findings with optimized classifiers and quantifiers. This combines Extensions 1--3 and 7 and is the lowest-risk option, although it remains mainly an empirical contribution unless the results support a new calibration or selection rule.
+Evaluate multiple metrics, use the uncertainty budget of Extension 3 as the frame and its $(|U|,|V|)$ regime map as the main experiment, add the study of BayCAP (realised-table predictive, Extension 2) with the tempering diagnostic of Extension 10, and verify the main findings with optimized classifiers and quantifiers. This combines Extensions 1--3, 7 and 10 and is the lowest-risk option, although it remains mainly an empirical contribution unless the results support a new calibration or selection rule.
 
 ### SQS-S design extension
 

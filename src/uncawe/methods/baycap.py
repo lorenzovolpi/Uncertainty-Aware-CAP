@@ -1,7 +1,7 @@
 """BayCAP with a population or a realised-table estimand.
 
 This module implements the method of work-plan card WP-1, motivated by the
-realised-table posterior predictive of ``docs/ext2_baycap_priors.md``. The
+realised-table posterior predictive of ``docs/ext2_baycap.md``. The
 posterior model, the priors and the NUTS sampler are copied from ``cap-ml``
 ``cap.models.confidence.ACC_BayesCAP`` (commit ``bb20aa5`` of branch
 ``devel``); only the pushforward of the posterior draws to contingency tables
