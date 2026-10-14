@@ -191,49 +191,69 @@ def _ordered(table: pd.DataFrame) -> pd.DataFrame:
     return table.sort_values(["dataset", "classifier"]).reset_index(drop=True)
 
 
-def _latex_table(table: pd.DataFrame) -> str:
-    cols = {
-        ("", "$K$"): table["n_classes"].astype(int),
-        ("", "$\\tilde n_V$"): table["median_val_per_class"].round().astype(int),
-        ("", "$\\hat\\sigma_g/\\hat\\sigma_p$"): table["ratio"],
-    }
+CAPTION = (
+    "Estimand-gap check of BayCAP on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
+    "$\\tilde n_V$: median validation instances per class; $\\hat\\sigma_g/\\hat\\sigma_p$: median over bags; "
+    "coverage $\\mathcal{C}$, amplitude $\\mathcal{A}$ and Winkler score $\\mathcal{W}$ against the realised table, "
+    "means over the 100 bags."
+)
+LABEL = "tab:estimand-gap"
+
+
+def _styled_table(table: pd.DataFrame):
+    """Return the Styler of the per-pair table; dataset-level descriptors are index levels, shown once per dataset."""
+    cols = {("", "$\\hat\\sigma_g/\\hat\\sigma_p$"): table["ratio"].to_numpy()}
     for interval in INTERVALS:
         for score in SCORES:
-            cols[(INTERVAL_LABELS[interval], main_tables.metrics_map[score])] = table[f"{interval}_{score}"]
+            cols[(INTERVAL_LABELS[interval], main_tables.metrics_map[score])] = table[f"{interval}_{score}"].to_numpy()
     out = pd.DataFrame(cols)
     out.index = pd.MultiIndex.from_arrays(
         [
             table["dataset"].astype(str).map(lambda d: decorate_dataset(main_tables.dataset_map.get(d, d))),
+            table["n_classes"].astype(int),
+            table["median_val_per_class"].round().astype(int),
             table["classifier"].astype(str),
         ],
-        names=["dataset", "classifier"],
+        names=["dataset", "$K$", "$\\tilde n_V$", "classifier"],
     )
-    return (
-        out.style.format(precision=3)
-        .format(subset=[("", "$K$"), ("", "$\\tilde n_V$")], precision=0)
-        .to_latex(hrules=True, multicol_align="c", clines="skip-last;data")
-    )
+    return out.style.format(precision=3)
 
 
-def _latex_document(tabular_path: str) -> str:
+def _booktabs_clines(latex: str) -> str:
+    """Use booktabs rules between datasets: ``\\cline`` adds no vertical space and touches the next row."""
+    return latex.replace("\\cline{", "\\cmidrule(lr){")
+
+
+def _latex_table(table: pd.DataFrame) -> str:
+    """Return a ``tabular`` fragment for inclusion in other documents."""
+    return _booktabs_clines(_styled_table(table).to_latex(hrules=True, multicol_align="c", clines="skip-last;data"))
+
+
+def _latex_longtable(table: pd.DataFrame) -> str:
+    """Return a ``longtable`` that breaks across pages, used by the standalone document."""
+    latex = _styled_table(table).to_latex(
+        environment="longtable",
+        hrules=True,
+        multicol_align="c",
+        multirow_align="naive",
+        clines="skip-last;data",
+        caption=CAPTION,
+        label=LABEL,
+    )
+    return _booktabs_clines(latex)
+
+
+def _latex_document(longtable_path: str) -> str:
     return "\n".join(
         [
             "\\documentclass{article}",
-            "\\usepackage[margin=1cm,landscape]{geometry}",
-            "\\usepackage{booktabs,multirow,adjustbox}",
+            "\\usepackage[a4paper,hmargin=1.5cm,vmargin=0.8cm]{geometry}",
+            "\\usepackage{booktabs,longtable,multirow}",
             "\\begin{document}",
-            "\\begin{table}[htbp]",
-            "\\centering",
-            (
-                "\\caption{Estimand-gap check of BayCAP on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
-                "$\\tilde n_V$: median validation instances per class; $\\hat\\sigma_g/\\hat\\sigma_p$: median over bags; "
-                "coverage, amplitude and Winkler score against the realised table, means over bags.}"
-            ),
-            "\\label{tab:estimand-gap}",
-            "\\begin{adjustbox}{max height=0.9\\textheight}",
-            f"\\input{{{tabular_path}}}",
-            "\\end{adjustbox}",
-            "\\end{table}",
+            "\\pagestyle{empty}",
+            "\\scriptsize",
+            "\\setlength{\\LTcapwidth}{\\textwidth}",
+            f"\\input{{{longtable_path}}}",
             "\\end{document}",
             "",
         ]
@@ -257,8 +277,10 @@ def gen_tables(pargs):
     table.to_csv(os.path.join(table_dir, f"{TABLE_NAME}.csv"), index=False)
     with open(os.path.join(tabular_dir, f"{TABLE_NAME}.tex"), "w") as f:
         f.write(_latex_table(table))
+    with open(os.path.join(tabular_dir, f"{TABLE_NAME}_long.tex"), "w") as f:
+        f.write(_latex_longtable(table))
     with open(os.path.join(table_dir, f"{TABLE_NAME}_doc.tex"), "w") as f:
-        f.write(_latex_document(f"tabular/{TABLE_NAME}.tex"))
+        f.write(_latex_document(f"tabular/{TABLE_NAME}_long.tex"))
 
     with pd.option_context("display.width", 200, "display.max_rows", 200, "display.precision", 3):
         print(table.drop(columns=["sigma_g", "sigma_p"]).to_string(index=False))
@@ -273,11 +295,14 @@ def gen_pdf(pargs):
     if not os.path.exists(os.path.join(table_dir, tex_filename)):
         raise FileNotFoundError(f"{tex_filename} does not exist in {table_dir}. Generate tables first.")
 
-    subprocess.run(
-        ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", tex_filename],
-        cwd=table_dir,
-        check=True,
-    )
+    # longtable needs a second pass to settle the column widths
+    for _ in range(2):
+        subprocess.run(
+            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", tex_filename],
+            cwd=table_dir,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
 
 
 if __name__ == "__main__":
