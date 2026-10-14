@@ -11,9 +11,13 @@ wheels/
 
 # Project
 output/
+docs/
 tools
 env.json
 AGENTS.md
 
 # uv files
 uv.lock
+
+# obsidian
+.obsidian
