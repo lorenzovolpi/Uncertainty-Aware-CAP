@@ -18,6 +18,30 @@ uv sync
 
 Gli esempi sotto usano `uv run python -m ...`, che esegue direttamente i moduli Python interessati.
 
+## Esecuzione remota su `bcuda`
+
+Gli esperimenti si eseguono sul server `bcuda` tramite il `Makefile` (`make help` elenca target e variabili):
+
+```bash
+make init                      # una volta: crea /home/volpi/uncawe-devel e copia env.json e output/ dalla vecchia cartella
+make setup                     # rsync del codice e `uv sync --locked`
+make run-main-classic GPU=1    # avvia l'esperimento in una sessione tmux `uncawe-main-classic`
+make status                    # sessioni attive e uso delle GPU
+make logs EXP=main-classic     # coda del log in output/runs/
+make pull                      # copia tabelle e plot in ./output
+```
+
+Ogni `run-<name>` invia prima il working tree locale e scrive revisione git e comando in testa al log. Argomenti aggiuntivi si passano con `ARGS="..."`.
+
+Per eseguire in locale si aggiunge `WHERE=local` (serve un `env.json` locale con `OUT_DIR` per l'hostname della macchina, e una volta `make fetch-data` per copiare dati di pretraining e dataset da `bcuda`). `JAX=cpu` forza JAX su CPU, che per BayesCAP e' piu' veloce della GPU:
+
+```bash
+make run-binform WHERE=local JAX=cpu
+make logs EXP=binform WHERE=local
+make push-results              # copia su bcuda i risultati calcolati in locale (senza sovrascrivere)
+make pull-results              # e viceversa
+```
+
 ## Pretraining
 
 L'esperimento principale legge metadati e posteriori dei classificatori da:
@@ -37,7 +61,7 @@ Il pretraining classic addestra cinque classificatori (`LR`, `kNN`, `SVM`, `MLP`
 
 ## Esperimento principale
 
-Il modulo [src/uncawe/main.py](src/uncawe/main.py) implementa l'esperimento `main`. Per ogni dominio selezionato, carica i `PretrainInfo`, filtra i dataset definiti in `get_filtered_datasets()`, e valuta ogni metodo restituito da `gen_methods()`:
+Il modulo [src/uncawe/main.py](src/uncawe/main.py) mantiene l'entry point dell'esperimento `main`; la logica e' suddivisa nei moduli sotto `src/uncawe/experiments/`. Per ogni dominio selezionato, carica i `PretrainInfo`, filtra i dataset definiti in `get_filtered_datasets()`, e valuta ogni metodo restituito da `gen_methods()`:
 
 - `DoC`
 - `QuAcc_NxN`
