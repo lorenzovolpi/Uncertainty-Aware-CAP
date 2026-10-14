@@ -144,8 +144,9 @@ reduce the effective validation sample size.
 | RQBS implementation of SQS-H | Bootstrap quantifier estimates | One validation bag per bootstrap estimate | Used by the current experiments through `cap-ml` |
 | SQS-S | Neighbourhood of bags matched in estimated-prevalence space | Selected validation bags | Proposed and evaluated in the reference paper |
 | SQS-B | Joint Bayesian posterior draws | One validation bag per posterior draw | Research proposal; not implemented |
-| BayCAP | Joint posterior draws of prevalence and conditional prediction matrix | Parametric posterior over the conditional matrix | Implemented and evaluated |
+| BayCAP | Joint posterior draws of prevalence and conditional prediction matrix | Parametric posterior over the conditional matrix | Implemented and evaluated in the reference paper |
 | Aitchison-SQS | Estimated or constructed distribution in `ilr` coordinates | Validation bags | Research proposal; not implemented |
+| **BayCAP-KDEy** | **Joint posterior draws (BayesKDEy)** | **Fixed matrix $C^h$** | **Research proposal; implemented in UNCAWE, not yet evaluated** |
 
 ### SQS-B versus RQBS
 
@@ -183,13 +184,25 @@ validation sampling is preferable to the parametric conditional model.
 
 ### SQS-B versus Aitchison-SQS
 
-Aitchison-SQS starts from a point estimator and learns or constructs an error
-distribution in `ilr` coordinates. SQS-B requires an actual posterior from the
-quantifier and does not need a Gaussian or logistic-normal approximation. When
-such a posterior is available, SQS-B is conceptually simpler. Aitchison-SQS
-remains applicable to non-Bayesian quantifiers and can explicitly incorporate
-empirical error or bias estimates unavailable from target-only posterior
-sampling.
+Aitchison-SQS ([aitchison_sqs.md](aitchison_sqs.md)) starts from a point
+estimator
+and learns or constructs an error distribution in `ilr` coordinates. SQS-B
+requires an actual posterior from the quantifier and does not need a Gaussian
+or logistic-normal approximation. When such a posterior is available, SQS-B
+is conceptually simpler. Aitchison-SQS remains applicable to non-Bayesian
+quantifiers and can explicitly incorporate empirical error or bias estimates
+unavailable from target-only posterior sampling.
+
+### SQS-B versus BayCAP-KDEy
+
+BayCAP-KDEy ([baycap_kdey.md](baycap_kdey.md)) uses the *same* posterior
+interface as SQS-B, but replaces the empirical bag-sampling mechanism with a
+*parametric* bridge: a fixed rate matrix $C^h$ measured on $V$. This means
+BayCAP-KDEy inherits the posterior but avoids the Monte-Carlo noise of bag
+resampling, at the cost of omitting the uncertainty in $C^h$ itself.
+BayCAP-KDEy is therefore the direct comparison point when testing SQS-B's
+claim that "empirical bag sampling is a valid alternative to parametric
+propagation of the posterior".
 
 ## Limitations and failure modes
 
@@ -273,7 +286,7 @@ uncertainty.
 
 ## References
 
-- [Uncertainty-Aware Classifier Accuracy Prediction under Prior Probability Shift](02__Uncertainty_Aware_Classifier_Accuracy_Prediction______QCDS_2026_.pdf)
-- [Bayesian Quantification with Black-Box Estimators](https://arxiv.org/abs/2302.09159)
+- [Uncertainty-Aware Classifier Accuracy Prediction under Prior Probability Shift](papers/02__Uncertainty_Aware_Classifier_Accuracy_Prediction______QCDS_2026_.pdf)
+- [Bayesian Quantification with Black-Box Estimators (Ziegler, Czyz. TMLR 2024)](https://arxiv.org/abs/2302.09159)
 - [Aitchison-SQS proposal](aitchison_sqs.md)
-
+- [BayCAP-KDEy proposal](baycap_kdey.md)
