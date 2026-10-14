@@ -16,6 +16,7 @@ DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "RQBS", "PQ", "BayesCAP"]
 METHOD_COLORS = {
     "O-LEAP": "#4C78A8",
     "BayesCAP": "#F58518",
+    "BayesCAP-real": "#9D755D",
     "PQ": "#E45756",
     "RQBS": "#B279A2",
     "DoC": "#54A24B",
@@ -30,6 +31,7 @@ METHOD_PLOT_LABELS = {
     "RQBS": "SQS-H",
     "O-LEAP": "LEAP",
     "BayesCAP": "BayCAP",
+    "BayesCAP-real": "BayCAP-real",
 }
 
 ACC_NAME = "vanilla_accuracy"
