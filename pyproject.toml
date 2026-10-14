@@ -26,9 +26,20 @@ uncawe = "uncawe:main"
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
+[tool.uv]
+required-environments = "sys_platform == 'linux' and platform_machine == 'aarch64'"
+# numpyro 0.22.0 breaks ACC_BayesCAP (Multinomial constraint on a traced total count); 0.21.0 produced the stored results.
+constraint-dependencies = ["numpyro<0.22"]
+
 [tool.uv.sources]
 cap-ml = { git = "https://github.com/lorenzovolpi/cap-ml.git", rev = "devel" }
 pandatex = { git = "https://github.com/lorenzovolpi/pandatex.git" }
 
+
 [tool.ruff]
 line-length = 120
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.0",
+]
