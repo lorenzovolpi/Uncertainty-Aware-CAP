@@ -34,12 +34,18 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 
 - Every number in a document comes from a seeded script in the repository (toy simulations in `scripts/toys/`) or from stored experiment results; label toy results as such.
 - When an in-depth extension document changes its scope, update its summary in `docs/extensions.md`. Move set-aside material to `docs/optional_extensions.md` instead of deleting it. A change to an extension does not require editing `docs/work_plan.md` unless the user asks for it.
-- In-depth extension documents (e.g. `docs/ext2_baycap.md`) follow this structure:
-  - **Summary:** question, main claim, candidate methods, status table, reader's guide;
-  - **Part I, Understanding:** the needed background and concepts, each with a one-line intuition, and the reasoning behind the hypotheses;
-  - **Part II, For the paper:** contributions, hypotheses with "confirmed if / refuted if", and a paper outline mapping each claim to its evidence and to the figures and tables;
-  - **Part III, For the implementation:** one specification per experiment with fixed fields (goal / hypothesis, inputs, varied factors, outputs, measures, interpretation, visualization, cost), then components, tests, and reproducibility;
+- Work on an extension is experiment-driven. In-depth extension documents (e.g. `docs/ext2_baycap.md`) follow this structure:
+  - **Claim:** an intuitive, clear and concise statement of what the extension tries to do and why;
+  - **Status:** a short table of what is implemented, run, scheduled or proposed;
+  - **Experiments:** only the experiments the user has decided on. Each one states why it is done (what justifies it), its design (inputs, varied factors, measures, estimand, cost), how its results are represented (tables, plots), any decision rule, and, once it is run, an analysis of what it showed;
+  - **Candidate experiments:** ideas for experiments that come up in the discussion, each with a short "why" and "what it needs"; an experiment moves to the main section only when the user decides so;
+  - **Theory:** the explanations behind the experiments of the main section, driven by them and without digressions, unless the user asks to add an explanation about a discussion or an argument on the extension;
+  - **Implementation:** components, tests, reproducibility and comparability for the experiments of the main section;
   - **Appendix:** toy simulations, relation to other extensions, out of scope.
+- Tackle one experiment at a time.
+- Explain statistics at a first-year-undergraduate level, so that the documents are broadly comprehensible.
+- Extension documents contain no paper material (contributions, paper outline, figure plan) for now; the paper will be addressed later.
+- Only `docs/ext2_baycap.md` follows this structure so far; the other extension documents keep their old structure until the user reviews them.
 
 ## Work plan
 
