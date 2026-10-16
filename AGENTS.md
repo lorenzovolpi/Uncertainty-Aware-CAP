@@ -42,6 +42,7 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
   - **Theory:** the explanations behind the experiments of the main section, driven by them and without digressions, unless the user asks to add an explanation about a discussion or an argument on the extension;
   - **Implementation:** components, tests, reproducibility and comparability for the experiments of the main section;
   - **Appendix:** toy simulations, relation to other extensions, out of scope.
+- Experiments are named `E<extension>.<n>`, with `<n>` a progressive number within the extension (e.g. E2.1, E2.2); each experiment gets its own number, also when several experiments serve one goal. Candidate experiments are named `E<extension>.c<n>` (e.g. E2.c1); when the user moves one into the main section, it is renamed with the next free `E<extension>.<n>`, and every reference to it is updated. Numbers are never reused.
 - Tackle one experiment at a time.
 - Explain statistics at a first-year-undergraduate level, so that the documents are broadly comprehensible.
 - Extension documents contain no paper material (contributions, paper outline, figure plan) for now; the paper will be addressed later.

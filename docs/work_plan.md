@@ -163,7 +163,7 @@ Entry template:
 ### WP-2 Estimand-gap check of BayCAP on stored `main` results
 
 - **Kind / status:** analysis / In progress
-- **Source:** [[ext2_baycap]] (Q0, Step A)
+- **Source:** [[ext2_baycap]] (E2.1)
 - **Goal:** estimate, without new runs, on which (dataset, classifier) pairs a realised-table posterior predictive would change BayCAP's accuracy intervals, and choose the datasets of WP-3. `main` stores BayCAP's accuracy samples but not its table draws, so the predictive is approximated for accuracy only. Given draw $r$, the predictive accuracy is $\frac{1}{N^Q}\sum_i\operatorname{Bin}(n^t_i,\rho^{(r)}_{ii})$, with $\rho^{(r)}_{ii}$ the precision of class $\omega_i$, conditional variance $\sigma_g^2=\sum_i n^t_i\rho^{(r)}_{ii}(1-\rho^{(r)}_{ii})/(N^Q)^2$. The analysis uses one $\bar\rho$ per bag, the stored mean table `estim_cts` (paper layout, predicted classes on rows) with each row normalised to one, and replaces the binomial sum with a normal: each approximate predictive sample is the stored accuracy sample plus independent $\mathcal N(0,\hat\sigma_g^2)$ noise. $n^t$ (predicted counts) and $\bar\rho$ are label-free; labels are used only for scoring.
 - **Estimand:** realised table of the target sample (scored against `true_cts`).
 - **Scope:** an analysis script and table on `main` results for `BayesCAP`, vanilla accuracy, $\lvert U\rvert=1000$, all datasets and classifiers. Per pair: coverage, amplitude and Winkler score ($\alpha=0.05$) of BayCAP and of the approximate predictive; the ratio $\hat\sigma_g/\hat\sigma_p$, with $\hat\sigma_p$ the standard deviation of the stored samples; the median number of validation instances per class $\lvert V\rvert\pi^V_j$. Seeded noise. No new experiment.
@@ -176,7 +176,7 @@ Entry template:
 ### WP-3 Exact pilot of the realised-table predictive for BayCAP
 
 - **Kind / status:** experiment / Scheduled
-- **Source:** [[ext2_baycap]] (Q0, Step B)
+- **Source:** [[ext2_baycap]] (E2.2)
 - **Goal:** check exactly, on a few datasets and for all metrics, whether the realised-table predictive improves BayCAP's calibration, and validate the approximation of WP-2 on accuracy. Provisional decision rule: *pass* if at least one pair in five under-covers (coverage below $0.90$) and the predictive brings it within $[0.93,0.97]$ with a lower Winkler score; *fail* if $\hat\sigma_g/\hat\sigma_p<0.3$ on almost every pair of WP-2, or if the predictive worsens the Winkler score everywhere.
 - **Estimand:** both (`BayesCAP`: population table; `BayesCAP-real`: realised table), always scored against the realised table of each bag.
 - **Scope:** new experiment `experiments/calibration.py` (configuration `q0`), writing to `<OUT_DIR>/uncawe/calibration`. Datasets: the 2–3 chosen in WP-2; classifier LR; the $100$ `main` target bags with the same seeds; metrics vanilla accuracy, macro-F1, macro-K. Methods: `BayesCAP` and `BayesCAP-real` (`methods/baycap.py:BayCAP`, §II.5) with the same `random_state`, so they share the posterior draws. Standard result schema; an analysis table with coverage, amplitude, Winkler score per method and the error of the WP-2 approximation on accuracy.
