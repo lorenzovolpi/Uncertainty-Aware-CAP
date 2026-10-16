@@ -18,7 +18,7 @@ $C_{10}=0.1$ and $C_{11}=0.7$. For each simulated configuration:
 Coverage is reported against the population accuracy and against the realised accuracy of the bag
 (what the evaluation in ``main`` scores).
 
-Reproduces the table in ``docs/ext2_baycap_priors.md`` (section "Why BayCAP can be miscalibrated").
+Reproduces the table in ``docs/ext2_baycap.md`` (section "Why BayCAP can be miscalibrated").
 
 Usage: ``uv run python scripts/toys/ext2_estimand_gap.py [--bags 3000] [--seed 0]``
 """
