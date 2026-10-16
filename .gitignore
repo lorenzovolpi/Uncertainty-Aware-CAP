@@ -11,10 +11,10 @@ wheels/
 
 # Project
 output/
-docs/
-tools
-env.json
-AGENTS.md
+# docs/
+# tools
+# env.json
+# AGENTS.md
 
 # uv files
 uv.lock
