@@ -27,7 +27,12 @@ E2.1 and E2.2 form a gate: together they decide whether the realised-table predi
 
 **Why.** In a binary toy simulation (§T.3, toy result), BayCAP's interval covers the population accuracy at the nominal rate, but its coverage of the realised accuracy falls to $0.63$ when the validation set has $5000$ instances per class. The realised-table predictive brings it back to $0.96$. The paper's datasets differ in size, in number of classes and in classifier quality, so the toy says nothing about how large the effect is there. `main` already stores BayCAP's accuracy samples for every pair, so a first answer for accuracy costs no runs.
 
-- **Design.** Inputs: stored `main` results for `BayesCAP` at $\lvert U\rvert=1000$ (accuracy samples `estim_acc_ranges`, mean table `estim_cts`, realised table `true_cts`), all $15$ datasets and $5$ classifiers ($75$ pairs). Varied: the pushforward, population vs approximate realised-table predictive (§T.4). Measures: coverage, amplitude and Winkler score of both intervals, for accuracy only; the ratio $\hat\sigma_g/\hat\sigma_p$ between the standard deviation the predictive adds and the standard deviation of BayCAP's samples; the median number of validation instances per class $n^s_j=\lvert V\rvert\pi^V_j$. Estimand: population table for BayCAP and realised table for the predictive, both scored against the realised table. Cost: none, no new runs.
+- **Design.**
+  - **Inputs:** stored `main` results for `BayesCAP` at $\lvert U\rvert=1000$ (accuracy samples `estim_acc_ranges`, mean table `estim_cts`, realised table `true_cts`), all $15$ datasets and $5$ classifiers ($75$ pairs).
+  - **Varied:** the pushforward, population vs approximate realised-table predictive (§T.4).
+  - **Measures:** coverage, amplitude and Winkler score of both intervals, for accuracy only; the ratio $\hat\sigma_g/\hat\sigma_p$ between the standard deviation the predictive adds and the standard deviation of BayCAP's samples; the median number of validation instances per class $n^s_j=\lvert V\rvert\pi^V_j$.
+  - **Estimand:** population table for BayCAP and realised table for the predictive, both scored against the realised table.
+  - **Cost:** none, no new runs.
 - **Representation.** A per-pair table (rows: dataset, classifier; columns: coverage, amplitude and Winkler score for both intervals, $\hat\sigma_g/\hat\sigma_p$, median $n^s_j$), produced by `tables/estimand_gap.py` as LaTeX and PDF. A scatter plot is still to be added: BayCAP coverage on the horizontal axis, predictive coverage on the vertical axis, one point per pair, coloured by $\hat\sigma_g/\hat\sigma_p$, with lines at $0.95$ on both axes. Points that move up from below $0.95$ to the line are pairs the predictive repairs. Points stuck near $(0,0)$ are displaced intervals.
 - **Analysis.** Run on 2026-10-14 (`tables/estimand_gap.py`, seed $0$, recorded in the WP-2 log of `docs/work_plan.md`):
   - $53$ of the $75$ pairs under-cover (coverage below $0.90$), so BayCAP's intervals miss the realised accuracy much more often than $5\%$ of the time;
@@ -41,7 +46,12 @@ E2.1 and E2.2 form a gate: together they decide whether the realised-table predi
 
 **Why.** E2.1 approximates the predictive (one $\bar\rho$ per bag, a normal in place of the binomial sum, §T.4) and covers accuracy only. E2.2 checks the approximation and extends the comparison to macro-F1 and macro-K on a few datasets, running the exact predictive with `BayCAP`.
 
-- **Design.** Inputs: the `main` bags of $2$–$3$ datasets chosen from E2.1 (largest ratio, smallest ratio, one multiclass; suggested so far: `dry-bean`, $1.50$, and `poker_hand`, $0.07$), classifier LR. Varied: the pushforward only. `BayesCAP` and `BayesCAP-real` are `BayCAP` with `estimand="population"` and `estimand="realised"` and the same `random_state`, so they share the posterior draws (§T.3). Metrics: vanilla accuracy, macro-F1, macro-K. Measures: the paper's measures, plus the error of the E2.1 approximation on accuracy. Estimand: as in E2.1. Cost: one NUTS run per bag shared by the two methods ($2$–$3$ datasets × $100$ bags).
+- **Design.**
+  - **Inputs:** the `main` bags of $2$–$3$ datasets chosen from E2.1 (largest ratio, smallest ratio, one multiclass; suggested so far: `dry-bean`, $1.50$, and `poker_hand`, $0.07$), classifier LR.
+  - **Varied:** the pushforward only, population vs exact realised-table predictive (§T.3). `BayesCAP` and `BayesCAP-real` are `BayCAP` with `estimand="population"` and `estimand="realised"` and the same `random_state`, so they share the posterior draws.
+  - **Measures:** coverage, amplitude and Winkler score of both intervals, for vanilla accuracy, macro-F1 and macro-K; for accuracy, the error of the E2.1 approximation.
+  - **Estimand:** population table for `BayesCAP` and realised table for `BayesCAP-real`, both scored against the realised table.
+  - **Cost:** one NUTS run per bag, shared by the two methods ($2$–$3$ datasets × $100$ bags).
 - **Representation.** A table with one row per (dataset, metric) and, for `BayesCAP` and `BayesCAP-real`, columns for coverage, amplitude and Winkler score; for accuracy, an extra column with the coverage that E2.1 predicted for the predictive, to show how good the approximation is.
 - **Analysis.** Not run.
 

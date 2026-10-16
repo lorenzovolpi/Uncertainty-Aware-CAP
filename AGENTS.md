@@ -37,11 +37,27 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 - Work on an extension is experiment-driven. In-depth extension documents (e.g. `docs/ext2_baycap.md`) follow this structure:
   - **Claim:** an intuitive, clear and concise statement of what the extension tries to do and why;
   - **Status:** a short table of what is implemented, run, scheduled or proposed;
-  - **Experiments:** only the experiments the user has decided on. Each one states why it is done (what justifies it), its design (inputs, varied factors, measures, estimand, cost), how its results are represented (tables, plots), any decision rule, and, once it is run, an analysis of what it showed;
+  - **Experiments:** only the experiments the user has decided on, each with the template below, plus any decision rule;
   - **Candidate experiments:** ideas for experiments that come up in the discussion, each with a short "why" and "what it needs"; an experiment moves to the main section only when the user decides so;
   - **Theory:** the explanations behind the experiments of the main section, driven by them and without digressions, unless the user asks to add an explanation about a discussion or an argument on the extension;
   - **Implementation:** components, tests, reproducibility and comparability for the experiments of the main section;
   - **Appendix:** toy simulations, relation to other extensions, out of scope.
+- Every experiment of the main section, in every extension, follows this template (as in `docs/ext2_baycap.md`, E2.1):
+
+  ```markdown
+  ## E<extension>.<n>: <title>
+
+  **Why.** <what justifies the experiment>
+
+  - **Design.**
+    - **Inputs:** <data, stored results, datasets, classifiers, bags>
+    - **Varied:** <the factors that change, and what is held fixed>
+    - **Measures:** <what is computed, for which metrics>
+    - **Estimand:** <population table or realised table, for each method, and what it is scored against>
+    - **Cost:** <runs needed and their size, or "none">
+  - **Representation.** <tables and plots of the results>
+  - **Analysis.** <once run: the results, with their source, and what they show; before: "Not run.">
+  ```
 - Experiments are named `E<extension>.<n>`, with `<n>` a progressive number within the extension (e.g. E2.1, E2.2); each experiment gets its own number, also when several experiments serve one goal. Candidate experiments are named `E<extension>.c<n>` (e.g. E2.c1); when the user moves one into the main section, it is renamed with the next free `E<extension>.<n>`, and every reference to it is updated. Numbers are never reused.
 - Tackle one experiment at a time.
 - Explain statistics at a first-year-undergraduate level, so that the documents are broadly comprehensible.
