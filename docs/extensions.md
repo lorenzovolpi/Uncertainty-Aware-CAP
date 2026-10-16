@@ -22,7 +22,7 @@ A new hypothesis drives the design. BayCAP's miscalibration has four sources: th
 
 The first step is a gate (Q0) that decides whether the predictive is worth studying: its effect on accuracy intervals is approximated on stored `main` results, at no run cost, and then checked exactly on a few datasets with `BayCAP`, a copy of `ACC_BayesCAP` that supports both estimands through a hyperparameter. A diagnosis of the direction of miscalibration, a factorial isolating the estimand gap and the fixed counts, and a decomposition of BayCAP's bias into a recall and a prevalence term follow. Tempering and the choice of priors are in Extension 10.
 
-The full formulation, hypotheses, and design are described in [ext2_baycap.md](ext2_baycap.md). `BayCAP` is implemented but not evaluated; the approximate gate is implemented in `tables/estimand_gap.py` (in review).
+The full formulation, hypotheses, and design are described in [ext2_baycap.md](ext2_baycap.md). `BayCAP` is implemented but not evaluated; the approximate gate (Q0 Step A) is implemented in `tables/estimand_gap.py` and merged into `devel`; the datasets of the exact check (Step B) are not yet chosen.
 
 ## 3. [[ext3_uncertainty_budget|The uncertainty budget of CAP under PPS]]
 

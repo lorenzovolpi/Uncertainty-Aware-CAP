@@ -61,5 +61,10 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 - Run commands through `uv run`.
 - Preserve the existing experimental protocol unless a change is requested.
 - Experimental outputs live outside the repository under `cap.env["OUT_DIR"]/uncawe`.
-- Do not commit generated results, plots, tables, or environment-specific paths.
+- Do not commit generated results, plots, or tables.
 - Before changing an experiment, identify its effect on reproducibility and comparability with existing results.
+- Changes to the repository that do not belong to a card or a scheduled fix on the Part III board of `docs/work_plan.md` are committed directly to `devel`, without a pull request, unless the user says otherwise.
+
+## Conversation conventions
+
+- A user message that starts with "[guideline]" states a general guideline: add it to this file, in the section where it belongs.

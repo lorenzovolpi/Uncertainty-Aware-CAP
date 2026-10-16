@@ -129,7 +129,7 @@ logistic-normal is more flexible than the Dirichlet, but requires explicit zero
 handling, regularization for large $K$, and empirical checks of normality.
 
 The full formulation, caveats, and baselines are described in
-[aitchison_sqs.md](aitchison_sqs.md).
+[aitchison_sqs.md](optional-directions/aitchison_sqs.md).
 
 ## 4. Full informative-prior study for BayCAP
 

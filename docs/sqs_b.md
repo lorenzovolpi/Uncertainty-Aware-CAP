@@ -184,7 +184,7 @@ validation sampling is preferable to the parametric conditional model.
 
 ### SQS-B versus Aitchison-SQS
 
-Aitchison-SQS ([aitchison_sqs.md](aitchison_sqs.md)) starts from a point
+Aitchison-SQS ([aitchison_sqs.md](optional-directions/aitchison_sqs.md)) starts from a point
 estimator
 and learns or constructs an error distribution in `ilr` coordinates. SQS-B
 requires an actual posterior from the quantifier and does not need a Gaussian
@@ -288,5 +288,5 @@ uncertainty.
 
 - [Uncertainty-Aware Classifier Accuracy Prediction under Prior Probability Shift](papers/02__Uncertainty_Aware_Classifier_Accuracy_Prediction______QCDS_2026_.pdf)
 - [Bayesian Quantification with Black-Box Estimators (Ziegler, Czyz. TMLR 2024)](https://arxiv.org/abs/2302.09159)
-- [Aitchison-SQS proposal](aitchison_sqs.md)
+- [Aitchison-SQS proposal](optional-directions/aitchison_sqs.md)
 - [BayCAP-KDEy proposal](baycap_kdey.md)

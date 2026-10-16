@@ -24,7 +24,7 @@ This distinguishes it from the two other proposals in this repository:
 - it is not [SQS-B](sqs_b.md), which propagates the posterior through
   *empirical validation-bag sampling*; here the conditional classifier
   behaviour is represented *parametrically* by a fixed matrix;
-- it is not [Aitchison-SQS](aitchison_sqs.md), which *constructs* a prevalence
+- it is not [Aitchison-SQS](optional-directions/aitchison_sqs.md), which *constructs* a prevalence
   distribution around a non-Bayesian point estimate; here the posterior is
   taken directly from the quantifier.
 
@@ -455,6 +455,6 @@ presented as a *baseline* rather than as a state of the art.
 - [Uncertainty-Aware Classifier Accuracy Prediction under Prior Probability Shift](papers/02__Uncertainty_Aware_Classifier_Accuracy_Prediction______QCDS_2026_.pdf)
 - [Geometry-Aware Bayesian Quantification via Compositional Data Analysis (KDE-Bayes)](papers/kde_bayes.pdf)
 - [Ziegler, Czyz. Bayesian quantification with black-box estimators. TMLR 2024.](https://arxiv.org/abs/2302.09159)
-- [Aitchison-SQS proposal](aitchison_sqs.md)
+- [Aitchison-SQS proposal](optional-directions/aitchison_sqs.md)
 - [SQS-B proposal](sqs_b.md)
 - [QuaPy](https://github.com/HLT-ISTI/QuaPy) · [cap-ml](https://github.com/lorenzovolpi/cap-ml)

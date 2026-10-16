@@ -14,7 +14,7 @@
 |---|---|
 | `cap-ml` `ACC_BayesCAP`: BayesianCC posterior, population pushforward, $\operatorname{Dir}(\mathbf 1)$ prior on each column of $C$ | [implemented] |
 | `methods/baycap.py:BayCAP` with `estimand` $\in\{$population, realised$\}$ (copy of `ACC_BayesCAP`) | [implemented, not evaluated] |
-| `tables/estimand_gap.py`: Q0 Step A on stored `main` results (work-plan card WP-2) | [implemented, in review] |
+| `tables/estimand_gap.py`: Q0 Step A on stored `main` results (work-plan card WP-2) | [implemented], merged into `devel`; choice of the Step B datasets pending |
 | Toy simulation behind §3 (`scripts/toys/ext2_estimand_gap.py`) | [implemented] |
 | Q0 Step B (exact pilot), Q1, Q2, Q5 | [proposal] |
 | Source (iv), bias of the prior on $C$ | [new hypothesis] |
