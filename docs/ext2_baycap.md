@@ -2,7 +2,7 @@
 
 ## Claim
 
-BayCAP's interval describes the accuracy that the classifier has *on average* over all target bags with a given prevalence (the population table $C\operatorname{diag}(\pi^Q)$). The paper scores that interval against the accuracy *of the bag at hand*, which is computed from its realised contingency table (`true_cts`). The two quantities differ, because on a finite bag the classifier is right on a random number of instances. We want to find out whether this mismatch makes BayCAP's intervals miscalibrated on the paper's datasets. If it does, we want to fix it with the *realised-table predictive*, which turns each posterior draw into a plausible table of the bag itself. The fix needs no target labels and no tuning. This matters because a CAP interval is useful only if it covers the quantity it is judged on, and BayCAP is the paper's Bayesian method.
+BayCAP's interval describes the accuracy that the classifier has *on average* over all target bags with a given prevalence (the population table $C\operatorname{diag}(\pi^Q)$). The paper scores that interval against the accuracy *of the bag at hand*, which is computed from its realised contingency table (`true_cts`). The two quantities differ, because on a finite bag the classifier is right on a random number of instances. We want to find out whether this mismatch makes BayCAP's intervals miscalibrated on the paper's datasets. If it does, we want to fix it with the *realised-table predictive*, which turns each posterior draw into a plausible table of the bag itself. The fix needs no target labels and no tuning. This matters because a CAP interval is useful only if it covers the quantity it is judged on, and BayCAP is the paper's Bayesian method. E2.1 showed that most of BayCAP's miscalibration is not a too-narrow interval but an interval centred on the wrong value, which the predictive cannot repair; the extension therefore also asks where this displacement comes from.
 
 ## Status
 
@@ -10,10 +10,10 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 |---|---|
 | `cap-ml` `ACC_BayesCAP` (population pushforward) | [implemented] |
 | `methods/baycap.py:BayCAP` with `estimand` $\in\{$population, realised$\}$ | [implemented, not evaluated] |
-| E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work-plan card WP-2) | [run], analysis below; choice of the E2.2 datasets pending |
-| E2.2, exact pilot (work-plan card WP-3) | [proposal], scheduled |
-| Candidate experiments E2.c1, E2.c2, E2.c3 | [proposal], not scheduled |
-| Prior on $C$ as the cause of the large-$K$ failures | [new hypothesis] |
+| E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work-plan card WP-2) | [run], analysis below |
+| E2.2, causes of the displacement, on stored results | [proposal] |
+| Candidate experiments E2.c1, E2.c2, E2.c4 | [proposal], not scheduled |
+| The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis] |
 
 The paper-related material of earlier versions (contributions, hypotheses, paper outline, figure plan) has been removed for now; the last version that contains it is commit `62d3ca0`.
 
@@ -21,7 +21,7 @@ The paper-related material of earlier versions (contributions, hypotheses, paper
 
 All experiments score every interval against the realised table of each target bag, as `main` does. They use the measures of the paper (AE, coverage, amplitude, Winkler score at $\alpha=0.05$), the $100$ APP bags of size $1000$ of `main` with the same seeds, and target labels only for scoring.
 
-E2.1 and E2.2 form a gate: together they decide whether the realised-table predictive changes BayCAP's intervals enough to be worth studying. If it does not, the extension stops at the diagnosis. The decision rule is at the end of this section.
+E2.1 and the exact run of candidate E2.c4 (once promoted) form a gate: together they decide whether the realised-table predictive changes BayCAP's intervals enough to be worth studying; the decision rule is at the end of this section. E2.2 explains the displacement that E2.1 found.
 
 ## E2.1: approximate check on stored results
 
@@ -42,25 +42,30 @@ E2.1 and E2.2 form a gate: together they decide whether the realised-table predi
 
   What this shows: BayCAP under-covers the realised accuracy on most pairs, but in most cases the cause is not an interval that is too narrow around the right value. Widening the interval by the bag-level fluctuation, which is all the predictive can do, rarely repairs coverage. On many pairs, and clearly on the large-$K$ datasets, the interval sits away from the true value (§T.5). Under the provisional decision rule below, E2.1 is neither a clear pass (far fewer than one pair in five is repaired) nor a clear fail (the ratio is small on about a third of the pairs, not on almost all). The pass/fail decision is not taken yet.
 
-## E2.2: exact pilot
+## E2.2: causes of the displacement
 
-**Why.** E2.1 approximates the predictive (one $\bar\rho$ per bag, a normal in place of the binomial sum, §T.4) and covers accuracy only. E2.2 checks the approximation and extends the comparison to macro-F1 and macro-K on a few datasets, running the exact predictive with `BayCAP`.
+**Why.** E2.1 found that BayCAP's interval misses the realised accuracy on most pairs because it is centred on the wrong value, and that widening it does not help. Three candidate causes could produce this, and each predicts a different pattern (§T.5–§T.8): (1) the uniform prior on the columns of $C$ pulls the recalls towards $1/K$, which shows up in the recall term of the error and grows with $K/n^s_j$; (2) an ill-conditioned $C$ amplifies systematic errors into a wrong $\hat\pi$, which shows up in the prevalence term and grows with the condition number; (3) the classifier performs poorly on the problem even on i.i.d. data. All three can be measured on stored data at no cost, and the result tells how much the exact predictive run (E2.c4) can be expected to change.
 
 - **Design.**
-  - **Inputs:** the `main` bags of $2$–$3$ datasets chosen from E2.1 (largest ratio, smallest ratio, one multiclass; suggested so far: `dry-bean`, $1.50$, and `poker_hand`, $0.07$), classifier LR.
-  - **Varied:** the pushforward only, population vs exact realised-table predictive (§T.3). `BayesCAP` and `BayesCAP-real` are `BayCAP` with `estimand="population"` and `estimand="realised"` and the same `random_state`, so they share the posterior draws.
-  - **Measures:** coverage, amplitude and Winkler score of both intervals, for vanilla accuracy, macro-F1 and macro-K; for accuracy, the error of the E2.1 approximation.
-  - **Estimand:** population table for `BayesCAP` and realised table for `BayesCAP-real`, both scored against the realised table.
-  - **Cost:** one NUTS run per bag, shared by the two methods ($2$–$3$ datasets × $100$ bags).
-- **Representation.** A table with one row per (dataset, metric) and, for `BayesCAP` and `BayesCAP-real`, columns for coverage, amplitude and Winkler score; for accuracy, an extra column with the coverage that E2.1 predicted for the predictive, to show how good the approximation is.
+  - **Inputs:** stored `main` results for `BayesCAP` at $\lvert U\rvert=1000$ (mean table `estim_cts`, realised table `true_cts`, accuracy samples `estim_acc_ranges`), all $75$ pairs; the stored validation posteriors of each classifier (`V_posteriors`) and the validation labels (`validation_y`), from which the validation counts $f_{ij}$ are rebuilt.
+  - **Varied:** nothing (analysis). The pairs differ in $K$, in $n^s_j$ and in classifier.
+  - **Measures:** vanilla accuracy only. Per bag, then averaged over the $100$ bags of each pair: coverage, amplitude and Winkler score of BayCAP; the shift $\hat A-A$ of the point estimate from the realised accuracy; its recall term and prevalence term (§T.5), which add up exactly to the shift; the prior part of the recall term, $\sum_j\pi_j\left(\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}\right)$, computed on the actual $V$; the mean absolute value of the prevalence term, since its sign depends on the bag; the prevalence error $\lVert\hat\pi-\pi\rVert_1$. Per pair: the condition number $\kappa_0(\hat C)$ of the rate matrix of $h$ on $V$, restricted to vectors summing to zero (§T.7); the accuracy of $h$ on $V$ (§T.8); $K$, and the minimum and median $n^s_j$.
+  - **Estimand:** population table (BayCAP as in `main`), scored against the realised table of each bag. The shift, its terms and the prior part use the bag's true class proportions and recalls, so they are an analysis of the error, not a method.
+  - **Cost:** none, no new runs.
+- **Representation.** Every table has one row per (dataset, classifier) pair, grouped by dataset and ordered by $K$, as LaTeX and a landscape PDF like `tables/estimand_gap.py`.
+  - **Table A, diagnostics:** $K$, minimum and median $n^s_j$, $\kappa_0(\hat C)$, accuracy of $h$ on $V$.
+  - **Table B, errors:** coverage, amplitude, Winkler score, shift, recall term, prior part of the recall term, prevalence term (mean and mean absolute value), $\lVert\hat\pi-\pi\rVert_1$.
+  - **Scatter for cause 1:** recall term against its prior part, one point per pair, coloured by $K$, with the line $y=x$; points on the line are pairs whose recall error is the prior's.
+  - **Scatter for causes 2 and 3:** $\kappa_0(\hat C)$ on the horizontal axis (log scale), accuracy of $h$ on $V$ on the vertical axis, one point per pair, marker by classifier; two panels, coloured by coverage and by shift.
+  - **How the causes are read:** cause 1 from how much of the recall term its prior part explains; cause 2 from the prevalence term and $\lVert\hat\pi-\pi\rVert_1$ against $\kappa_0(\hat C)$, and from under-coverage ordered along the horizontal axis; cause 3 from under-coverage ordered along the vertical axis instead; comparing the five classifiers within a dataset separates the causes from $K$. The evidence is correlational: the prior is not changed, so effects that also grow with $K/n^s_j$ cannot be ruled out.
 - **Analysis.** Not run.
 
-## Decision rule of the gate (provisional, to be revised after E2.2)
+## Decision rule of the gate (provisional)
 
-- *Pass* if, in E2.1 and confirmed by E2.2, at least one pair in five under-covers (coverage below $0.90$) and the predictive brings it within $[0.93,0.97]$ with a lower Winkler score.
+- *Pass* if, in E2.1 and confirmed by the exact run (E2.c4, once promoted), at least one pair in five under-covers (coverage below $0.90$) and the predictive brings it within $[0.93,0.97]$ with a lower Winkler score.
 - *Fail* if $\hat\sigma_g/\hat\sigma_p<0.3$ on almost every pair (the coverage then changes by about one percentage point or less), or if BayCAP over-covers and the predictive worsens the Winkler score everywhere.
 
-*Open point.* The rule counts as under-covering the pairs whose interval is displaced (coverage near $0$ for both pushforwards), which no pushforward can repair. E2.1 shows that these pairs are many. Whether to exclude them from the rule is not decided.
+All pairs count, including those whose interval is displaced (coverage near $0$ for both pushforwards), which no pushforward can repair (decision of 2026-10-20).
 
 # Candidate experiments
 
@@ -68,7 +73,8 @@ Ideas that came up while working on E2.1 and E2.2. They are not scheduled and ar
 
 - **E2.c1, diagnosis against the size of $V$.** *Why:* the toy predicts that BayCAP's coverage of the realised accuracy decreases as the number of validation instances per class grows (§T.3). *What it would show:* coverage and amplitude of BayCAP against the median $n^s_j$, one point per pair, with the displaced pairs marked. *Needs:* the E2.1 table only, no runs.
 - **E2.c2, cause of the miscalibration in width.** *Why:* two effects act in opposite directions on the width of the interval, the missing bag-level fluctuation (too narrow) and the fixed class counts of APP bags (too wide, §T.6). *What it would show:* a $2\times2$ table, pushforward (population / predictive) × bag protocol (APP / i.i.d. class counts), with coverage and amplitude in each cell. *Needs:* BayCAP reruns on the `main` bags, storing the table draws and the predicted counts, plus i.i.d. bags with the same prevalences.
-- **E2.c3, decomposition of BayCAP's bias.** *Why:* E2.1 found intervals displaced on large-$K$ datasets, and the uniform prior on $C$ predicts a shift of the recalls of size $(1-Kr_j)/(n^s_j+K)$ (§T.5). *What it would show:* per dataset, ordered by $K$, the bias of the point estimate split exactly into a recall term and a prevalence term, $\hat A-A=\sum_j\pi_j(\hat r_j-r_j)+\sum_j(\hat\pi_j-\pi_j)\,\hat r_j$, with $\pi$ the class proportions of the bag and $r$ its realised recalls, next to the recall term predicted by the prior. The prediction uses target labels (pooled recalls), so it is an analysis, not a method. A first computation outside the repository on 2026-10-14 matched the prediction on the large-$K$ datasets and also found biases the prior does not explain (mostly in the prevalence term on weak classifiers such as `wine-quality` and `poker_hand`; a positive recall term on `mammographic`); its numbers are not reported until E2.c3 reproduces them with a script in the repository. *Needs:* stored `main` results only, next to `tables/estimand_gap.py`.
+- **E2.c3** was absorbed into E2.2.
+- **E2.c4, exact predictive on all pairs.** *Why:* E2.1 approximates the predictive (one $\bar\rho$ per bag, a normal in place of the binomial sum, §T.4); the exact run validates the approximation and gives the confirmation the decision rule asks for. *What it would show:* for each pair, coverage, amplitude and Winkler score of the population and the realised pushforward, next to the coverage E2.1 predicted. *Needs:* `BayCAP` with `estimand="population"` and `estimand="realised"` and the same `random_state`, on all $75$ pairs and the $100$ `main` bags; one NUTS run per bag shared by the two pushforwards, about $7500$ runs; the table draws and $n^t$ stored in a sidecar file.
 
 # Theory
 
@@ -141,39 +147,88 @@ $$
 \sigma_g^2=\frac{1}{(N^Q)^2}\sum_i n^t_i\,\rho^{(r)}_{ii}\left(1-\rho^{(r)}_{ii}\right),
 $$
 
-with mean close to the population accuracy of the draw and variance $\sigma_g^2$. E2.1 makes two simplifications: it uses one $\bar\rho$ per bag (the stored mean table `estim_cts`, each row rescaled to one) instead of one per draw, and it replaces the sum of binomials with a normal distribution, which is accurate when the counts are large. Each approximate predictive sample is then the stored accuracy sample plus independent noise $\mathcal N(0,\hat\sigma_g^2)$. Both $n^t$ and $\bar\rho$ use no target labels. The ratio $\hat\sigma_g/\hat\sigma_p$, with $\hat\sigma_p$ the standard deviation of the stored samples, measures how much the predictive can widen the interval: under normality, adding independent noise multiplies the width by $\sqrt{1+(\hat\sigma_g/\hat\sigma_p)^2}$, so a ratio of $0.3$ widens it by about $4\%$. The approximation does not apply to macro-F1 or macro-K, whose off-diagonal cells matter; E2.2 checks it.
+with mean close to the population accuracy of the draw and variance $\sigma_g^2$. E2.1 makes two simplifications: it uses one $\bar\rho$ per bag (the stored mean table `estim_cts`, each row rescaled to one) instead of one per draw, and it replaces the sum of binomials with a normal distribution, which is accurate when the counts are large. Each approximate predictive sample is then the stored accuracy sample plus independent noise $\mathcal N(0,\hat\sigma_g^2)$. Both $n^t$ and $\bar\rho$ use no target labels. The ratio $\hat\sigma_g/\hat\sigma_p$, with $\hat\sigma_p$ the standard deviation of the stored samples, measures how much the predictive can widen the interval: under normality, adding independent noise multiplies the width by $\sqrt{1+(\hat\sigma_g/\hat\sigma_p)^2}$, so a ratio of $0.3$ widens it by about $4\%$. The approximation does not apply to macro-F1 or macro-K, whose off-diagonal cells matter; the exact run (E2.c4) would check it.
 
-## T.5 Why widening cannot repair a displaced interval
+## T.5 Displacement and the prior on $C$ (cause 1)
 
 *Intuition:* if an interval is centred on the wrong value, making it wider helps only when it becomes wide enough to reach the true value, and then it is too wide to be useful.
 
-The predictive only adds spread around the same centre. If BayCAP's point estimate is far from the realised accuracy compared with the width of the interval, the coverage stays near $0$, which is what E2.1 finds on `isolet` and `letter`. One possible cause is the prior on $C$ [new hypothesis]. A uniform Dirichlet on a column of $C$ behaves like one extra, imaginary validation instance in each of its $K$ cells. With $f_{jj}$ correct predictions out of $n^s_j$ validation instances of class $\omega_j$, and ignoring the little that $U$ says about $C$, the estimated recall becomes
+**Where the error goes.** Accuracy is the sum of the diagonal of the table, $A=\sum_j\pi_jr_j$, where $r_j=C_{jj}$ is the recall of class $\omega_j$: accuracy is the recalls averaged with weights $\pi_j$. BayCAP's point estimate has the same form, $\hat A=\sum_j\hat\pi_j\hat r_j$, with $\hat\pi_j$ and $\hat r_j$ read from its mean table. The difference splits exactly into two parts:
 
 $$
-\tilde r_j=\frac{f_{jj}+1}{n^s_j+K},
-\qquad
-\mathbb E[\tilde r_j]-r_j=\frac{1-Kr_j}{n^s_j+K},
+\hat A-A=\underbrace{\sum_j\pi_j(\hat r_j-r_j)}_{\text{recall term}}+\underbrace{\sum_j(\hat\pi_j-\pi_j)\,\hat r_j}_{\text{prevalence term}},
 $$
 
-which pulls every recall towards $1/K$. For a good classifier ($r_j\approx1$) the shift is about $-K/n^s_j$: negligible in binary problems, large when $K$ is not small compared with the number of validation instances per class, as in $26$-class datasets. The posterior is narrow at the same time, so the interval is displaced rather than too narrow. Candidate experiment E2.c3 would test this; the choice of a prior that avoids the shift belongs to [[ext10_baycap_priors_tempering|Extension 10]].
+where $\pi$ and $r$ are the class proportions and realised recalls of the bag. The recall term is the error from estimating how good the classifier is; the prevalence term is the error from estimating how many instances of each class the bag contains. Accuracy is linear in the table, so the mean of BayCAP's accuracy samples is exactly the accuracy of its mean table, and the split applies to the point estimate as it is.
+
+**The prior as imaginary counts.** A column $C_{:j}$ lists the probabilities that an instance of class $\omega_j$ is predicted as each of the $K$ classes. It works like a die with $K$ faces: each validation instance of class $\omega_j$ is a roll, and $f_{ij}$ counts how often face $\omega_i$ came out. The prior $\operatorname{Dir}(\mathbf 1)$ says that every composition of the column is equally likely. A Dirichlet prior has a convenient property: after observing the counts, the posterior is again a Dirichlet whose parameters are the prior's plus the counts. The prior acts exactly like imaginary rolls added before the data, here one roll on each of the $K$ faces. The mean of a face is its count divided by the total count, so the recall becomes
+
+$$
+\tilde r_j=\frac{f_{jj}+1}{n^s_j+K}
+$$
+
+instead of the plain $f_{jj}/n^s_j$; with $K=2$ this is Laplace's rule for a coin, $(h+1)/(n+2)$. The difference $\tilde r_j-f_{jj}/n^s_j$ is the prior part of the recall error, the quantity E2.2 measures. Averaged over possible validation sets, where $f_{jj}$ is on average $n^s_jr_j$, it equals
+
+$$
+\mathbb E[\tilde r_j]-r_j=\frac{n^s_jr_j+1}{n^s_j+K}-r_j=\frac{1-Kr_j}{n^s_j+K},
+$$
+
+which is negative whenever the classifier beats guessing ($r_j>1/K$): every recall is pulled towards $1/K$. For a good classifier the pull is about $-K/n^s_j$: negligible for binary problems, large when $K$ is comparable to the number of validation instances per class.
+
+**Why the data do not undo it.** Bayes' rule combines prior and data once, $\text{posterior}\propto\text{prior}\times\text{likelihood}$; the sampler converges to this combination, not to the true $C$. The prior fades only when the real counts $n^s_j$ greatly outnumber the $K$ imaginary ones. Moreover, "every column equally likely" is not neutral about the recall: under $\operatorname{Dir}(\mathbf 1)$ a single entry of the column follows a $\operatorname{Beta}(1,K-1)$ distribution, with mean $1/K$ and $P(r_j>0.9)=0.1^{K-1}$, so with $26$ classes the prior considers a recall above $0.9$ practically impossible. The target bag cannot correct this: its predicted counts depend on $C$ and $\pi^Q$ only through the $K$ numbers $C\pi^Q$, far too few to pin down the $K^2$ entries of $C$.
+
+**Why the interval is displaced and not just wide.** The posterior standard deviation of a recall is about $\sqrt{\tilde r_j(1-\tilde r_j)/(n^s_j+K+1)}$, the usual standard error of a proportion with the imaginary counts included. The shift shrinks like $K/n^s_j$, the standard deviation only like $1/\sqrt{n^s_j}$, so with large $K$ the shift is several standard deviations. Averaging into accuracy makes it worse: the random errors of the $K$ recalls partly cancel, so the standard deviation of the accuracy is smaller than that of each recall, while the prior pushes every recall in the same direction, so the shifts add up. The result is a narrow interval in the wrong place, and the predictive, which only adds spread around the same centre, cannot repair it.
+
+Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$ (one imaginary count per column instead of $K$), are studied in [[ext10_baycap_priors_tempering|Extension 10]].
+
+**The prior on $\pi^Q$ is not a cause.** `main` draws the target prevalences uniformly over all possible prevalence vectors (quapy's `UPP`), which is exactly BayCAP's default prior $\operatorname{Dir}(\mathbf 1)$ on $\pi^Q$. When the prior matches how the bags are generated, the interval for $\pi^Q$ covers at the nominal rate on average over the bags, so this prior alone cannot explain the under-coverage.
 
 ## T.6 Other effects on the width
 
 - **Fixed class counts (too wide).** $\mathcal L_U$ treats the class of each target instance as random, while APP bags have fixed class counts. The model therefore expects more variation in $n^t$ than there is, trusts the counts too little, and makes the interval wider. In the toy, at $n_s=5000$, coverage of the population accuracy is $0.97$ on APP bags and $0.94$ on bags with random class counts, so the effect is small there. Candidate E2.c2 would measure it.
 - **Uncertainty on $C$ (modelled).** A finite $V$ leaves real uncertainty about $C$; $\mathcal L_V$ represents it, and it dominates when $V$ has few instances per class.
 
+## T.7 Conditioning of $C$ (cause 2)
+
+*Intuition:* if the classifier behaves almost the same on two classes, its predictions say little about how many instances of each class the bag contains, and every small error in $C$ or in the counts becomes a large error in $\hat\pi$.
+
+**A binary example** (illustrative numbers). With $\mathrm{TPR}=C_{11}$ and $\mathrm{FPR}=C_{10}$, the fraction of the bag predicted positive is $q=\mathrm{FPR}+(\mathrm{TPR}-\mathrm{FPR})\,\pi_1$, so $\pi_1=(q-\mathrm{FPR})/(\mathrm{TPR}-\mathrm{FPR})$. With $\mathrm{TPR}=0.9$ and $\mathrm{FPR}=0.1$ the denominator is $0.8$; with $\mathrm{TPR}=0.55$ and $\mathrm{FPR}=0.45$ it is $0.1$, and the chance error of $q$ on a bag of $1000$ instances, about $\pm0.016$, becomes about $\pm0.16$ on $\pi_1$. Any error in $q$, $\mathrm{TPR}$ or $\mathrm{FPR}$ is multiplied by $1/(\mathrm{TPR}-\mathrm{FPR})$.
+
+**The condition number.** For $K$ classes the role of $\mathrm{TPR}-\mathrm{FPR}$ is played by the singular values of $C$, which measure how much $C$ stretches or shrinks vectors in each direction. Singular values are used rather than eigenvalues because $C$ is not symmetric: its eigenvalues can be complex and do not measure stretching. The condition number $\kappa=\sigma_{\max}/\sigma_{\min}$ bounds how much relative errors grow when $\pi$ is recovered from $q=C\pi$:
+
+$$
+\frac{\lVert\delta\pi\rVert}{\lVert\pi\rVert}\lesssim\kappa\left(\frac{\lVert\delta q\rVert}{\lVert q\rVert}+\frac{\lVert\delta C\rVert}{\lVert C\rVert}\right),
+$$
+
+covering both chance errors in the counts and systematic errors in $C$, such as the prior's. Prevalences sum to one, so every error in $\pi$ or in $q$ sums to zero, and $C$ maps such vectors to vectors that also sum to zero. E2.2 therefore uses $\kappa_0$, the condition number computed only over vectors that sum to zero; $\kappa_0\ge1$, with $\kappa_0=1$ for a perfect classifier.
+
+**Limits of the measure.**
+
+- It is not specific to accuracy. If two classes are completely confused but have the same recall, $C$ is singular ($\kappa_0=\infty$) and their prevalences cannot be told apart, yet the accuracy is still exactly identifiable, because exchanging prevalence between two classes with the same recall does not change it.
+- $\hat C$ is estimated on $V$: a column of a rare class rests on few instances, so its $\kappa_0$ is noisy; $n^s_j$ is reported next to it.
+- It tends to grow with $K$, because there are more directions in which two columns can be close; comparing the classifiers within a dataset avoids mixing it with $K$, which also drives cause 1.
+
+**The prior and the conditioning** [new hypothesis]. The imaginary counts pull every column towards the flat column $(1/K,\dots,1/K)$, which makes the columns more alike and amplifies errors more. $\kappa_0$ cannot measure this: when all classes have the same $n^s_j$, the prior multiplies every singular value on the vectors that sum to zero by the same factor $n^s_j/(n^s_j+K)$, so their ratio does not change. E2.2 does not measure this effect.
+
+## T.8 Difficulty of the problem on i.i.d. data (cause 3)
+
+*Intuition:* a classifier that is often wrong even without any shift carries little information about the classes.
+
+The difficulty of the problem is measured by the accuracy of $h$ on $V$, which is drawn from the source distribution without any prior shift. No cross-validation is needed: BayCAP evaluates the classifier $h$ that is already trained, and its predictions on $V$ are stored; cross-validating on $V$ would train other classifiers on less data. Difficulty and conditioning are related but different: a weak classifier often has similar columns, but a $26$-class classifier with modest recalls can still separate the classes well. In a correct model, low accuracy alone widens the interval rather than displacing it, so if displacement follows the accuracy on $V$ but not $\kappa_0$, it points to a mechanism not described here.
+
 # Implementation
 
-Components for E2.1 and E2.2:
+Components:
 
-- **`methods/baycap.py:BayCAP`** (for E2.2): a copy of `cap-ml` `ACC_BayesCAP` (`fit`, `model`, `sample_posterior`, `predict_ct_range`, `predict_ct`; copied from commit `bb20aa5`) with the hyperparameter `estimand` $\in\{$`"population"`, `"realised"`$\}$, default `"population"`.
+- **`tables/estimand_gap.py`** (E2.1): per-pair table, gate summary, suggested pilot datasets, LaTeX and PDF output. It must run where the `main` results are stored.
+- **E2.2 analysis** [proposal]: a script in `src/uncawe/tables/`, next to `estimand_gap.py`, reusing its loaders (`_load_results`, `validation_size`, `pred_counts`) and the validation loader of `src/uncawe/pretrain/dataset.py`. It rebuilds $f_{ij}$ from the stored validation posteriors and labels, computes the measures of E2.2 per bag and per pair, and writes Tables A and B and the two scatters. $\kappa_0$ is computed from the singular values of $Q^\top\hat CQ$, with $Q$ an orthonormal basis of the vectors summing to zero.
+- **`methods/baycap.py:BayCAP`** (for E2.c4): a copy of `cap-ml` `ACC_BayesCAP` (`fit`, `model`, `sample_posterior`, `predict_ct_range`, `predict_ct`; copied from commit `bb20aa5`) with the hyperparameter `estimand` $\in\{$`"population"`, `"realised"`$\}$, default `"population"`.
   - `"population"` returns the posterior tables $C^{(r)}\operatorname{diag}(\pi^{(r)})$, stored transposed as in `cap-ml`, exactly as `ACC_BayesCAP`.
   - `"realised"` returns realised-table predictive samples: for each draw and each predicted class $\omega_i$ (a column in the `cap` layout), the true-class counts are drawn as $\operatorname{Mult}(n^t_i,\rho^{(r)}_{i\cdot})$ and the table is divided by $N^Q$.
   - NUTS keeps `PRNGKey(random_state)`; the multinomial draws use a NumPy `Generator` seeded from `random_state`, so both values of `estimand` with the same `random_state` share the posterior draws.
   - The realised pushforward is a module-level function (`realised_tables`), reusable on any table draws.
   - Method names in experiments: `BayesCAP` (population, as in `main`) and `BayesCAP-real` (realised).
-- **`tables/estimand_gap.py`** (E2.1): per-pair table, gate summary, suggested pilot datasets, LaTeX and PDF output. It must run where the `main` results are stored.
-- **Experiment `calibration`** (E2.2, configuration `q0` of work-plan card WP-3) [proposal]: writes to `cap.env["OUT_DIR"]/uncawe/calibration` in the standard result schema.
+- **Experiment `calibration`** (E2.c4) [proposal]: writes to `cap.env["OUT_DIR"]/uncawe/calibration` in the standard result schema.
 
 Tests:
 
@@ -181,12 +236,13 @@ Tests:
 - with the same `random_state`, both values of `estimand` use identical NUTS draws;
 - realised tables have predicted-class margins equal to $n^t/N^Q$ and, with $C=I$, return the observed counts exactly;
 - for a fixed draw, the mean of many realised count tables has row $i$ equal to $n^t_i\,\rho^{(r)}_{i\cdot}$;
-- a fixed `random_state` gives identical outputs; the layout is checked against a hand-computed $2\times2$ example (guards against transposed tables).
+- a fixed `random_state` gives identical outputs; the layout is checked against a hand-computed $2\times2$ example (guards against transposed tables);
+- E2.2: the recall and prevalence terms sum exactly to the shift on a hand-computed table; the prior part equals $\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}$ on a hand-computed validation table; $\kappa_0$ matches hand-computed $2\times2$ and $3\times3$ examples, and is infinite for the singular one.
 
 Reproducibility and comparability:
 
-- `main` and `binform` and their output paths are unchanged; E2.1 only reads stored results;
-- E2.2 uses the same bags, seeds and NUTS settings as `main`, so its `BayesCAP` rows should agree with `main` statistically; bitwise agreement is not expected across JAX platforms;
+- `main` and `binform` and their output paths are unchanged; E2.1 and E2.2 only read stored results;
+- E2.c4 would use the same bags, seeds and NUTS settings as `main`, so its `BayesCAP` rows should agree with `main` statistically; bitwise agreement is not expected across JAX platforms;
 - every row records the prior, the seeds and the pushforward (population or predictive).
 
 # Appendix
@@ -197,7 +253,7 @@ Reproducibility and comparability:
 
 ## B. Relation to other extensions
 
-- **[[ext10_baycap_priors_tempering|Extension 10]]**: priors (on $\pi^Q$ and on $C$) and tempering of BayCAP (temperature $\tau$); it compares tempering with the realised-table predictive and studies a prior on $C$ that avoids the shift of §T.5.
+- **[[ext10_baycap_priors_tempering|Extension 10]]**: priors (on $\pi^Q$ and on $C$) and tempering of BayCAP (temperature $\tau$); it compares tempering with the realised-table predictive and studies priors on $C$ that avoid the shift of §T.5, such as $\operatorname{Dir}(1/K)$.
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics.
 - **[[ext3_uncertainty_budget|Extension 3]]**: the estimand gap is its finite-$U$ term; its regime map varies $\lvert U\rvert$ and $\lvert V\rvert$.
 - **[[extensions_to_evaluate#B. Transductive BayCAP and the link to CBPE [new]|Proposal B]]**: keeps the soft-posterior (CBPE mixture) variant of the realised-table predictive.
