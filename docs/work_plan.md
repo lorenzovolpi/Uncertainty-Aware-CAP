@@ -121,7 +121,7 @@ This part tracks all implementation and experimentation work of the project: wha
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
 | WP-2 | Estimand-gap check of BayCAP on stored `main` results | analysis | In progress | none | 2026-10-14 |
-| WP-3 | Exact pilot of the realised-table predictive for BayCAP | experiment | Scheduled | WP-2 | 2026-10-14 |
+| WP-3 | Causes of BayCAP's displacement on stored `main` results | analysis | Scheduled | none | 2026-10-20 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -173,18 +173,23 @@ Entry template:
 - **Done when:** the per-pair table is stored under `<OUT_DIR>/uncawe/tables/` and the datasets for WP-3 are chosen (largest ratio, smallest ratio, one multiclass), recorded in the log.
 - **Log:** 2026-10-14: card added. 2026-10-14: started on branch `wp-2/estimand-gap-check`; `main` results available locally (`OUT_DIR=./output`). 2026-10-14: `tables/estimand_gap.py` and `tests/test_estimand_gap.py` committed on the branch and pushed (commit `8ba027e`), PR #1 into `devel` opened, pending approval; per-pair table written to `<OUT_DIR>/uncawe/tables/estimand_gap/` (local run, seed 0). Gate counts (75 pairs): 53 under-cover (coverage below $0.90$), 3 brought within $[0.93,0.97]$ with lower Winkler, 24 with $\hat\sigma_g/\hat\sigma_p<0.3$, 56 with lower Winkler under the approximation. Suggested pilot datasets (LR): `dry-bean` (largest ratio, $1.50$), `poker_hand` (smallest, $0.07$); not yet chosen. Finding: on large-$K$ datasets BayCAP is biased low (LR: `isolet` $-0.18$, `letter` $-0.07$), consistent with the uniform Dirichlet prior on the columns of $C$ shrinking recalls towards $1/K$; the predictive cannot correct a bias.
 
-### WP-3 Exact pilot of the realised-table predictive for BayCAP
+### WP-3 Causes of BayCAP's displacement on stored `main` results
 
-- **Kind / status:** experiment / Scheduled
+- **Kind / status:** analysis / Scheduled
 - **Source:** [[ext2_baycap]] (E2.2)
-- **Goal:** check exactly, on a few datasets and for all metrics, whether the realised-table predictive improves BayCAP's calibration, and validate the approximation of WP-2 on accuracy. Provisional decision rule: *pass* if at least one pair in five under-covers (coverage below $0.90$) and the predictive brings it within $[0.93,0.97]$ with a lower Winkler score; *fail* if $\hat\sigma_g/\hat\sigma_p<0.3$ on almost every pair of WP-2, or if the predictive worsens the Winkler score everywhere.
-- **Estimand:** both (`BayesCAP`: population table; `BayesCAP-real`: realised table), always scored against the realised table of each bag.
-- **Scope:** new experiment `experiments/calibration.py` (configuration `q0`), writing to `<OUT_DIR>/uncawe/calibration`. Datasets: the 2–3 chosen in WP-2; classifier LR; the $100$ `main` target bags with the same seeds; metrics vanilla accuracy, macro-F1, macro-K. Methods: `BayesCAP` and `BayesCAP-real` (`methods/baycap.py:BayCAP`, §II.5) with the same `random_state`, so they share the posterior draws. Standard result schema; an analysis table with coverage, amplitude, Winkler score per method and the error of the WP-2 approximation on accuracy.
-- **Depends on:** WP-2 (dataset choice). The method of WP-1 is done (§II.5).
-- **Comparability:** `main` is unchanged. Same bags, seeds and NUTS settings as `main`, so `BayesCAP` here should agree with `main`'s `BayesCAP` statistically; bitwise agreement is not expected across JAX platforms (§V.1).
+- **Goal:** explain why BayCAP's accuracy intervals are displaced on most pairs. Per (dataset, classifier) pair and per bag, split the error of BayCAP's point estimate into a recall term and a prevalence term, $\hat A-A=\sum_j\pi_j(\hat r_j-r_j)+\sum_j(\hat\pi_j-\pi_j)\hat r_j$. Measure the prior part of the recall term on the actual validation counts, $\sum_j\pi_j\left(\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}\right)$. Measure the conditioning of $\hat C$ with $\kappa_0$, the condition number on vectors summing to zero, and the difficulty of the problem with the accuracy of $h$ on $V$.
+- **Estimand:** population table (BayCAP as in `main`), scored against the realised table (`true_cts`); the decomposition uses target labels and is an analysis.
+- **Scope:** a script in `src/uncawe/tables/` next to `estimand_gap.py`; vanilla accuracy, $\lvert U\rvert=1000$, all 75 pairs. Outputs:
+  - Table A (diagnostics), one row per pair: $K$, minimum and median $n^s_j$, $\kappa_0(\hat C)$, accuracy on $V$;
+  - Table B (errors), one row per pair: coverage, amplitude, Winkler score, shift, recall term, prior part, prevalence term (mean and mean absolute value), $\lVert\hat\pi-\pi\rVert_1$;
+  - both tables as LaTeX and PDF;
+  - two scatter plots;
+  - tests on hand-computed tables, including a singular $C$.
+- **Depends on:** stored `main` results and pretrain validation posteriors and labels (`make pull-results`, `make fetch-data`).
+- **Comparability:** read-only on stored results.
 - **Deviations from Part V:** none.
-- **Done when:** the `q0` configuration has stored results under `<OUT_DIR>/uncawe/calibration/` and the pass/fail decision is recorded in the log and in [[ext2_baycap]].
-- **Log:** 2026-10-14: card added.
+- **Done when:** the tables and plots are stored under `<OUT_DIR>/uncawe/tables/` and the E2.2 analysis is written in [[ext2_baycap]].
+- **Log:** 2026-10-20: card added, replacing the earlier WP-3 (exact pilot of the realised-table predictive), which is discarded; the exact run is candidate E2.c4 of [[ext2_baycap]].
 
 # Part IV: Pending fixes and known divergences
 

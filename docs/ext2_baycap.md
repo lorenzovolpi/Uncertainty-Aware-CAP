@@ -11,7 +11,7 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 | `cap-ml` `ACC_BayesCAP` (population pushforward) | [implemented] |
 | `methods/baycap.py:BayCAP` with `estimand` $\in\{$population, realised$\}$ | [implemented, not evaluated] |
 | E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work-plan card WP-2) | [run], analysis below |
-| E2.2, causes of the displacement, on stored results | [proposal] |
+| E2.2, causes of the displacement, on stored results (work-plan card WP-3) | [proposal], scheduled |
 | Candidate experiments E2.c1, E2.c2, E2.c4 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis] |
 
