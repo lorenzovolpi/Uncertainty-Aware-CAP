@@ -48,10 +48,12 @@ EXP_predist          := python -m uncawe.predist
 EXP_tables-main      := python -m uncawe.tables.main --classic
 EXP_tables-rank      := python -m uncawe.tables.rank --classic
 EXP_tables-binform   := python -m uncawe.tables.binform
+EXP_tables-displacement := python -m uncawe.tables.displacement --tables
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
 EXP_plot-binform     := python -m uncawe.plots.binform_simplex
+EXP_plot-displacement := python -m uncawe.plots.displacement
 EXP_test             := python -m unittest discover -s tests
 
 EXPERIMENTS := $(patsubst EXP_%,%,$(filter EXP_%,$(.VARIABLES)))

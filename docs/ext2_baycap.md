@@ -11,7 +11,7 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 | `cap-ml` `ACC_BayesCAP` (population pushforward) | [implemented] |
 | `methods/baycap.py:BayCAP` with `estimand` $\in\{$population, realised$\}$ | [implemented, not evaluated] |
 | E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work plan §II.10) | [run], analysis below |
-| E2.2, causes of the displacement, on stored results (work-plan card WP-3) | [proposal], scheduled |
+| E2.2, causes of the displacement, on stored results (work-plan card WP-3; `tables/displacement.py`, `plots/displacement.py`) | [implemented, not run] |
 | Candidate experiments E2.c1, E2.c2, E2.c4 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis] |
 
@@ -49,15 +49,15 @@ E2.1 and the exact run of candidate E2.c4 (once promoted) form a gate: together 
 - **Design.**
   - **Inputs:** stored `main` results for `BayesCAP` at $\lvert U\rvert=1000$ (mean table `estim_cts`, realised table `true_cts`, accuracy samples `estim_acc_ranges`), all $75$ pairs; the stored validation posteriors of each classifier (`V_posteriors`) and the validation labels (`validation_y`), from which the validation counts $f_{ij}$ are rebuilt.
   - **Varied:** nothing (analysis). The pairs differ in $K$, in $n^s_j$ and in classifier.
-  - **Measures:** vanilla accuracy only. Per bag, then averaged over the $100$ bags of each pair: coverage, amplitude and Winkler score of BayCAP; the shift $\hat A-A$ of the point estimate from the realised accuracy; its recall term and prevalence term (§T.5), which add up exactly to the shift; the prior part of the recall term, $\sum_j\pi_j\left(\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}\right)$, computed on the actual $V$; the mean absolute value of the prevalence term, since its sign depends on the bag; the prevalence error $\lVert\hat\pi-\pi\rVert_1$. Per pair: the condition number $\kappa_0(\hat C)$ of the rate matrix of $h$ on $V$, restricted to vectors summing to zero (§T.7); the accuracy of $h$ on $V$ (§T.8); $K$, and the minimum and median $n^s_j$.
+  - **Measures:** vanilla accuracy only. Per bag, then averaged over the $100$ bags of each pair: coverage, amplitude and Winkler score of BayCAP; the shift $\hat A-A$ of the point estimate from the realised accuracy; its recall term and prevalence term (§T.5), which add up exactly to the shift; the prior part of the recall term, $\sum_j\pi_j\left(\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}\right)$, computed on the actual $V$; the mean absolute value of the prevalence term, since its sign depends on the bag; the prevalence error $\lVert\hat\pi-\pi\rVert_1$. Per pair: the condition number $\kappa_0(\hat C)$ of the rate matrix of $h$ on $V$, restricted to vectors summing to zero, and the absolute amplification $1/\sigma_{\min}$ on the same vectors, the only one of the two that is informative when $K=2$ (§T.7); the accuracy of $h$ on $V$ (§T.8); $K$, and the minimum and median $n^s_j$.
   - **Estimand:** population table (BayCAP as in `main`), scored against the realised table of each bag. The shift, its terms and the prior part use the bag's true class proportions and recalls, so they are an analysis of the error, not a method.
   - **Cost:** none, no new runs.
 - **Representation.** Every table has one row per (dataset, classifier) pair, grouped by dataset and ordered by $K$, as LaTeX and a landscape PDF like `tables/estimand_gap.py`.
-  - **Table A, diagnostics:** $K$, minimum and median $n^s_j$, $\kappa_0(\hat C)$, accuracy of $h$ on $V$.
+  - **Table A, diagnostics:** $K$, minimum and median $n^s_j$, $\kappa_0(\hat C)$, $1/\sigma_{\min}$, accuracy of $h$ on $V$.
   - **Table B, errors:** coverage, amplitude, Winkler score, shift, recall term, prior part of the recall term, prevalence term (mean and mean absolute value), $\lVert\hat\pi-\pi\rVert_1$.
   - **Scatter for cause 1:** recall term against its prior part, one point per pair, coloured by $K$, with the line $y=x$; points on the line are pairs whose recall error is the prior's.
-  - **Scatter for causes 2 and 3:** $\kappa_0(\hat C)$ on the horizontal axis (log scale), accuracy of $h$ on $V$ on the vertical axis, one point per pair, marker by classifier; two panels, coloured by coverage and by shift.
-  - **How the causes are read:** cause 1 from how much of the recall term its prior part explains; cause 2 from the prevalence term and $\lVert\hat\pi-\pi\rVert_1$ against $\kappa_0(\hat C)$, and from under-coverage ordered along the horizontal axis; cause 3 from under-coverage ordered along the vertical axis instead; comparing the five classifiers within a dataset separates the causes from $K$. The evidence is correlational: the prior is not changed, so effects that also grow with $K/n^s_j$ cannot be ruled out.
+  - **Scatter for causes 2 and 3:** $1/\sigma_{\min}$ on the horizontal axis (log scale; pairs with a singular $\hat C$ are counted, not drawn), accuracy of $h$ on $V$ on the vertical axis, one point per pair, marker by classifier; two panels, coloured by coverage and by shift.
+  - **How the causes are read:** cause 1 from how much of the recall term its prior part explains; cause 2 from the prevalence term and $\lVert\hat\pi-\pi\rVert_1$ against $1/\sigma_{\min}$ and $\kappa_0(\hat C)$, and from under-coverage ordered along the horizontal axis; cause 3 from under-coverage ordered along the vertical axis instead; comparing the five classifiers within a dataset separates the causes from $K$. The evidence is correlational: the prior is not changed, so effects that also grow with $K/n^s_j$ cannot be ruled out.
 - **Analysis.** Not run.
 
 ## Decision rule of the gate (provisional)
@@ -202,6 +202,8 @@ $$
 
 covering both chance errors in the counts and systematic errors in $C$, such as the prior's. Prevalences sum to one, so every error in $\pi$ or in $q$ sums to zero, and $C$ maps such vectors to vectors that also sum to zero. E2.2 therefore uses $\kappa_0$, the condition number computed only over vectors that sum to zero; $\kappa_0\ge1$, with $\kappa_0=1$ for a perfect classifier.
 
+**The absolute amplification** [new hypothesis, 2026-10-20]. With $K=2$ the vectors that sum to zero form a single direction, so $C$ acts on them as one number, $\mathrm{TPR}-\mathrm{FPR}$, and $\kappa_0=1$ for every binary classifier, however poor: a ratio of the largest to the smallest stretching is uninformative when there is only one stretching. The binary example above uses instead the factor $1/(\mathrm{TPR}-\mathrm{FPR})$, which multiplies absolute errors. Its general form is $1/\sigma_{\min}$, with $\sigma_{\min}$ the smallest singular value of $C$ on the vectors that sum to zero: an error $\delta q$ in the predicted proportions becomes an error of up to $\lVert\delta q\rVert/\sigma_{\min}$ in $\hat\pi$. E2.2 reports both: $1/\sigma_{\min}$ compares pairs of any $K$, including binary ones, while $\kappa_0$ tells, for $K>2$, whether the amplification concerns only some directions.
+
 **Limits of the measure.**
 
 - It is not specific to accuracy. If two classes are completely confused but have the same recall, $C$ is singular ($\kappa_0=\infty$) and their prevalences cannot be told apart, yet the accuracy is still exactly identifiable, because exchanging prevalence between two classes with the same recall does not change it.
@@ -221,7 +223,8 @@ The difficulty of the problem is measured by the accuracy of $h$ on $V$, which i
 Components:
 
 - **`tables/estimand_gap.py`** (E2.1): per-pair table, gate summary, suggested pilot datasets, LaTeX and PDF output. It must run where the `main` results are stored.
-- **E2.2 analysis** [proposal]: a script in `src/uncawe/tables/`, next to `estimand_gap.py`, reusing its loaders (`_load_results`, `validation_size`, `pred_counts`) and the validation loader of `src/uncawe/pretrain/dataset.py`. It rebuilds $f_{ij}$ from the stored validation posteriors and labels, computes the measures of E2.2 per bag and per pair, and writes Tables A and B and the two scatters. $\kappa_0$ is computed from the singular values of $Q^\top\hat CQ$, with $Q$ an orthonormal basis of the vectors summing to zero.
+- **`tables/displacement.py`** (E2.2, work-plan card WP-3): reuses `load_results` and `booktabs_clines` of `estimand_gap.py`; it rebuilds $f_{ij}$ as `BayCAP.fit` does, from the stored validation posteriors (`PretrainInfo.load_posteriors`) and the validation labels (`PretrainInfo.load_dataset_bundle`), computes the measures of E2.2 per bag and per pair, and writes the per-pair CSV and Tables A and B (LaTeX and landscape PDF) under `<OUT_DIR>/uncawe/tables/displacement/`. $\kappa_0$ and $1/\sigma_{\min}$ come from the singular values of $Q^\top\hat CQ$, with $Q$ an orthonormal basis of the vectors summing to zero; both are infinite when $\hat C$ is singular on them. It also reports, per pair, the largest gap between the mean of the accuracy samples and the accuracy of the mean table, which is zero up to rounding because accuracy is linear.
+- **`plots/displacement.py`** (E2.2): both scatters, from the per-pair table, under `<OUT_DIR>/uncawe/plots/main/displacement/`.
 - **`methods/baycap.py:BayCAP`** (for E2.c4): a copy of `cap-ml` `ACC_BayesCAP` (`fit`, `model`, `sample_posterior`, `predict_ct_range`, `predict_ct`; copied from commit `bb20aa5`) with the hyperparameter `estimand` $\in\{$`"population"`, `"realised"`$\}$, default `"population"`.
   - `"population"` returns the posterior tables $C^{(r)}\operatorname{diag}(\pi^{(r)})$, stored transposed as in `cap-ml`, exactly as `ACC_BayesCAP`.
   - `"realised"` returns realised-table predictive samples: for each draw and each predicted class $\omega_i$ (a column in the `cap` layout), the true-class counts are drawn as $\operatorname{Mult}(n^t_i,\rho^{(r)}_{i\cdot})$ and the table is divided by $N^Q$.
@@ -237,7 +240,7 @@ Tests:
 - realised tables have predicted-class margins equal to $n^t/N^Q$ and, with $C=I$, return the observed counts exactly;
 - for a fixed draw, the mean of many realised count tables has row $i$ equal to $n^t_i\,\rho^{(r)}_{i\cdot}$;
 - a fixed `random_state` gives identical outputs; the layout is checked against a hand-computed $2\times2$ example (guards against transposed tables);
-- E2.2: the recall and prevalence terms sum exactly to the shift on a hand-computed table; the prior part equals $\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}$ on a hand-computed validation table; $\kappa_0$ matches hand-computed $2\times2$ and $3\times3$ examples, and is infinite for the singular one.
+- E2.2: the recall and prevalence terms sum exactly to the shift on a hand-computed table; the prior part equals $\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}$ on a hand-computed validation table; $\kappa_0$ and $1/\sigma_{\min}$ match hand-computed $2\times2$ ($\kappa_0=1$, $1/\sigma_{\min}=1/(\mathrm{TPR}-\mathrm{FPR})$) and $3\times3$ examples and are infinite for singular ones; the recall and prevalence terms add up to the shift also on a bag with an absent class; $\hat C$ is in the paper's layout (`tests/test_displacement.py`).
 
 Reproducibility and comparability:
 
