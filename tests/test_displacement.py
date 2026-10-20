@@ -4,6 +4,9 @@ import numpy as np
 import pandas as pd
 
 from uncawe.tables.displacement import (
+    COLUMNS,
+    _latex_longtable,
+    _styled_table,
     class_props_and_recalls,
     conditioning,
     error_terms,
@@ -129,6 +132,27 @@ class DisplacementTest(unittest.TestCase):
         self.assertEqual((ternary["kappa0"], ternary["inv_sigma_min"]), (1.0, 1.0))
         self.assertEqual(ternary["min_val_per_class"], 10)
         self.assertEqual(ternary["median_val_per_class"], 20)
+
+    def test_single_table_layout(self):
+        table = pd.DataFrame(
+            {
+                "dataset": ["letter", "letter"],
+                "classifier": ["LR", "kNN"],
+                "n_classes": [26, 26],
+                "min_val_per_class": [257, 257],
+                "median_val_per_class": [268.5, 268.5],
+                **{col: [0.5, 0.25] for col in COLUMNS},
+            }
+        )
+        table["kappa0"] = [np.inf, 2.0]
+        styled = _styled_table(table)
+        self.assertEqual(list(styled.data.columns), list(COLUMNS.values()))
+        self.assertEqual(styled.data.index.nlevels, 5)
+        latex = _latex_longtable(table)
+        for group in ("diagnostics", "interval", "error"):
+            self.assertIn(group, latex)
+        self.assertIn("$\\infty$", latex)
+        self.assertIn("\\label{tab:displacement}", latex)
 
 
 if __name__ == "__main__":

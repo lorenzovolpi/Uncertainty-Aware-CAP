@@ -18,8 +18,8 @@ $Q^\\top\\hat CQ$ ($Q$ an orthonormal basis of those vectors): $\\kappa_0=\\sigm
 absolute amplification $1/\\sigma_{\\min}$. With $K=2$, $Q^\\top\\hat CQ=\\mathrm{TPR}-\\mathrm{FPR}$, so $\\kappa_0=1$
 and only $1/\\sigma_{\\min}$ is informative. The difficulty of the problem is the accuracy of $h$ on $V$.
 
-Outputs, under ``<OUT_DIR>/uncawe/tables/displacement/``: a per-pair CSV and, for Table A (diagnostics) and Table B
-(errors), a LaTeX tabular fragment, a longtable and a standalone landscape document. Tables follow the ``cap-ml``
+Outputs, under ``<OUT_DIR>/uncawe/tables/displacement/``: a per-pair CSV and one table (diagnostics, interval scores
+and error terms side by side) as a LaTeX tabular fragment, a longtable and a standalone landscape document. Tables follow the ``cap-ml``
 layout (true classes on rows, predicted classes on columns); $\\hat C$ is returned in the paper's layout (predicted
 classes on rows).
 """
@@ -199,76 +199,62 @@ def _fmt_ratio(v: float) -> str:
     return "$\\infty$" if np.isinf(v) else f"{v:.2f}"
 
 
-TABLES = {
-    "a": {
-        "title": "diagnostics",
-        "caption": (
-            "Diagnostics of the causes of BayCAP's displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
-            "$n^s_j$: validation instances of class $\\omega_j$; $\\kappa_0(\\hat C)$ and $1/\\sigma_{\\min}$: "
-            "condition number and absolute amplification of $\\hat C$ on vectors summing to zero; "
-            "$\\mathrm{acc}_V$: accuracy of $h$ on $V$."
-        ),
-        "columns": {
-            "kappa0": "$\\kappa_0(\\hat C)$",
-            "inv_sigma_min": "$1/\\sigma_{\\min}$",
-            "val_accuracy": "$\\mathrm{acc}_V$",
-        },
-        "index": ("min_val_per_class", "median_val_per_class"),
-    },
-    "b": {
-        "title": "errors",
-        "caption": (
-            "Errors of BayCAP on \\texttt{main} (vanilla accuracy, $|U|=1000$), means over the 100 bags, against the "
-            "realised table. $\\hat A-A$: shift; $R$: recall term; $R_0$: its prior part; $P$, $|P|$: prevalence term "
-            "and its absolute value; $\\lVert\\hat\\pi-\\pi\\rVert_1$: prevalence error."
-        ),
-        "columns": {
-            "coverage": main_tables.metrics_map["coverage"],
-            "amplitude": main_tables.metrics_map["amplitude"],
-            "winkler": main_tables.metrics_map["winkler"],
-            "shift": "$\\hat A-A$",
-            "recall_term": "$R$",
-            "prior_part": "$R_0$",
-            "prevalence_term": "$P$",
-            "abs_prevalence_term": "$|P|$",
-            "prev_l1": "$\\lVert\\hat\\pi-\\pi\\rVert_1$",
-        },
-        "index": (),
-    },
+CAPTION = (
+    "Causes of BayCAP's displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
+    "$n^s_j$: validation instances of class $\\omega_j$. Diagnostics: $\\kappa_0(\\hat C)$ and $1/\\sigma_{\\min}$, "
+    "condition number and absolute amplification of $\\hat C$ on vectors summing to zero; $\\mathrm{acc}_V$, accuracy "
+    "of $h$ on $V$. Interval and error: means over the 100 bags, against the realised table; $\\hat A-A$, shift; $R$, "
+    "recall term; $R_0$, its prior part; $P$, $|P|$, prevalence term and its absolute value; "
+    "$\\lVert\\hat\\pi-\\pi\\rVert_1$, prevalence error."
+)
+LABEL = "tab:displacement"
+COLUMNS = {
+    "kappa0": ("diagnostics", "$\\kappa_0(\\hat C)$"),
+    "inv_sigma_min": ("diagnostics", "$1/\\sigma_{\\min}$"),
+    "val_accuracy": ("diagnostics", "$\\mathrm{acc}_V$"),
+    "coverage": ("interval", main_tables.metrics_map["coverage"]),
+    "amplitude": ("interval", main_tables.metrics_map["amplitude"]),
+    "winkler": ("interval", main_tables.metrics_map["winkler"]),
+    "shift": ("error", "$\\hat A-A$"),
+    "recall_term": ("error", "$R$"),
+    "prior_part": ("error", "$R_0$"),
+    "prevalence_term": ("error", "$P$"),
+    "abs_prevalence_term": ("error", "$|P|$"),
+    "prev_l1": ("error", "$\\lVert\\hat\\pi-\\pi\\rVert_1$"),
 }
-INDEX_LABELS = {"min_val_per_class": "$\\min n^s_j$", "median_val_per_class": "$\\tilde n^s_j$"}
 
 
-def _styled_table(table: pd.DataFrame, key: str):
-    """Return the Styler of Table A or B; dataset-level descriptors are index levels, shown once per dataset."""
-    spec = TABLES[key]
-    out = pd.DataFrame({label: table[col].to_numpy() for col, label in spec["columns"].items()})
-    levels = [
-        table["dataset"].astype(str).map(lambda d: decorate_dataset(main_tables.dataset_map.get(d, d))),
-        table["n_classes"].astype(int),
-    ]
-    names = ["dataset", "$K$"]
-    for col in spec["index"]:
-        levels.append(table[col].round().astype(int))
-        names.append(INDEX_LABELS[col])
-    out.index = pd.MultiIndex.from_arrays([*levels, table["classifier"].astype(str)], names=[*names, "classifier"])
-    ratio_cols = [spec["columns"][c] for c in ("kappa0", "inv_sigma_min") if c in spec["columns"]]
+def _styled_table(table: pd.DataFrame):
+    """Return the Styler of the per-pair table; dataset-level descriptors are index levels, shown once per dataset."""
+    out = pd.DataFrame({label: table[col].to_numpy() for col, label in COLUMNS.items()})
+    out.columns = pd.MultiIndex.from_tuples(out.columns)
+    out.index = pd.MultiIndex.from_arrays(
+        [
+            table["dataset"].astype(str).map(lambda d: decorate_dataset(main_tables.dataset_map.get(d, d))),
+            table["n_classes"].astype(int),
+            table["min_val_per_class"].astype(int),
+            table["median_val_per_class"].round().astype(int),
+            table["classifier"].astype(str),
+        ],
+        names=["dataset", "$K$", "$\\min n^s_j$", "$\\tilde n^s_j$", "classifier"],
+    )
+    ratio_cols = [COLUMNS["kappa0"], COLUMNS["inv_sigma_min"]]
     return out.style.format(precision=3).format(_fmt_ratio, subset=ratio_cols)
 
 
-def _latex_table(table: pd.DataFrame, key: str) -> str:
-    return booktabs_clines(_styled_table(table, key).to_latex(hrules=True, multicol_align="c", clines="skip-last;data"))
+def _latex_table(table: pd.DataFrame) -> str:
+    return booktabs_clines(_styled_table(table).to_latex(hrules=True, multicol_align="c", clines="skip-last;data"))
 
 
-def _latex_longtable(table: pd.DataFrame, key: str) -> str:
-    latex = _styled_table(table, key).to_latex(
+def _latex_longtable(table: pd.DataFrame) -> str:
+    latex = _styled_table(table).to_latex(
         environment="longtable",
         hrules=True,
         multicol_align="c",
         multirow_align="naive",
         clines="skip-last;data",
-        caption=TABLES[key]["caption"],
-        label=f"tab:displacement-{key}",
+        caption=CAPTION,
+        label=LABEL,
     )
     return booktabs_clines(latex)
 
@@ -290,10 +276,6 @@ def _latex_document(longtable_path: str) -> str:
     )
 
 
-def _stem(key: str) -> str:
-    return f"{TABLE_NAME}_{key}_{TABLES[key]['title']}"
-
-
 def _table_dir(pargs) -> str:
     return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables", TABLE_NAME)
 
@@ -305,14 +287,12 @@ def gen_tables(pargs):
     os.makedirs(tabular_dir, exist_ok=True)
 
     table.to_csv(os.path.join(table_dir, f"{TABLE_NAME}.csv"), index=False)
-    for key in TABLES:
-        stem = _stem(key)
-        with open(os.path.join(tabular_dir, f"{stem}.tex"), "w") as f:
-            f.write(_latex_table(table, key))
-        with open(os.path.join(tabular_dir, f"{stem}_long.tex"), "w") as f:
-            f.write(_latex_longtable(table, key))
-        with open(os.path.join(table_dir, f"{stem}_doc.tex"), "w") as f:
-            f.write(_latex_document(f"tabular/{stem}_long.tex"))
+    with open(os.path.join(tabular_dir, f"{TABLE_NAME}.tex"), "w") as f:
+        f.write(_latex_table(table))
+    with open(os.path.join(tabular_dir, f"{TABLE_NAME}_long.tex"), "w") as f:
+        f.write(_latex_longtable(table))
+    with open(os.path.join(table_dir, f"{TABLE_NAME}_doc.tex"), "w") as f:
+        f.write(_latex_document(f"tabular/{TABLE_NAME}_long.tex"))
 
     with pd.option_context("display.width", 250, "display.max_rows", 200, "display.precision", 3):
         print(table.drop(columns=["max_point_gap", "max_truth_gap"]).to_string(index=False))
@@ -325,19 +305,18 @@ def gen_tables(pargs):
 
 def gen_pdf(pargs):
     table_dir = _table_dir(pargs)
-    for key in TABLES:
-        tex_filename = f"{_stem(key)}_doc.tex"
-        if not os.path.exists(os.path.join(table_dir, tex_filename)):
-            raise FileNotFoundError(f"{tex_filename} does not exist in {table_dir}. Generate tables first.")
+    tex_filename = f"{TABLE_NAME}_doc.tex"
+    if not os.path.exists(os.path.join(table_dir, tex_filename)):
+        raise FileNotFoundError(f"{tex_filename} does not exist in {table_dir}. Generate tables first.")
 
-        # longtable needs a second pass to settle the column widths
-        for _ in range(2):
-            subprocess.run(
-                ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", tex_filename],
-                cwd=table_dir,
-                check=True,
-                stdout=subprocess.DEVNULL,
-            )
+    # longtable needs a second pass to settle the column widths
+    for _ in range(2):
+        subprocess.run(
+            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", tex_filename],
+            cwd=table_dir,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
 
 
 if __name__ == "__main__":
