@@ -112,6 +112,14 @@ The CBPE variants `B-CBPE` and `BE-CBPE` were run in earlier versions. Only `plo
 - `tests/`: protocol tests for `main`, `binform` and `predist`, and tests of the runner, the result frame, `BayCAPKDEy` and `BayCAP` (`uv run python -m unittest discover -s tests`; `tests/` has no `__init__.py`, so plain `python -m unittest` finds no tests).
 - `Makefile` (repository root): runs experiments on `bcuda` (default, `WHERE=remote`) or on the local machine (`WHERE=local`). `make init` creates `REMOTE_DIR` (default `/home/volpi/uncawe-devel`) and copies `env.json`, `sorted_sets.json` and `output/` from the old folder `/home/volpi/uncawe` without overwriting; `make setup` pushes `src/`, `scripts/`, `tests/`, `pyproject.toml`, `uv.lock` with rsync and runs `uv sync --locked`; `make run-<name>` starts one experiment in a detached tmux session `uncawe-<name>` (`GPU=<index>` sets `CUDA_VISIBLE_DEVICES`, `JAX=cpu|cuda` sets `JAX_PLATFORMS`, `ARGS=...` appends arguments); `make status`, `logs`, `attach`, `stop` manage runs; `make pull` copies tables and plots back; `make fetch-data` copies pretrain files and datasets from `bcuda` to the local `cap.env` paths; `make pull-results` and `make push-results` merge result files of `main`, `binform`, `predist` between the two machines with `--ignore-existing`. Local runs need an `env.json` entry for the local hostname with `OUT_DIR`; `env.json` is tracked in the repository, with the entries of every machine.
 
+## II.10 The estimand-gap analysis of BayCAP
+
+`tables/estimand_gap.py` (tests: `tests/test_estimand_gap.py`) approximates, on stored `main` results and without new runs, how a realised-table posterior predictive would change BayCAP's accuracy intervals ([[ext2_baycap]], E2.1). `main` stores BayCAP's accuracy samples but not its table draws, so the predictive is approximated for accuracy only: each approximate predictive sample is the stored accuracy sample plus independent $\mathcal N(0,\hat\sigma_g^2)$ noise, with $\hat\sigma_g^2=\sum_i n^t_i\bar\rho_{ii}(1-\bar\rho_{ii})/(N^Q)^2$, $n^t$ the predicted counts of the bag and $\bar\rho$ the stored mean table `estim_cts` (paper layout) with each row normalised to one; both are label-free, and labels are used only for scoring against the realised table (`true_cts`). Per (dataset, classifier) pair, at $\lvert U\rvert=1000$ and for vanilla accuracy, it reports coverage, amplitude and Winkler score ($\alpha=0.05$) of BayCAP and of the approximate predictive, the ratio $\hat\sigma_g/\hat\sigma_p$, the median number of validation instances per class, a gate summary and suggested pilot datasets, as LaTeX and PDF. The noise is seeded per pair (seed $0$).
+
+- **Run:** 2026-10-14, local run on `eosisti` (`OUT_DIR=./output`), results under `<OUT_DIR>/uncawe/tables/estimand_gap/`. `cap-ml` commit: not recorded at run time (`cap-ml` is pinned to the `devel` branch, FIX-4, and `uv.lock` is not tracked).
+- **Findings** (75 pairs): 53 under-cover (coverage below $0.90$); 3 are brought within $[0.93,0.97]$ with a lower Winkler score; 24 have $\hat\sigma_g/\hat\sigma_p<0.3$; 56 have a lower Winkler score under the approximation. The ratio ranges from $0.07$ (`poker_hand`) to $1.50$ (`dry-bean`). On large-$K$ datasets BayCAP is biased low (LR: `isolet` $-0.18$, `letter` $-0.07$), and its coverage is $0.00$ on `isolet` and `letter` for every classifier.
+- **Source:** WP-2. Its second goal, choosing the datasets of an exact pilot, was dropped when that pilot was discarded (2026-10-20); the exact run is candidate E2.c4 of [[ext2_baycap]].
+
 # Part III: Work tracker
 
 This part tracks all implementation and experimentation work of the project: what is scheduled, what is being worked on, and which experiments are implemented but not yet run. The board in §III.1 gives the state at a glance; each card has an entry in §III.2 with its full description.
@@ -120,7 +128,6 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
-| WP-2 | Estimand-gap check of BayCAP on stored `main` results | analysis | In progress | none | 2026-10-14 |
 | WP-3 | Causes of BayCAP's displacement on stored `main` results | analysis | Scheduled | none | 2026-10-20 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
@@ -159,19 +166,6 @@ Entry template:
 - **Done when:** <observable completion criterion>
 - **Log:** <dated notes on progress: pilot run, problems, decisions>
 ```
-
-### WP-2 Estimand-gap check of BayCAP on stored `main` results
-
-- **Kind / status:** analysis / In progress
-- **Source:** [[ext2_baycap]] (E2.1)
-- **Goal:** estimate, without new runs, on which (dataset, classifier) pairs a realised-table posterior predictive would change BayCAP's accuracy intervals, and choose the datasets of WP-3. `main` stores BayCAP's accuracy samples but not its table draws, so the predictive is approximated for accuracy only. Given draw $r$, the predictive accuracy is $\frac{1}{N^Q}\sum_i\operatorname{Bin}(n^t_i,\rho^{(r)}_{ii})$, with $\rho^{(r)}_{ii}$ the precision of class $\omega_i$, conditional variance $\sigma_g^2=\sum_i n^t_i\rho^{(r)}_{ii}(1-\rho^{(r)}_{ii})/(N^Q)^2$. The analysis uses one $\bar\rho$ per bag, the stored mean table `estim_cts` (paper layout, predicted classes on rows) with each row normalised to one, and replaces the binomial sum with a normal: each approximate predictive sample is the stored accuracy sample plus independent $\mathcal N(0,\hat\sigma_g^2)$ noise. $n^t$ (predicted counts) and $\bar\rho$ are label-free; labels are used only for scoring.
-- **Estimand:** realised table of the target sample (scored against `true_cts`).
-- **Scope:** an analysis script and table on `main` results for `BayesCAP`, vanilla accuracy, $\lvert U\rvert=1000$, all datasets and classifiers. Per pair: coverage, amplitude and Winkler score ($\alpha=0.05$) of BayCAP and of the approximate predictive; the ratio $\hat\sigma_g/\hat\sigma_p$, with $\hat\sigma_p$ the standard deviation of the stored samples; the median number of validation instances per class $\lvert V\rvert\pi^V_j$. Seeded noise. No new experiment.
-- **Depends on:** access to the `main` results on the remote `OUT_DIR` (or a `make pull-results`).
-- **Comparability:** read-only on stored results; nothing is recomputed.
-- **Deviations from Part V:** none.
-- **Done when:** the per-pair table is stored under `<OUT_DIR>/uncawe/tables/` and the datasets for WP-3 are chosen (largest ratio, smallest ratio, one multiclass), recorded in the log.
-- **Log:** 2026-10-14: card added. 2026-10-14: started on branch `wp-2/estimand-gap-check`; `main` results available locally (`OUT_DIR=./output`). 2026-10-14: `tables/estimand_gap.py` and `tests/test_estimand_gap.py` committed on the branch and pushed (commit `8ba027e`), PR #1 into `devel` opened, pending approval; per-pair table written to `<OUT_DIR>/uncawe/tables/estimand_gap/` (local run, seed 0). Gate counts (75 pairs): 53 under-cover (coverage below $0.90$), 3 brought within $[0.93,0.97]$ with lower Winkler, 24 with $\hat\sigma_g/\hat\sigma_p<0.3$, 56 with lower Winkler under the approximation. Suggested pilot datasets (LR): `dry-bean` (largest ratio, $1.50$), `poker_hand` (smallest, $0.07$); not yet chosen. Finding: on large-$K$ datasets BayCAP is biased low (LR: `isolet` $-0.18$, `letter` $-0.07$), consistent with the uniform Dirichlet prior on the columns of $C$ shrinking recalls towards $1/K$; the predictive cannot correct a bias.
 
 ### WP-3 Causes of BayCAP's displacement on stored `main` results
 

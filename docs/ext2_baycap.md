@@ -10,7 +10,7 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 |---|---|
 | `cap-ml` `ACC_BayesCAP` (population pushforward) | [implemented] |
 | `methods/baycap.py:BayCAP` with `estimand` $\in\{$population, realised$\}$ | [implemented, not evaluated] |
-| E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work-plan card WP-2) | [run], analysis below |
+| E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work plan §II.10) | [run], analysis below |
 | E2.2, causes of the displacement, on stored results (work-plan card WP-3) | [proposal], scheduled |
 | Candidate experiments E2.c1, E2.c2, E2.c4 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis] |
@@ -34,7 +34,7 @@ E2.1 and the exact run of candidate E2.c4 (once promoted) form a gate: together 
   - **Estimand:** population table for BayCAP and realised table for the predictive, both scored against the realised table.
   - **Cost:** none, no new runs.
 - **Representation.** A per-pair table (rows: dataset, classifier; columns: coverage, amplitude and Winkler score for both intervals, $\hat\sigma_g/\hat\sigma_p$, median $n^s_j$), produced by `tables/estimand_gap.py` as LaTeX and PDF. A scatter plot is still to be added: BayCAP coverage on the horizontal axis, predictive coverage on the vertical axis, one point per pair, coloured by $\hat\sigma_g/\hat\sigma_p$, with lines at $0.95$ on both axes. Points that move up from below $0.95$ to the line are pairs the predictive repairs. Points stuck near $(0,0)$ are displaced intervals.
-- **Analysis.** Run on 2026-10-14 (`tables/estimand_gap.py`, seed $0$, recorded in the WP-2 log of `docs/work_plan.md`):
+- **Analysis.** Run on 2026-10-14 (`tables/estimand_gap.py`, seed $0$, recorded in §II.10 of `docs/work_plan.md`):
   - $53$ of the $75$ pairs under-cover (coverage below $0.90$), so BayCAP's intervals miss the realised accuracy much more often than $5\%$ of the time;
   - the approximate predictive brings only $3$ of them within $[0.93,0.97]$ with a lower Winkler score, although it lowers the Winkler score on $56$ pairs;
   - the ratio $\hat\sigma_g/\hat\sigma_p$ is below $0.3$ on $24$ pairs, where the predictive barely widens the interval, and ranges from $0.07$ (`poker_hand`) to $1.50$ (`dry-bean`);
