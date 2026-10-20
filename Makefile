@@ -18,6 +18,9 @@ REMOTE     ?= bcuda
 REMOTE_DIR ?= /home/volpi/uncawe-devel
 OLD_DIR    ?= /home/volpi/uncawe
 REMOTE_UV  ?= /home/volpi/miniconda3/bin/uv
+# Interpreter of the remote environment: the stored results were produced with this Python (3.12.11); bcuda's
+# /usr/bin/python3 (3.14) has no development headers, so dependencies without 3.14 wheels (quadprog) fail to build.
+REMOTE_PY  ?= /home/volpi/miniconda3/bin/python3
 GPU        ?= 0
 JAX        ?= cpu
 ARGS       ?=
@@ -66,7 +69,7 @@ else ifeq ($(WHERE),remote)
   ON       := $(SSH)
   ON_TTY   := ssh -t $(REMOTE)
   DIR      := $(REMOTE_DIR)
-  UV       := $(REMOTE_UV)
+  UV       := UV_PYTHON=$(REMOTE_PY) $(REMOTE_UV)
   RUN_DEPS := push
 else
   $(error WHERE must be 'local' or 'remote', got '$(WHERE)')
