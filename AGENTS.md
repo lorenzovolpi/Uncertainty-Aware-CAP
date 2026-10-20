@@ -70,6 +70,7 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 
 - Only the user adds or removes Part III cards and schedules Part IV fixes on the board. Propose candidate cards in the conversation, never insert them in the document.
 - Keep the Part III board in sync with the work: when you start a card, set it to "In progress"; when an experiment's code, tests and pilot run are done but the full run is not, set it to "Implemented, not evaluated". Update the board's `Updated` date and the entry's `Log` in the same change as the code.
+- When a card's branch is merged, fill the `Outcome` field of its entry: the merge commit, and the decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card. When the card moves to Part II or Part I, carry its `Outcome` into that entry.
 - "Implemented, not evaluated" applies only to experiments and analyses. A method, infra or fix card is done when its code and tests are complete.
 - When a card is done, remove it from the board and from §III.2: a method or infra card moves to Part II (a method not yet evaluated by any experiment is marked "not evaluated"); an experiment or analysis card moves to Part II (or Part I if the paper reports it) only after the full run has stored results, recording the result location, the `cap-ml` commit and the date; a fix removes its Part IV entry and notes the change in Part I or II.
 - Part III cards stand alone: they may cite an extension as their source, but they restate what they need and stay valid if the extension changes or is cut. Use the entry template in §III.2.
@@ -86,7 +87,8 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 - Experimental outputs live outside the repository under `cap.env["OUT_DIR"]/uncawe`.
 - Do not commit generated results, plots, or tables.
 - Before changing an experiment, identify its effect on reproducibility and comparability with existing results.
-- Changes to the repository that do not belong to a card or a scheduled fix on the Part III board of `docs/work_plan.md` are committed directly to `devel`, without a pull request, unless the user says otherwise.
+- Each card or scheduled fix is developed on its own branch from `devel` (`wp-<n>/<slug>` or `fix-<n>/<slug>`). When the work is done, the user reviews the diff from `devel`; after the user approves, the branch is optionally rebased on `devel` and merged with `git merge --no-ff`, with a merge commit message that starts with the card or fix ID (e.g. `WP-3: ...`). No pull requests.
+- Changes to the repository that do not belong to a card or a scheduled fix on the Part III board of `docs/work_plan.md` are committed directly to `devel` unless the user says otherwise.
 
 ## Conversation conventions
 
