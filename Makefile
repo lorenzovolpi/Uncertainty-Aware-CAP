@@ -40,13 +40,14 @@ LOCAL_CAP_DATA ?= $(HOME)/cap_data
 LOCAL_DATA_ROOT ?= $(HOME)
 
 # Experiments: run-<name> runs `uv run <command> $(ARGS)`.
+# Table targets carry no mode flag: pass it in ARGS (--tables, --pdf or --all), e.g. `make run-tables-main ARGS=--tables`.
 EXP_pretrain-classic := python -m uncawe.pretrain.classic
 EXP_main-classic     := python -m uncawe.main --classic
 EXP_binform          := python -m uncawe.binform
 EXP_predist          := python -m uncawe.predist
-EXP_tables-main      := python -m uncawe.tables.main --classic --tables
-EXP_tables-rank      := python -m uncawe.tables.rank --classic --tables
-EXP_tables-binform   := python -m uncawe.tables.binform --tables
+EXP_tables-main      := python -m uncawe.tables.main --classic
+EXP_tables-rank      := python -m uncawe.tables.rank --classic
+EXP_tables-binform   := python -m uncawe.tables.binform
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
