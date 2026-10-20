@@ -278,7 +278,7 @@ def _latex_document(longtable_path: str) -> str:
         [
             "\\documentclass{article}",
             "\\usepackage[a4paper,landscape,hmargin=1.5cm,vmargin=0.8cm]{geometry}",
-            "\\usepackage{booktabs,longtable,multirow}",
+            "\\usepackage{amsmath,booktabs,longtable,multirow}",
             "\\begin{document}",
             "\\pagestyle{empty}",
             "\\scriptsize",
