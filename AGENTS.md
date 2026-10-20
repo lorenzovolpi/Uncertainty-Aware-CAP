@@ -87,6 +87,7 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 - Experimental outputs live outside the repository under `cap.env["OUT_DIR"]/uncawe`.
 - Do not commit generated results, plots, or tables.
 - Before changing an experiment, identify its effect on reproducibility and comparability with existing results.
+- After implementing code, you may run the unit tests, but do not run experiments, analyses, table or plot scripts, or any other code (locally or on `bcuda`, including `make run-*`) unless the user explicitly asks for that run.
 - Each card or scheduled fix is developed on its own branch from `devel` (`wp-<n>/<slug>` or `fix-<n>/<slug>`). When the work is done, the user reviews the diff from `devel`; after the user approves, the branch is optionally rebased on `devel` and merged with `git merge --no-ff`, with a merge commit message that starts with the card or fix ID (e.g. `WP-3: ...`). No pull requests.
 - Changes to the repository that do not belong to a card or a scheduled fix on the Part III board of `docs/work_plan.md` are committed directly to `devel` unless the user says otherwise.
 
