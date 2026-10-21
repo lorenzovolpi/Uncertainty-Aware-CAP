@@ -1,7 +1,8 @@
 """Scatter plots of the causes of BayCAP's displacement (work-plan card WP-3, E2.2 of ``docs/ext2_baycap.md``).
 
 Both figures read the per-pair table of :mod:`uncawe.tables.displacement` (one point per (dataset, classifier) pair,
-vanilla accuracy, $|U|=1000$; BayCAP targets the population table and is scored against the realised table):
+vanilla accuracy, $|U|=1000$; ``BayesCAP`` targets the population table, ``BayesCAP-real`` the realised table, and both
+are scored against the realised table). The method is an argument (default ``BayesCAP``):
 
 - ``prior`` (cause 1): mean recall term against its mean prior part, coloured by $K$, with the line $y=x$;
 - ``conditioning`` (causes 2 and 3): $1/\\sigma_{\\min}(Q^\\top\\hat CQ)$ (log scale) against the accuracy of $h$ on $V$,
@@ -9,7 +10,8 @@ vanilla accuracy, $|U|=1000$; BayCAP targets the population table and is scored 
   are counted in the panel title.
 
 Both figures belong to E2.2, so they live in one module (Part V.5 of ``docs/work_plan.md``). Output:
-``<OUT_DIR>/uncawe/plots/main/displacement/``.
+``<OUT_DIR>/uncawe/plots/main/displacement/`` for ``BayesCAP`` and ``<OUT_DIR>/uncawe/plots/main/displacement/<method>/``
+for any other method.
 """
 
 import os
@@ -21,64 +23,34 @@ os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.colors import ListedColormap, LogNorm, Normalize, TwoSlopeNorm
+from matplotlib.colors import LogNorm, Normalize, TwoSlopeNorm
 
 from uncawe.plots.common import (
-    CLASSIFIER_MARKERS,
-    DEFAULT_MARKER,
-    classifier_legend_handles,
+    DIVERGING_CMAP,
+    SEQUENTIAL_CMAP,
+    classifier_legend,
     font_size,
-    marker_size,
     ordered_classifiers,
     plot_dir,
+    scatter_by_classifier,
+    style_scatter_axes,
 )
-from uncawe.tables.displacement import compute_pair_table
+from uncawe.tables.displacement import METHOD, compute_pair_table
 
 PLOT_NAME = "displacement"
 FIGURES = ("prior", "conditioning")
-GRID_COLOR = "#d9d9d9"
-EDGE_COLOR = "#1f1f1f"
-# the lightest quarter of Blues is close to the white background, so it is cut off
-SEQUENTIAL_CMAP = ListedColormap(plt.get_cmap("Blues")(np.linspace(0.25, 1.0, 256)), name="Blues_trunc")
-DIVERGING_CMAP = "RdBu_r"
 
 
-def _scatter_by_classifier(ax, table: pd.DataFrame, x: str, y: str, color, cmap, norm):
-    """Draw one marker shape per classifier; colour encodes ``color`` through ``cmap`` and ``norm``."""
-    for classifier in ordered_classifiers(table):
-        sub = table.loc[table["classifier"].astype(str) == classifier]
-        sc = ax.scatter(
-            sub[x],
-            sub[y],
-            c=sub[color],
-            cmap=cmap,
-            norm=norm,
-            marker=CLASSIFIER_MARKERS.get(classifier, DEFAULT_MARKER),
-            s=marker_size(45),
-            edgecolors=EDGE_COLOR,
-            linewidths=0.6,
-            zorder=3,
-        )
-    return sc
-
-
-def _style_axes(ax, xlabel: str, ylabel: str):
-    ax.grid(True, color=GRID_COLOR, linewidth=0.7, alpha=0.7, zorder=0)
-    ax.set_xlabel(xlabel, fontsize=font_size(12))
-    ax.set_ylabel(ylabel, fontsize=font_size(12))
-    ax.tick_params(axis="both", labelsize=font_size(10))
-
-
-def _classifier_legend(fig, table: pd.DataFrame, **kwargs):
-    classifiers = ordered_classifiers(table)
-    fig.legend(classifier_legend_handles(classifiers), classifiers, frameon=True, fontsize=font_size(10), **kwargs)
+def method_plot_dir(method: str = METHOD) -> str:
+    """Return the output folder of ``method``: the stored E2.2 folder for ``BayesCAP``, a subfolder for the others."""
+    return plot_dir(PLOT_NAME if method == METHOD else os.path.join(PLOT_NAME, method))
 
 
 def plot_prior(table: pd.DataFrame):
     """Cause 1: recall term against its prior part, coloured by $K$; points on $y=x$ have the prior's recall error."""
     fig, ax = plt.subplots(figsize=(7.5, 6.5))
     k = table["n_classes"].astype(float)
-    sc = _scatter_by_classifier(
+    sc = scatter_by_classifier(
         ax, table, "prior_part", "recall_term", "n_classes", SEQUENTIAL_CMAP, LogNorm(vmin=k.min(), vmax=k.max())
     )
     lo = float(min(table["prior_part"].min(), table["recall_term"].min(), 0.0))
@@ -89,14 +61,14 @@ def plot_prior(table: pd.DataFrame):
     ax.axvline(0, color="#8c8c8c", linewidth=0.8, zorder=1)
     ax.set_xlim(lo - pad, hi + pad)
     ax.set_ylim(lo - pad, hi + pad)
-    _style_axes(ax, "prior part of the recall term $R_0$", "recall term $R$")
+    style_scatter_axes(ax, "prior part of the recall term $R_0$", "recall term $R$")
     ticks = sorted(table["n_classes"].astype(int).unique())
     cbar = fig.colorbar(sc, ax=ax, ticks=ticks)
     cbar.ax.set_yticklabels([str(t) for t in ticks])
     cbar.set_label("$K$", fontsize=font_size(12))
     cbar.ax.minorticks_off()
     n_classifiers = len(ordered_classifiers(table))
-    _classifier_legend(fig, table, loc="lower center", ncol=n_classifiers, bbox_to_anchor=(0.5, 0))
+    classifier_legend(fig, table, loc="lower center", ncol=n_classifiers, bbox_to_anchor=(0.5, 0))
     fig.tight_layout(rect=(0, 0.08, 1, 1))
     return fig
 
@@ -112,9 +84,9 @@ def plot_conditioning(table: pd.DataFrame):
     )
     fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True, sharey=True)
     for ax, (col, label, cmap, norm) in zip(axes, panels):
-        sc = _scatter_by_classifier(ax, finite, "inv_sigma_min", "val_accuracy", col, cmap, norm)
+        sc = scatter_by_classifier(ax, finite, "inv_sigma_min", "val_accuracy", col, cmap, norm)
         ax.set_xscale("log")
-        _style_axes(ax, "$1/\\sigma_{\\min}(Q^\\top\\hat CQ)$", "accuracy of $h$ on $V$")
+        style_scatter_axes(ax, "$1/\\sigma_{\\min}(Q^\\top\\hat CQ)$", "accuracy of $h$ on $V$")
         title = f"coloured by {label}"
         if n_singular:
             title += f" ({n_singular} singular {'pair' if n_singular == 1 else 'pairs'} not shown)"
@@ -122,7 +94,7 @@ def plot_conditioning(table: pd.DataFrame):
         cbar = fig.colorbar(sc, ax=ax)
         cbar.set_label(label, fontsize=font_size(11))
     axes[1].tick_params(labelleft=True)
-    _classifier_legend(fig, table, loc="lower center", ncol=len(ordered_classifiers(table)), bbox_to_anchor=(0.5, 0))
+    classifier_legend(fig, table, loc="lower center", ncol=len(ordered_classifiers(table)), bbox_to_anchor=(0.5, 0))
     fig.tight_layout(rect=(0, 0.07, 1, 1))
     return fig
 
@@ -131,8 +103,8 @@ PLOTTERS = {"prior": plot_prior, "conditioning": plot_conditioning}
 
 
 def generate_plots(args):
-    table = compute_pair_table()
-    out_dir = plot_dir(PLOT_NAME)
+    table = compute_pair_table(args.method)
+    out_dir = method_plot_dir(args.method)
     for name in args.figures:
         fig = PLOTTERS[name](table)
         stem = os.path.join(out_dir, f"{PLOT_NAME}_{name}")
@@ -147,6 +119,7 @@ def generate_plots(args):
 def parse_args():
     parser = ArgumentParser(description="Scatter plots of the causes of BayCAP's displacement (E2.2).")
     parser.add_argument("--figures", nargs="+", choices=FIGURES, default=list(FIGURES))
+    parser.add_argument("--method", default=METHOD, help="Method of main to analyse (default: %(default)s)")
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--add-stem", default=None)

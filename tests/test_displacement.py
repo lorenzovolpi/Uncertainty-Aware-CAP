@@ -1,9 +1,13 @@
 import math
+import os
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
+from uncawe.plots import displacement as displacement_plots
+from uncawe.tables import displacement, estimand_gap
 from uncawe.tables.displacement import (
     COLUMNS,
     _latex_longtable,
@@ -167,6 +171,33 @@ class DisplacementTest(unittest.TestCase):
             self.assertIn(group, latex)
         self.assertIn("$\\infty$", latex)
         self.assertIn("\\label{tab:displacement}", latex)
+
+    def test_method_argument_keeps_stored_outputs_of_baycap(self):
+        with patch.object(displacement.env, "root_dir", "/out"):
+            base = os.path.join("/out", "tables", "displacement")
+            self.assertEqual(displacement.table_dir(), base)
+            self.assertEqual(displacement.table_dir("BayesCAP-real"), os.path.join(base, "BayesCAP-real"))
+        with patch.object(displacement_plots, "plot_dir", side_effect=lambda name: name):
+            self.assertEqual(displacement_plots.method_plot_dir(), "displacement")
+            self.assertEqual(
+                displacement_plots.method_plot_dir("BayesCAP-real"), os.path.join("displacement", "BayesCAP-real")
+            )
+        self.assertEqual(displacement.label(), "tab:displacement")
+        self.assertEqual(displacement.label("BayesCAP-real"), "tab:displacement-BayesCAP-real")
+        self.assertIn("BayCAP's displacement", displacement.caption())
+        self.assertIn("BayCAP-real's displacement", displacement.caption("BayesCAP-real"))
+        self.assertIn("\\texttt{main}", displacement.caption())
+
+    def test_method_argument_selects_the_stored_results(self):
+        with patch.object(estimand_gap.Results, "load") as load:
+            estimand_gap.load_results("BayesCAP-real")
+        self.assertEqual(load.call_args.kwargs["filter_methods"], ["BayesCAP-real"])
+        with (
+            patch.object(displacement, "load_results", return_value=pd.DataFrame()) as load_results,
+            self.assertRaisesRegex(RuntimeError, "BayesCAP-real"),
+        ):
+            displacement.compute_pair_table("BayesCAP-real")
+        load_results.assert_called_once_with("BayesCAP-real")
 
 
 if __name__ == "__main__":

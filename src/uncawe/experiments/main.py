@@ -265,17 +265,33 @@ def run_experiment_args(
     run_tasks(log, experiment_args, worker=exp_protocol, n_jobs=n_jobs, experiment=EXPERIMENT, env=env)
 
 
-def experiments(log: Logger, domain: str) -> None:
+def experiments(
+    log: Logger,
+    domain: str,
+    datasets: list[str] | None = None,
+    classifiers: list[str] | None = None,
+    methods: list[str] | None = None,
+) -> None:
+    """Run every method on every pair of ``domain``; ``datasets``, ``classifiers`` and ``methods`` restrict the run
+    (e.g. a pilot) without changing the protocol of the pairs and methods that remain."""
+    method_names = get_method_names() if methods is None else methods
+    unknown = sorted(set(method_names) - set(get_method_names()))
+    if unknown:
+        raise ValueError(f"Unknown methods: {unknown}")
     filtered_paths = []
     for path in load_info_paths(domain=domain):
         p = PretrainInfo.load(path, fast=True)
         if p.d_info.name not in get_filtered_datasets():
             continue
+        if datasets is not None and p.d_info.name not in datasets:
+            continue
+        if classifiers is not None and p.h_info.name not in classifiers:
+            continue
         if all_results_exist(
             p.domain,
             p.d_info.name,
             p.h_info.full_name,
-            get_method_names(),
+            method_names,
             get_acc_names(),
             EXPERIMENT,
         ):
@@ -287,6 +303,8 @@ def experiments(log: Logger, domain: str) -> None:
     bayes_args = []
     for info_path in filtered_paths:
         for method_name, method in gen_methods():
+            if method_name not in method_names:
+                continue
             args = (info_path, method_name, method)
             (bayes_args if "BayesCAP" in method_name else regular_args).append(args)
 
@@ -300,11 +318,14 @@ def main() -> None:
     parser.add_argument("--text", action="store_const", dest="domain", const="text")
     parser.add_argument("--image", action="store_const", dest="domain", const="image")
     parser.add_argument("--classic", action="store_const", dest="domain", const="classic")
+    parser.add_argument("--datasets", nargs="+", default=None, help="Run only these datasets (default: all)")
+    parser.add_argument("--classifiers", nargs="+", default=None, help="Run only these classifiers (default: all)")
+    parser.add_argument("--methods", nargs="+", default=None, help="Run only these methods (default: all)")
     pargs = parser.parse_args()
 
     try:
         log.info("-" * 31 + "  start  " + "-" * 31)
-        experiments(log, pargs.domain)
+        experiments(log, pargs.domain, pargs.datasets, pargs.classifiers, pargs.methods)
     except Exception as error:
         log.error(error)
         print_exception(error)

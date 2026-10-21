@@ -17,6 +17,7 @@ from quapy.method.aggregative import PACC, KDEyML
 from sklearn.neural_network import MLPClassifier as MLP
 
 from uncawe.experiments.metrics import gen_acc_measure
+from uncawe.methods.baycap import BayCAP
 
 BAYES_WARMUPS = 500
 BAYES_N_JOBS = 16
@@ -52,6 +53,7 @@ METHOD_CLASS = {
     "RQBS": RQBS,
     "PQ": PrediQuant,
     "BayesCAP": ACC_BayesCAP,
+    "BayesCAP-real": BayCAP,
 }
 
 
@@ -89,6 +91,11 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
         ),
     )
     yield "BayesCAP", ACC_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
+    # realised-table predictive (E2.3 of docs/ext2_baycap.md): same priors, NUTS settings and default seed as BayesCAP
+    yield (
+        "BayesCAP-real",
+        BayCAP(acc, estimand="realised", num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS),
+    )
 
 
 def get_method_names() -> list[str]:
