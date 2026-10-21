@@ -1,0 +1,4 @@
+- [x] write the analysis of E2.2 + understand theory
+- [x] analyse E2-cause4 (hypothesis) and decide whether to explore with and experiment
+- [ ] analyse E2-cause1-fix (hypothesis) and decide whether to explore with proposed experiment
+- [x] decide whether to continue with E2.c4
