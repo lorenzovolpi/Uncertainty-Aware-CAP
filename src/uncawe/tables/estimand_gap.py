@@ -169,7 +169,7 @@ def pilot_datasets(table: pd.DataFrame, classifier: str = "LR") -> dict:
     return chosen
 
 
-def _load_results() -> pd.DataFrame:
+def load_results() -> pd.DataFrame:
     base_dir = os.path.join(env.root_dir, EXPERIMENT)
     results = Results.load(
         base_dir=base_dir,
@@ -219,14 +219,14 @@ def _styled_table(table: pd.DataFrame):
     return out.style.format(precision=3)
 
 
-def _booktabs_clines(latex: str) -> str:
+def booktabs_clines(latex: str) -> str:
     """Use booktabs rules between datasets: ``\\cline`` adds no vertical space and touches the next row."""
     return latex.replace("\\cline{", "\\cmidrule(lr){")
 
 
 def _latex_table(table: pd.DataFrame) -> str:
     """Return a ``tabular`` fragment for inclusion in other documents."""
-    return _booktabs_clines(_styled_table(table).to_latex(hrules=True, multicol_align="c", clines="skip-last;data"))
+    return booktabs_clines(_styled_table(table).to_latex(hrules=True, multicol_align="c", clines="skip-last;data"))
 
 
 def _latex_longtable(table: pd.DataFrame) -> str:
@@ -240,7 +240,7 @@ def _latex_longtable(table: pd.DataFrame) -> str:
         caption=CAPTION,
         label=LABEL,
     )
-    return _booktabs_clines(latex)
+    return booktabs_clines(latex)
 
 
 def _latex_document(longtable_path: str) -> str:
@@ -265,7 +265,7 @@ def _table_dir(pargs) -> str:
 
 
 def gen_tables(pargs):
-    df = _load_results()
+    df = load_results()
     if df.empty:
         raise RuntimeError(f"No {METHOD} results found for {EXPERIMENT}. Check that experiment results exist.")
 
