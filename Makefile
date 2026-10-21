@@ -13,7 +13,7 @@
 #
 # Every variable can be overridden on the command line, e.g. `make run-predist GPU=2 ARGS="--datasets letter"`.
 
-WHERE      ?= local
+WHERE      ?= remote
 REMOTE     ?= bcuda
 REMOTE_DIR ?= /home/volpi/uncawe-devel
 OLD_DIR    ?= /home/volpi/uncawe
