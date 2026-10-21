@@ -129,6 +129,17 @@ The CBPE variants `B-CBPE` and `BE-CBPE` were run in earlier versions. Only `plo
 - **Outcome:** merged into `devel` on 2026-10-21 (merge commit `1ca0e90`). Decisions during the work: $1/\sigma_{\min}$ added next to $\kappa_0$, because $\kappa_0=1$ on every binary pair; the two tables merged into one with three column groups; the predicted coverage $\mathcal C_s$ added to the table; `amsmath` loaded in the standalone document. The analysis of the coverage error stops at E2.2 (user's decision of 2026-10-21): what it leaves open (cause 4, a difference between $V$ and the test pool; the systematic prevalence error on a singular $\hat C$; the width shortfall on 9 pairs) is recorded in [[ext2_baycap]] as a guess, and the candidates proposed to test it were dropped. Follow-up: run the table step again to store the predicted-coverage column.
 - **Source:** WP-3.
 
+## II.12 Code to move to `cap-ml`
+
+Components of this repository that should eventually move to `cap-ml` (owned by the user), so that other projects can use them. Until they move, they live here; when one moves, its entry records the `cap-ml` commit and the change of import paths, and leaves this section.
+
+| Component | File | Tests | State | Notes for the move |
+|---|---|---|---|---|
+| `BayCAP`, `realised_tables` | `methods/baycap.py` | `tests/test_baycap.py` | §II.5, not evaluated (to be used by WP-4) | A copy of `ACC_BayesCAP` (commit `bb20aa5`) with the hyperparameter `estimand`; the move can add `estimand` (default `"population"`) and `realised_tables` to `ACC_BayesCAP` itself, instead of a second class. Uses `cap.models.confidence` internals (`P_C_COND_Y`, `P_TEST_C`, `P_TEST_Y`, `BayesCAP`). |
+| `BayCAPKDEy` | `methods/baycap_kdey.py` | `tests/test_baycap_kdey.py` | §II.4, not evaluated | Depends on QuaPy's `BayesianKDEy`, imported from the private module `quapy.method._bayesian`, and on scikit-learn's `MLPClassifier` as internal surrogate. |
+
+Moving a component changes no result if the code moves unchanged, but `uncawe` then needs the new `cap-ml` commit, which is not pinned at the moment (FIX-4); experiments that use the component (`main` after WP-4) should record the `cap-ml` commit they ran with.
+
 # Part III: Work tracker
 
 This part tracks all implementation and experimentation work of the project: what is scheduled, what is being worked on, and which experiments are implemented but not yet run. The board in §III.1 gives the state at a glance; each card has an entry in §III.2 with its full description.
@@ -137,6 +148,7 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
+| WP-4 | `BayesCAP-real` in `main` and the analyses of E2.3 | experiment | Scheduled | none | 2026-10-21 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -176,6 +188,25 @@ Entry template:
 - **Log:** <dated notes on progress: pilot run, problems, decisions>
 - **Outcome:** <filled when the branch is merged: merge commit; decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card>
 ```
+
+### WP-4 `BayesCAP-real` in `main` and the analyses of E2.3
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext2_baycap]] (E2.3)
+- **Goal:** run BayCAP's exact realised-table posterior predictive as a method of `main`, `BayesCAP-real`, and compare it with the population pushforward (`BayesCAP`, stored) and with the approximation of E2.1 (§II.10). The predictive draws, for each posterior draw and each predicted class $\omega_i$, the true classes of the $n^t_i$ target instances predicted as $\omega_i$ from $\operatorname{Mult}(n^t_i,\rho^{(r)}_{i\cdot})$, with $\rho^{(r)}_{ij}=C^{(r)}_{ij}\pi^{(r)}_j/\sum_lC^{(r)}_{il}\pi^{(r)}_l$ (§II.5). Repeat on it the displacement analysis of §II.11 (recall/prevalence split of the shift, prior part, conditioning, predicted coverage), to tell whether the realised pushforward changes the causes of the displacement or only the width of the interval.
+- **Estimand:** realised table for `BayesCAP-real`, population table for `BayesCAP`; both scored against the realised table (`true_cts`).
+- **Scope:**
+  - `experiments/methods.py`: add `"BayesCAP-real"` to `METHOD_CLASS` and `gen_methods`, as `BayCAP(acc, estimand="realised", num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)` with the default seed; it runs with the BayCAP methods (`BAYES_N_JOBS`), and its results go under `<OUT_DIR>/uncawe/main/` like every method;
+  - exclude it by default from `tables/main.py`, `tables/rank.py` and `plots/common.py:DEFAULT_METHODS`, so the paper's tables and ranks are unchanged (user's decision: results only);
+  - `tables/displacement.py` and `plots/displacement.py`: the method as an argument (default `BayesCAP`), with outputs in a subfolder per method, so the stored outputs of §II.11 are not overwritten;
+  - a new table and plot script for E2.3: one row per pair with coverage, amplitude and Winkler score of both pushforwards and the approximate coverage of E2.1 read from its CSV; a scatter of population against realised coverage, coloured by $\hat\sigma_g/\hat\sigma_p$, with lines at $0.95$; a scatter of exact against approximate coverage with the line $y=x$; vanilla accuracy, $\lvert U\rvert=1000$, all 75 pairs;
+  - tests: the factory builds `BayesCAP-real` with the `main` settings; the default exclusions; the method argument of the displacement table.
+- **Depends on:** stored `main` results and pretrain data (`make pull-results`, `make fetch-data`).
+- **Comparability:** the stored results of every other method are untouched, and a rerun of `main` computes only `BayesCAP-real` (existing results are skipped); about $7500$ NUTS runs on `bcuda`. With the same bags, seeds and NUTS settings, its posterior draws equal those of the stored `BayesCAP` on the same platform and JAX version; across platforms the two pushforwards are compared on different but equally distributed draws.
+- **Deviations from Part V:** none expected.
+- **Done when:** the `main` rerun on `bcuda` has stored `BayesCAP-real` for all 75 pairs, the E2.3 tables and plots are stored, and the E2.3 analysis is written in [[ext2_baycap]]. Runs happen only on the user's request, starting with a pilot on 2–3 pairs.
+- **Log:** 2026-10-21: card added; implementation not started.
+- **Outcome:**
 
 # Part IV: Pending fixes and known divergences
 

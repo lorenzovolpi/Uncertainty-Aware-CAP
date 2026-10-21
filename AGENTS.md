@@ -78,6 +78,7 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 - New code follows the conventions of Part V. State any deviation in the card's entry. When a convention changes, record its effect on reproducibility and on comparability with stored results.
 - Label every convention as general (applies to every experiment) or specific (name the experiment), and as current practice or rule for new code.
 - Prerequisite fixes are described in Part IV, not as Part III cards; once scheduled they appear on the board with their `FIX-<n>` ID; Part III cards have IDs `WP-<n>`.
+- §II.12 lists the code that should eventually move to `cap-ml` (owned by the user); for now, the methods in `src/uncawe/methods/`. Keep it in sync: add an entry when such code is added, update it when the code changes, and remove it, recording the `cap-ml` commit, once the code has moved.
 
 ## Development
 
