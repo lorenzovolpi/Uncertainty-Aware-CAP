@@ -8,8 +8,8 @@ vanilla accuracy, $|U|=1000$; BayCAP targets the population table and is scored 
   in two panels coloured by coverage and by shift. Pairs with a singular $\\hat C$ cannot be placed on the log axis and
   are counted in the panel title.
 
-Both figures live in one module by the user's decision (a deviation from the one-module-per-figure rule of Part V.5 of
-``docs/work_plan.md``). Output: ``<OUT_DIR>/uncawe/plots/main/displacement/``.
+Both figures belong to E2.2, so they live in one module (Part V.5 of ``docs/work_plan.md``). Output:
+``<OUT_DIR>/uncawe/plots/main/displacement/``.
 """
 
 import os
