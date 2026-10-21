@@ -6,7 +6,7 @@ The document has five parts:
 
 - **Part I:** what is implemented and reported in the [reference paper](papers/02__Uncertainty_Aware_Classifier_Accuracy_Prediction______QCDS_2026_.pdf);
 - **Part II:** what is implemented in the code but not reported in the paper;
-- **Part III:** the work tracker: a board of scheduled, in-progress and implemented-but-not-evaluated work, chosen by the user;
+- **Part III:** the work tracker: a board of scheduled, in-progress and implemented-but-not-evaluated work, chosen by the user, and the record of completed cards;
 - **Part IV:** pending fixes and known divergences between the paper and the code, which are prerequisites rather than next steps;
 - **Part V:** implementation conventions for experiments, methods, results, tables and plots.
 
@@ -118,16 +118,15 @@ The CBPE variants `B-CBPE` and `BE-CBPE` were run in earlier versions. Only `plo
 
 - **Run:** 2026-10-14, local run on `eosisti` (`OUT_DIR=./output`), results under `<OUT_DIR>/uncawe/tables/estimand_gap/`. `cap-ml` commit: not recorded at run time (`cap-ml` is pinned to the `devel` branch, FIX-4, and `uv.lock` is not tracked).
 - **Findings** (75 pairs): 53 under-cover (coverage below $0.90$); 3 are brought within $[0.93,0.97]$ with a lower Winkler score; 24 have $\hat\sigma_g/\hat\sigma_p<0.3$; 56 have a lower Winkler score under the approximation. The ratio ranges from $0.07$ (`poker_hand`) to $1.50$ (`dry-bean`). On large-$K$ datasets BayCAP is biased low (LR: `isolet` $-0.18$, `letter` $-0.07$), and its coverage is $0.00$ on `isolet` and `letter` for every classifier.
-- **Source:** WP-2. Its second goal, choosing the datasets of an exact pilot, was dropped when that pilot was discarded (2026-10-20); the exact run is E2.3 of [[ext2_baycap]] (candidate E2.c4 until 2026-10-21).
+- **Card:** WP-2 (§III.3).
 
 ## II.11 The displacement analysis of BayCAP
 
-`tables/displacement.py` and `plots/displacement.py` (tests: `tests/test_displacement.py`) explain, on stored `main` results and without new runs, why BayCAP's accuracy intervals are displaced ([[ext2_baycap]], E2.2). BayCAP targets the population table and is scored against the realised table (`true_cts`); the analysis uses target labels and is not a method. Per (dataset, classifier) pair, at $\lvert U\rvert=1000$ and for vanilla accuracy, it splits the error of BayCAP's point estimate in each bag into a recall term and a prevalence term, $\hat A-A=\sum_j\pi_j(\hat r_j-r_j)+\sum_j(\hat\pi_j-\pi_j)\hat r_j$, with $\hat\pi,\hat r$ from the stored mean table `estim_cts`; it computes the prior part of the recall term on the validation counts $f_{ij}$ rebuilt from the stored validation posteriors and labels, $\sum_j\pi_j\left(\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}\right)$; and it reports the conditioning of $\hat C$ on vectors summing to zero ($\kappa_0$ and $1/\sigma_{\min}$, from the singular values of $Q^\top\hat CQ$), the accuracy of $h$ on $V$, coverage, amplitude, Winkler score, and the coverage $\mathcal C_s$ predicted from the mean shift and amplitude alone (normal approximation). Outputs: a per-pair CSV and one table (diagnostics, interval, error) as LaTeX and a landscape PDF under `<OUT_DIR>/uncawe/tables/displacement/`; two scatters (recall term against its prior part; $1/\sigma_{\min}$ against accuracy on $V$, coloured by coverage and by shift) under `<OUT_DIR>/uncawe/plots/main/displacement/`. Both figures are in one plot module (user's decision), a deviation from §V.5.
+`tables/displacement.py` and `plots/displacement.py` (tests: `tests/test_displacement.py`) explain, on stored `main` results and without new runs, why BayCAP's accuracy intervals are displaced ([[ext2_baycap]], E2.2). BayCAP targets the population table and is scored against the realised table (`true_cts`); the analysis uses target labels and is not a method. Per (dataset, classifier) pair, at $\lvert U\rvert=1000$ and for vanilla accuracy, it splits the error of BayCAP's point estimate in each bag into a recall term and a prevalence term, $\hat A-A=\sum_j\pi_j(\hat r_j-r_j)+\sum_j(\hat\pi_j-\pi_j)\hat r_j$, with $\hat\pi,\hat r$ from the stored mean table `estim_cts`; it computes the prior part of the recall term on the validation counts $f_{ij}$ rebuilt from the stored validation posteriors and labels, $\sum_j\pi_j\left(\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}\right)$; and it reports the conditioning of $\hat C$ on vectors summing to zero ($\kappa_0$ and $1/\sigma_{\min}$, from the singular values of $Q^\top\hat CQ$), the accuracy of $h$ on $V$, coverage, amplitude, Winkler score, and the coverage $\mathcal C_s$ predicted from the mean shift and amplitude alone (normal approximation). Outputs: a per-pair CSV and one table (diagnostics, interval, error) as LaTeX and a landscape PDF under `<OUT_DIR>/uncawe/tables/displacement/`; two scatters (recall term against its prior part; $1/\sigma_{\min}$ against accuracy on $V$, coloured by coverage and by shift) under `<OUT_DIR>/uncawe/plots/main/displacement/`.
 
 - **Run:** 2026-10-20 on `bcuda`, all 75 pairs (commit `e0e2f94`, dirty only for a local `WHERE` default in the `Makefile`; Python 3.12.11; `cap-ml` `bb20aa5`); results under `<OUT_DIR>/uncawe/tables/displacement/` and `<OUT_DIR>/uncawe/plots/main/displacement/`, copied locally with `make pull`; table regenerated with the merged layout on 2026-10-20. The predicted-coverage column was added afterwards (2026-10-21) and is not in the stored outputs until the table step is run again.
 - **Findings:** coverage follows the coverage predicted from the shift alone (correlation $0.98$); the $\operatorname{Dir}(\mathbf 1)$ prior on $C$ accounts for every pair with coverage near $0$ (large $K$, recall term equal to its prior part); a badly conditioned $\hat C$ displaces the interval only when the prevalence error has the same sign in every bag (`german`, `wine-quality`), and otherwise widens it; the accuracy of $h$ on $V$ does not act on its own; on binary datasets a smaller recall error remains that the prior does not explain. Consistency checks: the mean of the accuracy samples equals the accuracy of the mean table within $1.3\cdot10^{-6}$; coverage agrees with E2.1 (53 of 75 pairs below $0.90$); $\hat C$ is singular on vectors summing to zero for 7 pairs.
-- **Outcome:** merged into `devel` on 2026-10-21 (merge commit `1ca0e90`). Decisions during the work: $1/\sigma_{\min}$ added next to $\kappa_0$, because $\kappa_0=1$ on every binary pair; the two tables merged into one with three column groups; the predicted coverage $\mathcal C_s$ added to the table; `amsmath` loaded in the standalone document. The analysis of the coverage error stops at E2.2 (user's decision of 2026-10-21): what it leaves open (cause 4, a difference between $V$ and the test pool; the systematic prevalence error on a singular $\hat C$; the width shortfall on 9 pairs) is recorded in [[ext2_baycap]] as a guess, and the candidates proposed to test it were dropped. Follow-up: run the table step again to store the predicted-coverage column.
-- **Source:** WP-3.
+- **Card:** WP-3 (§III.3).
 
 ## II.12 Code to move to `cap-ml`
 
@@ -142,7 +141,7 @@ Moving a component changes no result if the code moves unchanged, but `uncawe` t
 
 # Part III: Work tracker
 
-This part tracks all implementation and experimentation work of the project: what is scheduled, what is being worked on, and which experiments are implemented but not yet run. The board in §III.1 gives the state at a glance; each card has an entry in §III.2 with its full description.
+This part tracks all implementation and experimentation work of the project: what is scheduled, what is being worked on, and which experiments are implemented but not yet run. The board in §III.1 gives the state at a glance; each open card has an entry in §III.2 with its full description, and completed cards are kept in §III.3.
 
 ## III.1 Board
 
@@ -157,10 +156,11 @@ Statuses, in board order:
 1. **Scheduled:** selected by the user, work not started.
 2. **In progress:** code is being written, or code and tests are done and the pilot run has not been done yet. Runs (pilot or full) happen only when the user explicitly asks for them, so a card can stay here after its code and tests are complete.
 3. **Implemented, not evaluated:** experiments only. The code, tests and pilot run (requested by the user) are done, but the full experiment has not been run, so no stored results exist yet.
-4. **Done:** the card leaves the board.
-   - A **method**, **infra** or **fix** card is done when its code and tests are merged into `devel`; its description moves to Part II (methods, infra) or the Part IV entry is removed and the change is noted in Part I or II (fixes). A method that no experiment has evaluated yet is described in Part II as "not evaluated", like `BayCAPKDEy` (§II.4).
-   - An **experiment** or **analysis** card is done when the full run has produced stored results under `<OUT_DIR>/uncawe/<experiment>/`; its description moves to Part II (or to Part I if the paper reports it), with the result location, the `cap-ml` commit used and the date of the run.
-   - In both cases, the card's `Outcome` (filled at the merge) is carried into the Part II or Part I entry.
+4. **Done:** the card leaves the board, and its entry moves from §III.2 to §III.3.
+   - A **method** or **infra** card is done when its code and tests are merged into `devel`; what it implemented is described in Part II. A method that no experiment has evaluated yet is described in Part II as "not evaluated", like `BayCAPKDEy` (§II.4).
+   - An **experiment** or **analysis** card is done when the full run has produced stored results under `<OUT_DIR>/uncawe/<experiment>/`; what it implemented and found is described in Part II (or in Part I if the paper reports it), with the result location, the `cap-ml` commit used and the date of the run.
+   - A **fix** is done when its code and tests are merged into `devel`: its Part IV entry is removed and the change is noted in Part I or II.
+   - Part II (or I) and §III.3 do not repeat each other, and link to each other. Part II describes the code as it is and, for experiments and analyses, the run and the findings. The §III.3 entry keeps the history of the card: its goal as planned, dependencies, deviations, log and `Outcome`, with a reference to the Part II section in place of the run details and the findings.
 
 Rules:
 
@@ -207,6 +207,32 @@ Entry template:
 - **Done when:** the `main` rerun on `bcuda` has stored `BayesCAP-real` for all 75 pairs, the E2.3 tables and plots are stored, and the E2.3 analysis is written in [[ext2_baycap]]. Runs happen only on the user's request, starting with a pilot on 2–3 pairs.
 - **Log:** 2026-10-21: card added; implementation not started.
 - **Outcome:**
+
+## III.3 Completed cards
+
+Cards that are done, most recent first. Each entry keeps the history of the card (goal as planned, dependencies, deviations, log, outcome); what the card implemented and, for experiments and analyses, the run and the findings are described in the Part II (or Part I) section it points to, and are not repeated here.
+
+### WP-3 Causes of BayCAP's displacement on stored `main` results
+
+- **Kind / status:** analysis / Done (2026-10-21)
+- **Source:** [[ext2_baycap]] (E2.2)
+- **Result:** §II.11 (code, run, findings)
+- **Goal (as planned):** explain why BayCAP's accuracy intervals are displaced on most pairs, by splitting the error of BayCAP's point estimate into a recall term and a prevalence term, measuring the prior part of the recall term on the actual validation counts, the conditioning of $\hat C$ on vectors summing to zero, and the difficulty of the problem as the accuracy of $h$ on $V$; one per-pair table, as LaTeX and PDF, and two scatter plots; vanilla accuracy, $\lvert U\rvert=1000$, all 75 pairs. It replaced an earlier WP-3, an exact pilot of the realised-table predictive, discarded on 2026-10-20 before any work.
+- **Depends on:** stored `main` results and pretrain validation posteriors and labels.
+- **Deviations from Part V:** both figures are in one plot module, `plots/displacement.py` (user's decision), instead of one module per figure (§V.5).
+- **Log:** 2026-10-20: card added. 2026-10-20: started on branch `wp-3/displacement`; $1/\sigma_{\min}$ added next to $\kappa_0$, because $\kappa_0=1$ on every binary pair (user's decision); code and unit tests done, plot layout checked on a synthetic table; this machine had neither `main` results nor pretrain data, so the run was planned on `bcuda`. 2026-10-20: full run on `bcuda` (§II.11); the PDFs could not be compiled at first, because neither machine had `pdflatex`. 2026-10-20: `amsmath` added to the standalone document (the errors table failed on `\lVert`); the diagnostics and errors tables merged into one table with three column groups (user's decision). 2026-10-21: E2.2 analysis written in [[ext2_baycap]], first with two candidates to test what it left open (E2.c5, E2.c6); predicted coverage $\mathcal C_s$ added to the table (user's request).
+- **Outcome:** merged into `devel` on 2026-10-21 (merge commit `1ca0e90`). The analysis of the coverage error stops at E2.2 (user's decision of 2026-10-21): what it leaves open (cause 4, a difference between $V$ and the test pool; the systematic prevalence error on a singular $\hat C$; the width shortfall on 9 pairs) is recorded in [[ext2_baycap]] as a guess, and candidates E2.c5 and E2.c6 were dropped. Follow-up: run the table step again to store the predicted-coverage column (§II.11).
+
+### WP-2 Estimand-gap check of BayCAP on stored `main` results
+
+- **Kind / status:** analysis / Done (2026-10-20)
+- **Source:** [[ext2_baycap]] (E2.1)
+- **Result:** §II.10 (code, run, findings)
+- **Goal (as planned):** estimate, without new runs, on which (dataset, classifier) pairs a realised-table posterior predictive would change BayCAP's accuracy intervals, approximating the predictive for accuracy from the stored samples; and choose the datasets of an exact pilot (then WP-3): the largest ratio $\hat\sigma_g/\hat\sigma_p$, the smallest, and one multiclass dataset.
+- **Depends on:** access to the `main` results on the remote `OUT_DIR`, or a `make pull-results`.
+- **Deviations from Part V:** none.
+- **Log:** 2026-10-14: card added. 2026-10-14: started on branch `wp-2/estimand-gap-check`; `main` results available locally (`OUT_DIR=./output`). 2026-10-14: `tables/estimand_gap.py` and `tests/test_estimand_gap.py` committed (`8ba027e`) and PR #1 into `devel` opened; local run (§II.10). Suggested pilot datasets (LR): `dry-bean` (largest ratio) and `poker_hand` (smallest), not chosen. 2026-10-20: the exact pilot was discarded, so the dataset choice was dropped, and the card was marked done (`6cc5c6d`).
+- **Outcome:** merged into `devel` through PR #1 (merge commit `faadea4`, 2026-10-16), before the switch to local `--no-ff` merges; `f9ac859` fixed a truncated table in the PDF before the merge. The second goal was dropped with the pilot; the exact run of the predictive became E2.3 of [[ext2_baycap]] (candidate E2.c4 until 2026-10-21; card WP-4). The low bias of BayCAP on large-$K$ datasets found here led to WP-3.
 
 # Part IV: Pending fixes and known divergences
 
