@@ -1,3 +1,4 @@
+import math
 import unittest
 
 import numpy as np
@@ -12,6 +13,7 @@ from uncawe.tables.displacement import (
     error_terms,
     ordered,
     pair_table,
+    predicted_coverage,
     prior_part,
     rate_matrix,
     sum_zero_basis,
@@ -58,6 +60,16 @@ class DisplacementTest(unittest.TestCase):
         expected = 0.5 * (9 / 12 - 0.8) + 0.5 * (8 / 12 - 0.7)
         self.assertAlmostEqual(prior_part(self.val_counts, [0.5, 0.5]), expected)
         self.assertAlmostEqual(prior_part(self.val_counts, [1.0, 0.0]), 9 / 12 - 0.8)
+
+    def test_predicted_coverage(self):
+        self.assertAlmostEqual(predicted_coverage(0.0, 0.1), 0.95)
+        # shifted by one half-width: the true value sits on an end of the interval, missed about half of the time
+        z = 1.959963984540054
+        expected = 0.5 - (1 - 0.5 * (1 + math.erf(2 * z / math.sqrt(2))))
+        self.assertAlmostEqual(predicted_coverage(0.05, 0.1), expected)
+        self.assertAlmostEqual(predicted_coverage(-0.05, 0.1), predicted_coverage(0.05, 0.1))
+        self.assertLess(predicted_coverage(0.2, 0.02), 1e-12)
+        self.assertTrue(np.isnan(predicted_coverage(0.01, 0.0)))
 
     def test_rate_matrix_is_paper_layout(self):
         rates = rate_matrix(self.val_counts)
@@ -123,12 +135,14 @@ class DisplacementTest(unittest.TestCase):
         self.assertAlmostEqual(row["shift"], -0.2)
         self.assertAlmostEqual(row["recall_term"] + row["prevalence_term"], row["shift"])
         self.assertAlmostEqual(row["coverage"], 0.0)
+        self.assertLess(row["predicted_coverage"], 1e-12)
         self.assertAlmostEqual(row["val_accuracy"], 0.75)
         self.assertEqual(row["min_val_per_class"], 10)
         self.assertLess(row["max_point_gap"], 1e-12)
         ternary = table.iloc[2]
         self.assertAlmostEqual(ternary["shift"], 0.0)
         self.assertAlmostEqual(ternary["coverage"], 1.0)
+        self.assertAlmostEqual(ternary["predicted_coverage"], 0.95)
         self.assertEqual((ternary["kappa0"], ternary["inv_sigma_min"]), (1.0, 1.0))
         self.assertEqual(ternary["min_val_per_class"], 10)
         self.assertEqual(ternary["median_val_per_class"], 20)

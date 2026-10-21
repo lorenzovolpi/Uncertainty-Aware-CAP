@@ -13,6 +13,10 @@ with $\\hat\\pi,\\hat r$ read from the stored mean table ``estim_cts`` and $\\pi
 the recall term, $\\sum_j\\pi_j\\left(\\frac{f_{jj}+1}{n^s_j+K}-\\frac{f_{jj}}{n^s_j}\\right)$, is computed on the
 validation counts $f_{ij}$ rebuilt from the stored validation posteriors and labels, as ``BayCAP.fit`` builds them.
 
+Per pair, the predicted coverage tells how much of the under-coverage the shift alone explains: it is the coverage the
+interval would have if its width were right for the spread of the error across bags and every bag were shifted by the
+mean shift (normal approximation).
+
 Per pair, the conditioning of $\\hat C$ is measured on the vectors summing to zero, through the singular values of
 $Q^\\top\\hat CQ$ ($Q$ an orthonormal basis of those vectors): $\\kappa_0=\\sigma_{\\max}/\\sigma_{\\min}$ and the
 absolute amplification $1/\\sigma_{\\min}$. With $K=2$, $Q^\\top\\hat CQ=\\mathrm{TPR}-\\mathrm{FPR}$, so $\\kappa_0=1$
@@ -31,10 +35,11 @@ from argparse import ArgumentParser
 import numpy as np
 import pandas as pd
 from scipy.linalg import null_space
+from scipy.stats import norm
 from sklearn.metrics import confusion_matrix
 
 from uncawe import env
-from uncawe.config import acc_from_ct
+from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct
 from uncawe.main import EXPERIMENT
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.tables import main as main_tables
@@ -85,6 +90,21 @@ def prior_part(val_counts: np.ndarray, true_props: np.ndarray) -> float:
     plain = np.divide(f_diag, n_s, out=np.full_like(n_s, np.nan), where=n_s > 0)
     smoothed = (f_diag + 1) / (n_s + n_classes)
     return float(np.sum(np.asarray(true_props, dtype=float) * (smoothed - plain)))
+
+
+def predicted_coverage(shift: float, amplitude: float, confidence_level: float = CONFIDENCE_LEVEL) -> float:
+    """Return the coverage of an interval of the given amplitude displaced by ``shift``, under a normal error.
+
+    The interval is read as $\hat A\pm z\sigma$, with $z$ the normal quantile of ``confidence_level`` and
+    $\sigma=\text{amplitude}/(2z)$, and the error $\hat A-A$ as normal with mean ``shift`` and standard deviation
+    $\sigma$. With $s=\text{shift}/(\text{amplitude}/2)$ the probability that $A$ falls in the interval is
+    $\Phi(z(1-s))-\Phi(-z(1+s))$; it equals ``confidence_level`` when the shift is zero. NaN if the amplitude is zero.
+    """
+    if amplitude <= 0:
+        return np.nan
+    z = norm.ppf(0.5 + confidence_level / 2)
+    s = shift / (amplitude / 2)
+    return float(norm.cdf(z * (1 - s)) - norm.cdf(-z * (1 + s)))
 
 
 def rate_matrix(val_counts: np.ndarray) -> np.ndarray:
@@ -171,6 +191,7 @@ def pair_table(df: pd.DataFrame, val_counts: dict) -> pd.DataFrame:
         }
         for col in SCORES + TERMS:
             record[col] = float(bags[col].mean())
+        record["predicted_coverage"] = predicted_coverage(record["shift"], record["amplitude"])
         record["max_point_gap"] = float(bags["point_gap"].max())
         record["max_truth_gap"] = float(bags["truth_gap"].max())
         rows.append(record)
@@ -203,7 +224,8 @@ CAPTION = (
     "Causes of BayCAP's displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
     "$n^s_j$: validation instances of class $\\omega_j$. Diagnostics: $\\kappa_0(\\hat C)$ and $1/\\sigma_{\\min}$, "
     "condition number and absolute amplification of $\\hat C$ on vectors summing to zero; $\\mathrm{acc}_V$, accuracy "
-    "of $h$ on $V$. Interval and error: means over the 100 bags, against the realised table; $\\hat A-A$, shift; $R$, "
+    "of $h$ on $V$. Interval and error: means over the 100 bags, against the realised table; $\\mathcal{C}_s$, coverage "
+    "predicted from the mean shift and amplitude alone (normal approximation); $\\hat A-A$, shift; $R$, "
     "recall term; $R_0$, its prior part; $P$, $|P|$, prevalence term and its absolute value; "
     "$\\lVert\\hat\\pi-\\pi\\rVert_1$, prevalence error."
 )
@@ -213,6 +235,7 @@ COLUMNS = {
     "inv_sigma_min": ("diagnostics", "$1/\\sigma_{\\min}$"),
     "val_accuracy": ("diagnostics", "$\\mathrm{acc}_V$"),
     "coverage": ("interval", main_tables.metrics_map["coverage"]),
+    "predicted_coverage": ("interval", "$\\mathcal{C}_s$"),
     "amplitude": ("interval", main_tables.metrics_map["amplitude"]),
     "winkler": ("interval", main_tables.metrics_map["winkler"]),
     "shift": ("error", "$\\hat A-A$"),
@@ -296,6 +319,11 @@ def gen_tables(pargs):
 
     with pd.option_context("display.width", 250, "display.max_rows", 200, "display.precision", 3):
         print(table.drop(columns=["max_point_gap", "max_truth_gap"]).to_string(index=False))
+    print(
+        f"correlation of coverage and predicted coverage: "
+        f"{table['coverage'].corr(table['predicted_coverage']):.3f}; pairs with coverage more than 0.05 below the "
+        f"prediction: {int((table['coverage'] < table['predicted_coverage'] - 0.05).sum())}"
+    )
     print(
         f"pairs: {len(table)}; max |mean of samples - acc of mean table|: {table['max_point_gap'].max():.2e}; "
         f"max |true acc - trace of true table|: {table['max_truth_gap'].max():.2e}"
