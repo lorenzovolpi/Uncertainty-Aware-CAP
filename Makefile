@@ -5,6 +5,7 @@
 #   make setup                # push the code and install the environment with uv
 #   make run-main-classic     # start an experiment in a detached tmux session
 #   make status / make logs EXP=main-classic / make attach EXP=main-classic
+#   make explog EXP=main      # experiment log <OUT_DIR>/<experiment>.log (FOLLOW=1 to keep reading)
 #   make pull                 # copy tables and plots back to ./output
 #
 # Local runs: `make fetch-data` once (pretrain files and datasets from REMOTE), then
@@ -26,6 +27,8 @@ JAX        ?= cpu
 ARGS       ?=
 LOCAL_OUT  ?= ./output
 PULL_DIRS  ?= tables plots
+LOG_LINES  ?= 50
+FOLLOW     ?=
 RESULTS    ?= main binform predist
 
 # Files and directories of OLD_DIR worth keeping in REMOTE_DIR (never overwritten if already present).
@@ -83,10 +86,10 @@ REV_COMMIT   := $(shell git rev-parse HEAD)
 REV_DESCRIBE := $(shell git describe --always --dirty)
 JAX_ENV      := $(if $(JAX),JAX_PLATFORMS=$(JAX))
 
-.PHONY: help list init push setup run-% status logs attach stop pull fetch-data pull-results push-results
+.PHONY: help list init push setup run-% status logs explog attach stop pull fetch-data pull-results push-results
 
 help:
-	@sed -n '2,14p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
+	@sed -n '2,15p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 	@echo "Experiments (make run-<name>):"
 	@$(foreach e,$(sort $(EXPERIMENTS)),printf '  %-18s %s\n' '$(e)' '$(EXP_$(e))';)
 
@@ -128,6 +131,13 @@ status:
 logs:
 	@test -n '$(EXP)' || { echo "usage: make logs EXP=<name> [WHERE=local]"; exit 1; }
 	@$(ON) 'tail -n 50 $(DIR)/output/runs/$(EXP).latest'
+
+## Tail the experiment log <OUT_DIR>/<EXP>.log written by the code (EXP is the experiment: main, binform, predist,
+## pretrain.classic), with OUT_DIR resolved as the code does (env.json entry of the host, else the cap.env default).
+explog:
+	@test -n '$(EXP)' || { echo "usage: make explog EXP=<main|binform|predist|pretrain.classic> [FOLLOW=1] [LOG_LINES=n] [WHERE=local]"; exit 1; }
+	@$(ON) 'cd $(DIR) && out=$$($(UV) run --locked python -c "import os, uncawe.env as e; print(os.path.dirname(e.root_dir))" 2>/dev/null | tail -n 1) && \
+	  echo "==> $$out/$(EXP).log" && tail -n $(LOG_LINES) $(if $(FOLLOW),-f) "$$out/$(EXP).log"'
 
 attach:
 	@test -n '$(EXP)' || { echo "usage: make attach EXP=<name> [WHERE=local]"; exit 1; }
