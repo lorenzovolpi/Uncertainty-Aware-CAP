@@ -12,7 +12,7 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 | `methods/baycap.py:BayCAP` with `estimand` $\in\{$population, realised$\}$ | [implemented, not evaluated] |
 | E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work plan §II.10) | [run], analysis below |
 | E2.2, causes of the displacement, on stored results (work-plan card WP-3; `tables/displacement.py`, `plots/displacement.py`) | [run], analysis below |
-| E2.3, exact realised-table predictive on all pairs, and the E2.2 analysis repeated on it (experiment `calibration`) | [proposal], not scheduled |
+| E2.3, the exact realised-table predictive as the method `BayesCAP-real` of `main`, and the E2.2 analysis repeated on it | [proposal], not scheduled |
 | Candidate experiments E2.c1, E2.c2 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis], examined by E2.2 |
 | Cause 4, a difference between $V$ and the test pool shared by all bags | [new hypothesis], not tested |
@@ -23,7 +23,7 @@ The paper-related material of earlier versions (contributions, hypotheses, paper
 
 All experiments score every interval against the realised table of each target bag, as `main` does. They use the measures of the paper (AE, coverage, amplitude, Winkler score at $\alpha=0.05$), the $100$ APP bags of size $1000$ of `main` with the same seeds, and target labels only for scoring.
 
-E2.1 and the exact run E2.3 form a gate: together they decide whether the realised-table predictive changes BayCAP's intervals enough to be worth studying; the decision rule is at the end of this section. E2.2 explains the displacement that E2.1 found, and E2.3 repeats that analysis on the realised-table predictive.
+E2.1 estimates, without new runs, how the realised-table predictive would change BayCAP's intervals; E2.2 explains the displacement that E2.1 found; E2.3 runs the exact predictive in `main` and repeats both analyses on it.
 
 ## E2.1: approximate check on stored results
 
@@ -42,7 +42,7 @@ E2.1 and the exact run E2.3 form a gate: together they decide whether the realis
   - the ratio $\hat\sigma_g/\hat\sigma_p$ is below $0.3$ on $24$ pairs, where the predictive barely widens the interval, and ranges from $0.07$ (`poker_hand`) to $1.50$ (`dry-bean`);
   - on `isolet` and `letter` ($K=26$) BayCAP's coverage is $0.00$ for every classifier, and the predictive leaves it at $0.00$–$0.02$; on `hand_digits` ($K=10$) it is at most $0.11$; on these datasets BayCAP's estimate is biased low (LR: $-0.18$ on `isolet`, $-0.07$ on `letter`).
 
-  What this shows: BayCAP under-covers the realised accuracy on most pairs, but in most cases the cause is not an interval that is too narrow around the right value. Widening the interval by the bag-level fluctuation, which is all the predictive can do, rarely repairs coverage. On many pairs, and clearly on the large-$K$ datasets, the interval sits away from the true value (§T.5). Under the provisional decision rule below, E2.1 is neither a clear pass (far fewer than one pair in five is repaired) nor a clear fail (the ratio is small on about a third of the pairs, not on almost all). The pass/fail decision is not taken yet.
+  What this shows: BayCAP under-covers the realised accuracy on most pairs, but in most cases the cause is not an interval that is too narrow around the right value. Widening the interval by the bag-level fluctuation, which is all the predictive can do, rarely repairs coverage. On many pairs, and clearly on the large-$K$ datasets, the interval sits away from the true value (§T.5).
 
 ## E2.2: causes of the displacement
 
@@ -80,29 +80,23 @@ E2.1 and the exact run E2.3 form a gate: together they decide whether the realis
   - **the systematic prevalence error on a singular $\hat C$** (`wine-quality` LR and SVM) is guessed to come from the prior on $C$ rather than the prior on $\pi^Q$: when $h$ never predicts some class, the counts of the bag do not say how to attribute the predictions between that class and the classes it is confused with, and the imaginary counts of the $\operatorname{Dir}(\mathbf 1)$ prior on $C$ decide the attribution, in the same direction in every bag;
   - **the width that falls short on a few pairs** is guessed to be mainly the bag-level fluctuation of the realised table, which the population interval leaves out and the realised-table predictive adds; skewed posteriors near an accuracy of $1$ and NUTS sampling quality may contribute.
 
-## E2.3: exact realised-table predictive on all pairs
+## E2.3: the exact realised-table predictive in `main`
 
-**Why.** E2.1 approximated the realised-table predictive for accuracy (one $\bar\rho$ per bag, a normal in place of the sum of binomials, §T.4) and found that it repairs only $3$ of the $53$ under-covering pairs; the gate needs this confirmed with the exact predictive. E2.2 found that most of the under-coverage of the population interval is displacement, and that on $9$ pairs the interval is also too narrow, possibly because it leaves out the bag-level fluctuation that the predictive adds. The realised pushforward changes the width and can also move the centre of the interval (§T.3), so repeating the E2.2 analysis on it tells whether it changes any of the causes of the displacement, or only the width.
+**Why.** E2.1 approximated the realised-table predictive for accuracy (one $\bar\rho$ per bag, a normal in place of the sum of binomials, §T.4) and found that it would repair the coverage of only $3$ of the $53$ under-covering pairs; the exact predictive tells whether the approximation is right. E2.2 found that most of the under-coverage of the population interval is displacement, and that on $9$ pairs the interval is also too narrow, possibly because it leaves out the bag-level fluctuation that the predictive adds. The realised pushforward changes the width and can also move the centre of the interval (§T.3), so repeating the E2.2 analysis on it tells whether it changes any of the causes of the displacement, or only the width. Running it in `main`, as a method like the others, stores its results next to those of every other method, with the same bags and the same NUTS draws as the stored `BayesCAP`.
 
 - **Design.**
-  - **Inputs:** the $100$ `main` bags of size $1000$ (UPP, same seeds) of all $75$ pairs; the stored pretrain posteriors; `methods/baycap.py:BayCAP` with the priors and NUTS settings of `main` ($500$ warm-up iterations, $1000$ draws); the validation counts $f_{ij}$ as in E2.2; the per-pair CSV of E2.1 for the approximate coverage.
-  - **Varied:** the pushforward, population (`BayesCAP`) or realised (`BayesCAP-real`), from the same NUTS draws (same `random_state`); data, bags, priors and sampler are held fixed.
+  - **Inputs:** the `main` results of `BayesCAP` (population pushforward, stored) and of `BayesCAP-real` (realised pushforward, added to `main`: `methods/baycap.py:BayCAP` with `estimand="realised"`, the priors and NUTS settings of `BayesCAP`, $500$ warm-up iterations and $1000$ draws, and the default seed, so that its posterior draws are those of the stored `BayesCAP` on the same platform and JAX version); the $100$ `main` bags of size $1000$ (UPP) of all $75$ pairs; the validation counts $f_{ij}$ as in E2.2; the per-pair CSV of E2.1 for the approximate coverage.
+  - **Varied:** the pushforward, population (`BayesCAP`) or realised (`BayesCAP-real`); data, bags, priors, sampler and seeds are held fixed.
   - **Measures:** vanilla accuracy only. For both pushforwards: coverage, amplitude and Winkler score, and the predicted coverage $\mathcal C_s$; the error measures of E2.2 from each pushforward's mean table (shift, recall term, prior part, prevalence term and its mean absolute value, $\lVert\hat\pi-\pi\rVert_1$); for the realised pushforward, also the coverage that E2.1 predicted with the approximation. The diagnostics of E2.2 ($\kappa_0(\hat C)$, $1/\sigma_{\min}$, accuracy on $V$) do not depend on the pushforward and are carried over.
   - **Estimand:** population table for `BayesCAP`, realised table for `BayesCAP-real`; both scored against the realised table of each bag. The error measures use the bag's true class proportions and recalls, so they are an analysis, not a method.
-  - **Cost:** one NUTS run per bag, shared by the two pushforwards: $75\times100=7500$ runs; the table draws and $n^t$ are stored in a sidecar file.
+  - **Cost:** one rerun of `main` on `bcuda`, which computes only `BayesCAP-real` because the results of every other method exist: one NUTS run per bag, $75\times100=7500$ runs. `main` stores the samples of all three metrics (vanilla accuracy, macro-F1, macro-K) for `BayesCAP-real`, as for every method.
 - **Representation.**
-  - **Gate table:** one row per pair, grouped by dataset and ordered by $K$: coverage, amplitude and Winkler score of both pushforwards, and the approximate coverage of E2.1 next to the exact one.
+  - **Comparison table:** one row per pair, grouped by dataset and ordered by $K$: coverage, amplitude and Winkler score of both pushforwards, and the approximate coverage of E2.1 next to the exact one.
   - **E2.2 table of the realised pushforward:** the table of E2.2, same layout (diagnostics, interval, error), computed on `BayesCAP-real`.
-  - **Scatter, gate:** coverage of the population interval on the horizontal axis, of the predictive on the vertical axis, one point per pair, coloured by $\hat\sigma_g/\hat\sigma_p$ from E2.1, with lines at $0.95$ on both axes: points that move up to the line are pairs the predictive repairs, points near $(0,0)$ stay displaced.
+  - **Scatter, coverage:** coverage of the population interval on the horizontal axis, of the predictive on the vertical axis, one point per pair, coloured by $\hat\sigma_g/\hat\sigma_p$ from E2.1, with lines at $0.95$ on both axes: points that move up to the line are pairs the predictive repairs, points near $(0,0)$ stay displaced.
   - **Scatter, approximation:** exact against approximate coverage of the predictive, one point per pair, with the line $y=x$.
+  - **The E2.2 scatters of the realised pushforward**, next to those of the population one.
 - **Analysis.** Not run.
-
-## Decision rule of the gate (provisional)
-
-- *Pass* if, in E2.1 and confirmed by the exact run E2.3, at least one pair in five under-covers (coverage below $0.90$) and the predictive brings it within $[0.93,0.97]$ with a lower Winkler score.
-- *Fail* if $\hat\sigma_g/\hat\sigma_p<0.3$ on almost every pair (the coverage then changes by about one percentage point or less), or if BayCAP over-covers and the predictive worsens the Winkler score everywhere.
-
-All pairs count, including those whose interval is displaced (coverage near $0$ for both pushforwards), which no pushforward can repair (decision of 2026-10-20).
 
 # Candidate experiments
 
@@ -186,7 +180,7 @@ $$
 \sigma_g^2=\frac{1}{(N^Q)^2}\sum_i n^t_i\,\rho^{(r)}_{ii}\left(1-\rho^{(r)}_{ii}\right),
 $$
 
-with mean close to the population accuracy of the draw and variance $\sigma_g^2$. E2.1 makes two simplifications: it uses one $\bar\rho$ per bag (the stored mean table `estim_cts`, each row rescaled to one) instead of one per draw, and it replaces the sum of binomials with a normal distribution, which is accurate when the counts are large. Each approximate predictive sample is then the stored accuracy sample plus independent noise $\mathcal N(0,\hat\sigma_g^2)$. Both $n^t$ and $\bar\rho$ use no target labels. The ratio $\hat\sigma_g/\hat\sigma_p$, with $\hat\sigma_p$ the standard deviation of the stored samples, measures how much the predictive can widen the interval: under normality, adding independent noise multiplies the width by $\sqrt{1+(\hat\sigma_g/\hat\sigma_p)^2}$, so a ratio of $0.3$ widens it by about $4\%$. The approximation does not apply to macro-F1 or macro-K, whose off-diagonal cells matter; the table draws stored by E2.3 would allow checking it.
+with mean close to the population accuracy of the draw and variance $\sigma_g^2$. E2.1 makes two simplifications: it uses one $\bar\rho$ per bag (the stored mean table `estim_cts`, each row rescaled to one) instead of one per draw, and it replaces the sum of binomials with a normal distribution, which is accurate when the counts are large. Each approximate predictive sample is then the stored accuracy sample plus independent noise $\mathcal N(0,\hat\sigma_g^2)$. Both $n^t$ and $\bar\rho$ use no target labels. The ratio $\hat\sigma_g/\hat\sigma_p$, with $\hat\sigma_p$ the standard deviation of the stored samples, measures how much the predictive can widen the interval: under normality, adding independent noise multiplies the width by $\sqrt{1+(\hat\sigma_g/\hat\sigma_p)^2}$, so a ratio of $0.3$ widens it by about $4\%$. The approximation does not apply to macro-F1 or macro-K, whose off-diagonal cells matter; `main` stores the macro-F1 and macro-K samples of `BayesCAP-real` from E2.3, which would allow checking it.
 
 ## T.5 Displacement and the prior on $C$ (cause 1)
 
@@ -270,9 +264,9 @@ Components:
   - NUTS keeps `PRNGKey(random_state)`; the multinomial draws use a NumPy `Generator` seeded from `random_state`, so both values of `estimand` with the same `random_state` share the posterior draws.
   - The realised pushforward is a module-level function (`realised_tables`), reusable on any table draws.
   - Method names in experiments: `BayesCAP` (population, as in `main`) and `BayesCAP-real` (realised).
-- **Experiment `calibration`** (E2.3) [proposal]: for each of the $75$ pairs and the $100$ `main` bags, one `BayCAP` fit and one NUTS run shared by the two pushforwards, `BayesCAP` and `BayesCAP-real` (same `random_state`); writes to `cap.env["OUT_DIR"]/uncawe/calibration` in the standard result schema, plus a sidecar file per pair with the table draws and the predicted counts $n^t$.
-- **`tables/displacement.py`** (for E2.3) [proposal]: read the results of `calibration` as well as those of `main`, with the method (`BayesCAP` or `BayesCAP-real`) as an argument, so that the E2.2 table is produced for each pushforward with the same code; output under a separate subfolder per experiment and method, so the stored E2.2 outputs are not overwritten.
-- **`tables/calibration.py`** (E2.3) [proposal]: the per-pair gate table, with the coverage of the approximate predictive read from the E2.1 CSV, and the two scatters of E2.3.
+- **`BayesCAP-real` in `main`** (E2.3) [proposal]: a factory entry in `experiments/methods.py` (`METHOD_CLASS` and `gen_methods`), `BayCAP(acc, estimand="realised", num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)`, run with the other BayCAP methods (`BAYES_N_JOBS`); results under `<OUT_DIR>/uncawe/main/` like every method. It is excluded by default from the tables and plots of `main` (`tables/main.py`, `tables/rank.py`, the default methods of `plots/common.py`), so the paper's tables and ranks are unchanged; only the E2 tables and plots use it.
+- **`tables/displacement.py` and `plots/displacement.py`** (for E2.3) [proposal]: take the method as an argument (default `BayesCAP`), with outputs in a subfolder per method, so the stored E2.2 outputs are not overwritten.
+- **A table and plot script for E2.3** [proposal]: the comparison table, with the approximate coverage read from the E2.1 CSV, and the two coverage scatters.
 
 Tests:
 
@@ -286,7 +280,7 @@ Tests:
 Reproducibility and comparability:
 
 - `main` and `binform` and their output paths are unchanged; E2.1 and E2.2 only read stored results;
-- E2.3 would use the same bags, seeds and NUTS settings as `main`, so its `BayesCAP` rows should agree with `main` statistically; bitwise agreement is not expected across JAX platforms;
+- E2.3 adds the rows of `BayesCAP-real` to `main` and leaves the stored results of every other method untouched; with the same bags, seeds and NUTS settings, its posterior draws equal those of the stored `BayesCAP` on the same platform and JAX version, while bitwise agreement is not expected across JAX platforms, in which case the two pushforwards are compared on different but equally distributed draws;
 - every row records the prior, the seeds and the pushforward (population or predictive).
 
 # Appendix

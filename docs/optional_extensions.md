@@ -138,3 +138,12 @@ Revived in [[ext10_baycap_priors_tempering|Extension 10]] (2026-10-15), as the f
 ## 5. Label-free temperature selection for BayCAP
 
 Revived in [[ext10_baycap_priors_tempering|Extension 10]] (2026-10-15), as experiment E10.5, still run only if oracle-best tempering clearly beats the realised-table predictive (hypothesis H5 refuted).
+
+## 6. A pass/fail gate for the realised-table predictive of BayCAP
+
+Set aside from [[ext2_baycap|Extension 2]] on 2026-10-21: E2.1 and E2.3 are treated as analyses, not as a gate. The provisional decision rule was:
+
+- *Pass* if, in E2.1 and confirmed by the exact run (now E2.3), at least one pair in five under-covers (coverage below $0.90$) and the predictive brings it within $[0.93,0.97]$ with a lower Winkler score.
+- *Fail* if $\hat\sigma_g/\hat\sigma_p<0.3$ on almost every pair (the coverage then changes by about one percentage point or less), or if BayCAP over-covers and the predictive worsens the Winkler score everywhere.
+
+All pairs count, including those whose interval is displaced (coverage near $0$ for both pushforwards), which no pushforward can repair (decision of 2026-10-20).
