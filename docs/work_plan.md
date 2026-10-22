@@ -105,7 +105,7 @@ The CBPE variants `B-CBPE` and `BE-CBPE` were run in earlier versions. Only `plo
 
 ## II.9 Shared infrastructure and tests
 
-- `experiments/execution.py`: task runner (serial or `joblib`), outcome codes, persistence, worker shutdown. After each task (one pair and one method, all metrics) it writes a progress line to the experiment log, `[<experiment>] progress: <done>/<total> tasks done, elapsed <h:mm:ss>, remaining ~<h:mm:ss>`, separately for the pool of regular methods and the pool of BayCAP methods; the remaining time is a linear estimate, optimistic at first when some tasks only find existing results.
+- `experiments/execution.py`: task runner (serial or `joblib`), outcome codes, persistence, worker shutdown. Each line it writes to the experiment log for a result (done, exists or error) ends with the count of tasks done so far, `[<done>/<total>]`, where a task is one pair and one method (all metrics); the count is separate for the pool of regular methods and the pool of BayCAP methods.
 - `experiments/records.py`: `EvaluationContext` and `build_result_frame`, the result schema shared by `main` and `binform`.
 - `experiments/metrics.py`, `experiments/methods.py`, `experiments/datasets.py`: metric, method and dataset factories.
 - `main.py`, `binform.py`, `predist.py`, `config.py`: compatibility shims over `experiments/`.

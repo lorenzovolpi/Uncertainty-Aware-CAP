@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import ANY, Mock, patch
 
-from uncawe.experiments.execution import ExperimentOutcome, OutcomeStatus, run_tasks
+from uncawe.experiments.execution import ExperimentOutcome, OutcomeStatus, run_tasks, save_experiment_results
 
 
 class ExperimentOutcomeTest(unittest.TestCase):
@@ -38,15 +38,28 @@ class ExperimentOutcomeTest(unittest.TestCase):
         self.assertEqual(save.call_args_list[0].args[1], [["first"]])
 
     @patch("uncawe.experiments.execution.save_experiment_results")
-    def test_serial_runner_logs_progress_after_each_task(self, _save):
-        log = Mock()
-        run_tasks(log, ["first", "second"], worker=lambda task: [task], n_jobs=1, experiment="main")
+    def test_serial_runner_passes_the_task_count(self, save):
+        run_tasks(Mock(), ["first", "second"], worker=lambda task: [task], n_jobs=1, experiment="main")
 
-        messages = [call.args[0] for call in log.info.call_args_list]
-        self.assertEqual(len(messages), 2)
-        self.assertTrue(messages[0].startswith("[main] progress: 1/2 tasks done, elapsed "))
-        self.assertTrue(messages[1].startswith("[main] progress: 2/2 tasks done"))
-        self.assertTrue(messages[1].endswith("remaining ~0:00:00"))
+        self.assertEqual([call.kwargs["done"] for call in save.call_args_list], [0, 1])
+        self.assertEqual({call.kwargs["total"] for call in save.call_args_list}, {2})
+
+    def test_result_lines_end_with_the_task_count(self):
+        log = Mock()
+        exists = [ExperimentOutcome.EXISTS(self.pretrain, metric, "method") for metric in ("acc", "f1")]
+        error = [ExperimentOutcome.ERROR(ValueError("failed"), self.pretrain, "acc", "method")]
+
+        save_experiment_results(log, [exists, error], experiment="main", total=5, done=2)
+
+        infos = [call.args[0] for call in log.info.call_args_list]
+        self.assertEqual(infos, [f"[LR@dataset] method on {m} exists, skipping [3/5]" for m in ("acc", "f1")])
+        self.assertTrue(log.warning.call_args.args[0].endswith("skipping [4/5]"))
+
+    def test_result_lines_have_no_count_without_total(self):
+        log = Mock()
+        save_experiment_results(log, [[ExperimentOutcome.EXISTS(self.pretrain, "acc", "method")]], experiment="main")
+
+        self.assertEqual(log.info.call_args.args[0], "[LR@dataset] method on acc exists, skipping")
 
     @patch("uncawe.experiments.execution.save_experiment_results")
     @patch("uncawe.experiments.execution.parallel")
@@ -65,26 +78,8 @@ class ExperimentOutcomeTest(unittest.TestCase):
             return_as="generator_unordered",
             max_nbytes=None,
         )
-        save.assert_called_once_with(ANY, ANY, experiment="main")
+        save.assert_called_once_with(ANY, ANY, experiment="main", total=2)
         self.assertEqual(list(save.call_args.args[1]), [["result"]])
-
-    @patch("uncawe.experiments.execution.parallel")
-    def test_parallel_runner_logs_progress_after_each_saved_result(self, parallel):
-        log = Mock()
-        parallel.return_value = iter([[], []])
-        saved = []
-
-        def save(_log, results_gen, experiment):
-            for results in results_gen:
-                saved.append(log.info.call_count)
-
-        with patch("uncawe.experiments.execution.save_experiment_results", side_effect=save):
-            run_tasks(log, ["first", "second"], worker=Mock(), n_jobs=2, experiment="main")
-
-        # each progress line follows the save of its result
-        self.assertEqual(saved, [0, 1])
-        messages = [call.args[0] for call in log.info.call_args_list]
-        self.assertEqual([m.split(" tasks")[0] for m in messages], ["[main] progress: 1/2", "[main] progress: 2/2"])
 
 
 if __name__ == "__main__":

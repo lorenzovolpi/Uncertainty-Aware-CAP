@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import timedelta
 from enum import IntEnum
 from logging import Logger
-from time import time
 from typing import TypeVar
 
 from cap.utils.commons import parallel
@@ -64,8 +62,13 @@ def save_experiment_results(
     results_gen: Iterable[Sequence[ExperimentOutcome]],
     *,
     experiment: str,
+    total: int | None = None,
+    done: int = 0,
 ) -> None:
-    for results in results_gen:
+    """Save and log the outcomes; with ``total``, each line ends with the task count ``[<n>/<total>]`` of the pool,
+    where ``done`` tasks were already saved before ``results_gen``."""
+    for n, results in enumerate(results_gen, start=done + 1):
+        count = f" [{n}/{total}]" if total is not None else ""
         for result in results:
             label = f"[{result.p.h_info.name}@{result.p.d_info.name}] {result.method_name}"
             if result.ok:
@@ -78,32 +81,14 @@ def save_experiment_results(
                     experiment=experiment,
                 )
                 result.df.save_result(path)
-                log.info(f"{label} on {result.acc_name} done [{timestamp(result.t_train, result.t_test_ave)}]")
+                log.info(f"{label} on {result.acc_name} done [{timestamp(result.t_train, result.t_test_ave)}]{count}")
             elif result.old:
-                log.info(f"{label} on {result.acc_name} exists, skipping")
+                log.info(f"{label} on {result.acc_name} exists, skipping{count}")
             elif result.error():
-                log.warning(f"{label}: {result.acc_name} gave error '{result.err}' - skipping")
+                log.warning(f"{label}: {result.acc_name} gave error '{result.err}' - skipping{count}")
 
 
 Task = TypeVar("Task")
-
-
-def log_progress(log: Logger, done: int, total: int, started: float, *, experiment: str) -> None:
-    """Log how many tasks of a pool are done, the elapsed time and a linear estimate of the remaining time."""
-    elapsed = time() - started
-    remaining = elapsed / done * (total - done)
-    log.info(
-        f"[{experiment}] progress: {done}/{total} tasks done, elapsed {timedelta(seconds=round(elapsed))}, "
-        f"remaining ~{timedelta(seconds=round(remaining))}"
-    )
-
-
-def _with_progress(log: Logger, results_gen: Iterable, total: int, *, experiment: str) -> Iterable:
-    """Yield the results unchanged, logging progress once each one has been consumed (saved)."""
-    started = time()
-    for done, results in enumerate(results_gen, start=1):
-        yield results
-        log_progress(log, done, total, started, experiment=experiment)
 
 
 def run_tasks(
@@ -117,12 +102,10 @@ def run_tasks(
     if not tasks:
         return
 
-    # one task is one (pair, method); tasks whose results exist end at once, so early estimates are optimistic
+    # one task is one (pair, method); its log lines end with the count of tasks of the pool done so far
     if n_jobs == 1:
-        started = time()
-        for done, task in enumerate(tasks, start=1):
-            save_experiment_results(log, [worker(task)], experiment=experiment)
-            log_progress(log, done, len(tasks), started, experiment=experiment)
+        for done, task in enumerate(tasks):
+            save_experiment_results(log, [worker(task)], experiment=experiment, total=len(tasks), done=done)
         return
 
     results_gen = parallel(
@@ -132,9 +115,7 @@ def run_tasks(
         return_as="generator_unordered",
         max_nbytes=None,
     )
-    save_experiment_results(
-        log, _with_progress(log, results_gen, len(tasks), experiment=experiment), experiment=experiment
-    )
+    save_experiment_results(log, results_gen, experiment=experiment, total=len(tasks))
 
 
 def shutdown_parallel_workers(log: Logger) -> None:
