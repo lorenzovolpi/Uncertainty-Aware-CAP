@@ -15,7 +15,7 @@ these records.  Classifier pre-training is outside this experiment's scope.
 
 import os
 
-os.environ.setdefault("JAX_PLATFORMS", "cuda")
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
 from argparse import ArgumentParser
@@ -37,10 +37,19 @@ from uncawe.experiments.datasets import get_filtered_datasets
 from uncawe.experiments.execution import (
     ExperimentOutcome,
     run_tasks,
-    save_experiment_results as save_outcomes,
     shutdown_parallel_workers,
 )
-from uncawe.experiments.methods import BAYES_N_JOBS, SAMPLE_SIZE, gen_methods, get_method_names
+from uncawe.experiments.execution import (
+    save_experiment_results as save_outcomes,
+)
+from uncawe.experiments.methods import (
+    BAYES_ENV,
+    BAYES_N_JOBS,
+    SAMPLE_SIZE,
+    THREAD_LIMITS,
+    gen_methods,
+    get_method_names,
+)
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
@@ -251,8 +260,9 @@ def run_experiment_args(
     log: Logger,
     experiment_args: list[tuple[str, str, CAPWithConfidence]],
     n_jobs: int,
+    env: dict[str, str] | None = None,
 ) -> None:
-    run_tasks(log, experiment_args, worker=exp_protocol, n_jobs=n_jobs, experiment=EXPERIMENT)
+    run_tasks(log, experiment_args, worker=exp_protocol, n_jobs=n_jobs, experiment=EXPERIMENT, env=env)
 
 
 def experiments(log: Logger, domain: str) -> None:
@@ -280,11 +290,8 @@ def experiments(log: Logger, domain: str) -> None:
             args = (info_path, method_name, method)
             (bayes_args if "BayesCAP" in method_name else regular_args).append(args)
 
-    regular_n_jobs = capenv["N_JOBS"]
-    run_experiment_args(log, regular_args, n_jobs=regular_n_jobs)
-    if regular_n_jobs != 1:
-        shutdown_parallel_workers(log)
-    run_experiment_args(log, bayes_args, n_jobs=BAYES_N_JOBS)
+    run_experiment_args(log, regular_args, n_jobs=capenv["N_JOBS"], env=THREAD_LIMITS)
+    run_experiment_args(log, bayes_args, n_jobs=BAYES_N_JOBS, env=BAYES_ENV)
 
 
 def main() -> None:
@@ -302,4 +309,6 @@ def main() -> None:
         log.error(error)
         print_exception(error)
     finally:
+        # as binform: workers left by a pool interrupted by an error
+        shutdown_parallel_workers(log)
         log.info("-" * 32 + "  end  " + "-" * 32)

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+import os
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import IntEnum
 from logging import Logger
@@ -91,6 +93,25 @@ def save_experiment_results(
 Task = TypeVar("Task")
 
 
+@contextmanager
+def worker_environment(env: Mapping[str, str]) -> Iterator[None]:
+    """Set ``env`` in ``os.environ`` and restore the previous values on exit.
+
+    Worker processes started inside the context copy the environment, so ``env`` applies to them (e.g. thread limits,
+    ``XLA_FLAGS``); joblib keeps the thread-limit variables that are already set instead of its own default.
+    """
+    previous = {name: os.environ.get(name) for name in env}
+    os.environ.update(env)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def run_tasks(
     log: Logger,
     tasks: list[Task],
@@ -98,7 +119,15 @@ def run_tasks(
     worker: Callable[[Task], Sequence[ExperimentOutcome]],
     n_jobs: int,
     experiment: str,
+    env: Mapping[str, str] | None = None,
 ) -> None:
+    """Run ``tasks`` with ``n_jobs`` workers and save their outcomes as they arrive.
+
+    With ``n_jobs > 1`` the workers are started inside :func:`worker_environment` with ``env`` and shut down before and
+    after the pool, so that no worker is reused with the environment of another pool. With ``n_jobs == 1`` the tasks
+    run in this process and ``env`` is not applied, because thread pools started earlier in this process would not see
+    it.
+    """
     if not tasks:
         return
 
@@ -108,14 +137,18 @@ def run_tasks(
             save_experiment_results(log, [worker(task)], experiment=experiment, total=len(tasks), done=done)
         return
 
-    results_gen = parallel(
-        func=worker,
-        args_list=tasks,
-        n_jobs=n_jobs,
-        return_as="generator_unordered",
-        max_nbytes=None,
-    )
-    save_experiment_results(log, results_gen, experiment=experiment, total=len(tasks))
+    shutdown_parallel_workers(log)
+    # the results are consumed inside the context, because joblib may start workers while they are read
+    with worker_environment(env or {}):
+        results_gen = parallel(
+            func=worker,
+            args_list=tasks,
+            n_jobs=n_jobs,
+            return_as="generator_unordered",
+            max_nbytes=None,
+        )
+        save_experiment_results(log, results_gen, experiment=experiment, total=len(tasks))
+    shutdown_parallel_workers(log)
 
 
 def shutdown_parallel_workers(log: Logger) -> None:

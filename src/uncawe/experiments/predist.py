@@ -26,7 +26,8 @@ import quapy as qp
 from cap.models.confidence import PrediQuant
 from cap.utils.commons import contingency_table, parallel
 
-from uncawe.experiments.methods import CONFIDENCE_LEVEL, kdey
+from uncawe.experiments.execution import shutdown_parallel_workers, worker_environment
+from uncawe.experiments.methods import CONFIDENCE_LEVEL, THREAD_LIMITS, kdey
 from uncawe.experiments.metrics import acc_from_ct
 from uncawe.experiments.predist_config import (
     DEFAULT_ACC_NAME,
@@ -45,15 +46,29 @@ from uncawe.experiments.predist_config import (
 )
 from uncawe.experiments.predist_io import (
     atomic_save_parquet as _atomic_save_parquet,
+)
+from uncawe.experiments.predist_io import (
     completed_keys as _completed_keys,
+)
+from uncawe.experiments.predist_io import (
     load_existing as _load_existing,
+)
+from uncawe.experiments.predist_io import (
     result_path as _result_path,
 )
 from uncawe.experiments.predist_sampling import (
     TestSample,
+)
+from uncawe.experiments.predist_sampling import (
     load_filtered_pretrains as _load_filtered_pretrains,
+)
+from uncawe.experiments.predist_sampling import (
     make_test_samples as _make_test_samples,
+)
+from uncawe.experiments.predist_sampling import (
     simplex_points as _simplex_points,
+)
+from uncawe.experiments.predist_sampling import (
     three_class_dataset_names as _three_class_dataset_names,
 )
 from uncawe.pretrain.data import PretrainInfo
@@ -334,18 +349,22 @@ def run(args) -> None:
         for experiment_args_item in experiment_args:
             _run_one_pretrain_args(experiment_args_item)
     else:
-        results = parallel(
-            func=_run_one_pretrain_args,
-            args_list=experiment_args,
-            n_jobs=args.n_jobs,
-            return_as="generator_unordered",
-            max_nbytes=None,
-        )
-        for ok, dataset, classifier, error in results:
-            if ok:
-                log.info(f"[{classifier}@{dataset}] completed")
-            else:
-                log.warning(f"[{classifier}@{dataset}] failed: {error}")
+        # as experiments/execution.py:run_tasks: fresh workers with one thread per numerical library
+        shutdown_parallel_workers(log)
+        with worker_environment(THREAD_LIMITS):
+            results = parallel(
+                func=_run_one_pretrain_args,
+                args_list=experiment_args,
+                n_jobs=args.n_jobs,
+                return_as="generator_unordered",
+                max_nbytes=None,
+            )
+            for ok, dataset, classifier, error in results:
+                if ok:
+                    log.info(f"[{classifier}@{dataset}] completed")
+                else:
+                    log.warning(f"[{classifier}@{dataset}] failed: {error}")
+        shutdown_parallel_workers(log)
     log.info(f"finished {EXPERIMENT}: processed {len(experiment_args)} pretrain artifact(s)")
 
 

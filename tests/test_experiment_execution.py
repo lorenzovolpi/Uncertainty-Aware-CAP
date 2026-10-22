@@ -1,8 +1,15 @@
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import ANY, Mock, patch
 
-from uncawe.experiments.execution import ExperimentOutcome, OutcomeStatus, run_tasks, save_experiment_results
+from uncawe.experiments.execution import (
+    ExperimentOutcome,
+    OutcomeStatus,
+    run_tasks,
+    save_experiment_results,
+    worker_environment,
+)
 
 
 class ExperimentOutcomeTest(unittest.TestCase):
@@ -61,9 +68,10 @@ class ExperimentOutcomeTest(unittest.TestCase):
 
         self.assertEqual(log.info.call_args.args[0], "[LR@dataset] method on acc exists, skipping")
 
+    @patch("uncawe.experiments.execution.shutdown_parallel_workers")
     @patch("uncawe.experiments.execution.save_experiment_results")
     @patch("uncawe.experiments.execution.parallel")
-    def test_parallel_runner_preserves_scheduling_arguments(self, parallel, save):
+    def test_parallel_runner_preserves_scheduling_arguments(self, parallel, save, _shutdown):
         worker = Mock()
         tasks = ["first", "second"]
         generated = iter([["result"]])
@@ -80,6 +88,68 @@ class ExperimentOutcomeTest(unittest.TestCase):
         )
         save.assert_called_once_with(ANY, ANY, experiment="main", total=2)
         self.assertEqual(list(save.call_args.args[1]), [["result"]])
+
+
+VAR = "UNCAWE_TEST_WORKER_ENV"
+
+
+class WorkerEnvironmentTest(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(os.environ.pop, VAR, None)
+        self.addCleanup(os.environ.pop, VAR + "_NEW", None)
+
+    def test_sets_and_restores_variables(self):
+        os.environ[VAR] = "old"
+        with worker_environment({VAR: "new", VAR + "_NEW": "1"}):
+            self.assertEqual(os.environ[VAR], "new")
+            self.assertEqual(os.environ[VAR + "_NEW"], "1")
+        self.assertEqual(os.environ[VAR], "old")
+        self.assertNotIn(VAR + "_NEW", os.environ)
+
+    def test_restores_on_error(self):
+        with self.assertRaises(RuntimeError), worker_environment({VAR: "new"}):
+            raise RuntimeError
+        self.assertNotIn(VAR, os.environ)
+
+    @patch("uncawe.experiments.execution.shutdown_parallel_workers")
+    @patch("uncawe.experiments.execution.parallel")
+    def test_parallel_pool_starts_and_reads_its_workers_inside_the_environment(self, parallel, shutdown):
+        seen = []
+
+        def results():
+            seen.append(("read", os.environ.get(VAR)))
+            yield [
+                ExperimentOutcome.EXISTS(
+                    SimpleNamespace(h_info=SimpleNamespace(name="LR"), d_info=SimpleNamespace(name="d")), "acc", "m"
+                )
+            ]
+
+        def start(**kwargs):
+            seen.append(("start", os.environ.get(VAR)))
+            return results()
+
+        parallel.side_effect = start
+        run_tasks(Mock(), ["task"], worker=Mock(), n_jobs=2, experiment="main", env={VAR: "1"})
+
+        self.assertEqual(seen, [("start", "1"), ("read", "1")])
+        self.assertNotIn(VAR, os.environ)
+        # fresh workers for the pool, and none left after it
+        self.assertEqual(shutdown.call_count, 2)
+
+    @patch("uncawe.experiments.execution.shutdown_parallel_workers")
+    @patch("uncawe.experiments.execution.save_experiment_results")
+    def test_serial_run_neither_applies_the_environment_nor_shuts_down_workers(self, _save, shutdown):
+        seen = []
+        run_tasks(
+            Mock(),
+            ["task"],
+            worker=lambda task: seen.append(os.environ.get(VAR)) or [],
+            n_jobs=1,
+            experiment="main",
+            env={VAR: "1"},
+        )
+        self.assertEqual(seen, [None])
+        shutdown.assert_not_called()
 
 
 if __name__ == "__main__":

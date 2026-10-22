@@ -81,6 +81,7 @@ class MainProtocolTest(unittest.TestCase):
             train_prev=0.5,
             val_prev=0.5,
         )
+
     @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
     @patch("uncawe.experiments.main.os.path.exists", return_value=False)
     @patch("uncawe.experiments.main.build_result_frame", return_value=Mock())
@@ -121,6 +122,34 @@ class MainProtocolTest(unittest.TestCase):
         self.assertEqual(method.predict_calls, 6)
         self.assertEqual(len(results), 3)
         self.assertEqual(build.call_count, 3)
+
+
+class MainSchedulingTest(unittest.TestCase):
+    def test_pools_get_their_workers_and_environments(self):
+        info = SimpleNamespace(
+            domain="classic", d_info=SimpleNamespace(name="a"), h_info=SimpleNamespace(name="LR", full_name="LR")
+        )
+        methods = [("DoC", "doc"), ("BayesCAP", "pop")]
+        with (
+            patch.object(main, "load_info_paths", return_value=["a_LR"]),
+            patch.object(main.PretrainInfo, "load", return_value=info),
+            patch.object(main, "get_filtered_datasets", return_value=["a"]),
+            patch.object(main, "all_results_exist", return_value=False),
+            patch.object(main, "gen_methods", return_value=methods),
+            patch.object(main, "capenv", {"N_JOBS": 32}),
+            patch.object(main, "run_experiment_args") as run,
+        ):
+            main.experiments(Mock(), "classic")
+
+        regular, bayes = run.call_args_list
+        self.assertEqual([args[1] for args in regular.args[1]], ["DoC"])
+        self.assertEqual(regular.kwargs, {"n_jobs": 32, "env": main.THREAD_LIMITS})
+        self.assertEqual([args[1] for args in bayes.args[1]], ["BayesCAP"])
+        self.assertEqual(bayes.kwargs, {"n_jobs": main.BAYES_N_JOBS, "env": main.BAYES_ENV})
+        self.assertEqual(main.BAYES_N_JOBS, 16)
+        self.assertEqual(main.BAYES_ENV["JAX_PLATFORMS"], "cpu")
+        self.assertIn("--xla_cpu_multi_thread_eigen=false", main.BAYES_ENV["XLA_FLAGS"])
+        self.assertTrue(all(main.BAYES_ENV[name] == "1" for name in main.THREAD_LIMITS))
 
 
 if __name__ == "__main__":

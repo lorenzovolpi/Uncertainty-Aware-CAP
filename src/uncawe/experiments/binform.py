@@ -16,7 +16,7 @@ variants can be compared with the same error and interval-quality measures.
 
 import os
 
-os.environ.setdefault("JAX_PLATFORMS", "cuda")
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
 from collections.abc import Iterable
@@ -36,14 +36,18 @@ from quapy.data import LabelledCollection
 from uncawe.experiments.execution import (
     ExperimentOutcome,
     run_tasks,
-    save_experiment_results as save_outcomes,
     shutdown_parallel_workers,
 )
+from uncawe.experiments.execution import (
+    save_experiment_results as save_outcomes,
+)
 from uncawe.experiments.methods import (
+    BAYES_ENV,
     BAYES_N_JOBS,
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
     SAMPLE_SIZE,
+    THREAD_LIMITS,
     gen_methods,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
@@ -189,9 +193,7 @@ def exp_protocol(args: tuple[str, str]) -> list[ExperimentOutcome]:
         t_train = time() - started
 
         started = time()
-        estim_ct_ranges = [
-            method.predict_ct_range(sample.collection.X, sample.posteriors) for sample in test_samples
-        ]
+        estim_ct_ranges = [method.predict_ct_range(sample.collection.X, sample.posteriors) for sample in test_samples]
         t_test_ave = (time() - started) / context.size
         estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
     except Exception as error:
@@ -236,8 +238,13 @@ def save_experiment_results(log: Logger, results_gen: Iterable[list[ExperimentOu
     save_outcomes(log, results_gen, experiment=EXPERIMENT)
 
 
-def run_experiment_args(log: Logger, experiment_args: list[tuple[str, str]], n_jobs: int) -> None:
-    run_tasks(log, experiment_args, worker=exp_protocol, n_jobs=n_jobs, experiment=EXPERIMENT)
+def run_experiment_args(
+    log: Logger,
+    experiment_args: list[tuple[str, str]],
+    n_jobs: int,
+    env: dict[str, str] | None = None,
+) -> None:
+    run_tasks(log, experiment_args, worker=exp_protocol, n_jobs=n_jobs, experiment=EXPERIMENT, env=env)
 
 
 def experiments(log: Logger) -> None:
@@ -253,11 +260,8 @@ def experiments(log: Logger) -> None:
 
     regular_args = [(path, name) for path in info_paths for name in REGULAR_METHOD_NAMES]
     bayes_args = [(path, name) for path in info_paths for name in METHOD_PRIOR_KINDS]
-    regular_n_jobs = capenv["N_JOBS"]
-    run_experiment_args(log, regular_args, n_jobs=regular_n_jobs)
-    if regular_n_jobs != 1:
-        shutdown_parallel_workers(log)
-    run_experiment_args(log, bayes_args, n_jobs=BAYES_N_JOBS)
+    run_experiment_args(log, regular_args, n_jobs=capenv["N_JOBS"], env=THREAD_LIMITS)
+    run_experiment_args(log, bayes_args, n_jobs=BAYES_N_JOBS, env=BAYES_ENV)
 
 
 def main() -> None:
