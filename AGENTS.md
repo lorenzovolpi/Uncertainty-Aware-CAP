@@ -84,6 +84,7 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 
 - Use Python 3.12 or newer.
 - Run commands through `uv run`.
+- When formatting code with ruff, also organize the imports: `ruff check --select I --fix` together with `ruff format`.
 - Preserve the existing experimental protocol unless a change is requested.
 - Experimental outputs live outside the repository under `cap.env["OUT_DIR"]/uncawe`.
 - Do not commit generated results, plots, or tables.

@@ -8,9 +8,14 @@ on $V$ and calls ``predict_ct_range`` on every bag. It does not run ``ci_from_ct
 
 Each setting (``n_jobs``, XLA threading) runs in a fresh subprocess, so every setting pays the JIT compilation of a
 cold start, as a run of ``main`` does; ``n_jobs=1`` runs in the subprocess itself, as ``run_tasks`` does, and
-``n_jobs>1`` uses the same ``joblib`` call as ``run_tasks``. XLA threading: ``default`` lets each process use all
-cores (what ``main`` does today; with several workers the threads may oversubscribe the cores), ``single`` sets
+``n_jobs>1`` uses the same ``joblib`` call as ``run_tasks``. XLA threading (OS threads of the XLA CPU runtime):
+``default`` gives each process a pool of as many threads as the cores it may use (what ``main`` does today; with
+several workers the threads compete for the cores), ``single`` sets
 ``XLA_FLAGS=--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1`` in every process.
+
+Hard bound: every subprocess, and the ``joblib`` workers it starts, is pinned (CPU affinity) to ``cap.env["N_JOBS"]``
+cores, the first ones the script may use, so the run never uses more cores than ``N_JOBS`` whatever the threading;
+``n_jobs`` above ``N_JOBS`` is refused.
 
 Reported per setting: wall time, tasks per hour, speed-up against ``n_jobs=1`` with the same threading, and the
 largest absolute difference of the posterior mean tables from the first setting (zero means the parallel run gives
@@ -111,7 +116,7 @@ def select_pairs(datasets, classifiers) -> list[str]:
     return paths
 
 
-def spawn_setting(config: dict, xla: str) -> dict:
+def spawn_setting(config: dict, xla: str, cores: list[int]) -> dict:
     env = os.environ | {"JAX_PLATFORMS": "cpu", "CUDA_VISIBLE_DEVICES": ""}
     env.pop("XLA_FLAGS", None)
     if XLA_MODES[xla] is not None:
@@ -120,7 +125,13 @@ def spawn_setting(config: dict, xla: str) -> dict:
         cfg_path, out_path = os.path.join(tmp, "config.json"), os.path.join(tmp, "out.json")
         with open(cfg_path, "w") as f:
             json.dump(config, f)
-        subprocess.run([sys.executable, __file__, "--child", cfg_path, out_path], env=env, check=True)
+        # the affinity is set before exec, so the subprocess and its workers inherit it
+        subprocess.run(
+            [sys.executable, __file__, "--child", cfg_path, out_path],
+            env=env,
+            check=True,
+            preexec_fn=lambda: os.sched_setaffinity(0, cores),
+        )
         with open(out_path) as f:
             return json.load(f)
 
@@ -146,18 +157,23 @@ def main():
 
     import numpy as np
     import pandas as pd
+    from cap import env as capenv
 
     from uncawe import env
     from uncawe.experiments.methods import get_method_names
+
+    cores = sorted(os.sched_getaffinity(0))[: capenv["N_JOBS"]]
+    too_many = [n for n in args.n_jobs if n > len(cores)]
+    if too_many:
+        raise ValueError(f"--n-jobs {too_many} exceed the {len(cores)} cores allowed (cap.env['N_JOBS']).")
 
     methods = args.methods or [name for name in get_method_names() if "BayesCAP" in name]
     info_paths = select_pairs(args.datasets, args.classifiers)
     if not info_paths:
         raise ValueError("No pretrained pair matches --datasets and --classifiers.")
-    cpus = len(os.sched_getaffinity(0))
     print(
         f"{len(info_paths)} pairs x {len(methods)} methods ({', '.join(methods)}), {args.bags} bags per task, "
-        f"{cpus} CPUs available",
+        f"pinned to {len(cores)} cores ({cores[0]}-{cores[-1]})",
         flush=True,
     )
 
@@ -168,7 +184,7 @@ def main():
         for n_jobs in args.n_jobs:
             load = os.getloadavg()[0]
             config = {"info_paths": info_paths, "methods": methods, "bags": args.bags, "n_jobs": n_jobs}
-            out = spawn_setting(config, xla)
+            out = spawn_setting(config, xla, cores)
             rows = sorted(out["rows"], key=lambda r: (r["dataset"], r["classifier"], r["method"]))
             prints = np.concatenate([np.ravel(r["fingerprint"]) for r in rows])
             reference = prints if reference is None else reference
@@ -183,6 +199,7 @@ def main():
                     "tasks_per_h": 3600 * len(rows) / out["wall"],
                     "mean_task_s": float(np.mean([r["t_load"] + r["t_nuts"] for r in rows])),
                     "workers": len({r["pid"] for r in rows}),
+                    "cores": len(cores),
                     "max_abs_diff": float(np.abs(prints - reference).max()),
                     "load_before": load,
                 }
