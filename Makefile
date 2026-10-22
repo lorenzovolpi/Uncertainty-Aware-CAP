@@ -59,6 +59,7 @@ EXP_plot-binform     := python -m uncawe.plots.binform_simplex
 EXP_plot-displacement := python -m uncawe.plots.displacement
 EXP_test             := python -m unittest discover -s tests
 EXP_bench-bayes-jobs := python scripts/bench/bayes_n_jobs.py
+EXP_bench-xla-stored := python scripts/bench/xla_vs_stored.py
 
 EXPERIMENTS := $(patsubst EXP_%,%,$(filter EXP_%,$(.VARIABLES)))
 
