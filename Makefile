@@ -58,6 +58,7 @@ EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
 EXP_plot-binform     := python -m uncawe.plots.binform_simplex
 EXP_plot-displacement := python -m uncawe.plots.displacement
 EXP_test             := python -m unittest discover -s tests
+EXP_bench-bayes-jobs := python scripts/bench/bayes_n_jobs.py
 
 EXPERIMENTS := $(patsubst EXP_%,%,$(filter EXP_%,$(.VARIABLES)))
 
