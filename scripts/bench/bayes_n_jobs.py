@@ -19,7 +19,9 @@ cores, the first ones the script may use, so the run never uses more cores than 
 
 Reported per setting: wall time, tasks per hour, speed-up against ``n_jobs=1`` with the same threading, and the
 largest absolute difference of the posterior mean tables from the first setting (zero means the parallel run gives
-the same draws). The load average is recorded because ``bcuda`` is shared.
+the same draws). The load average is recorded because ``bcuda`` is shared. Each task also records the number of OS
+threads of its process when it ends (entries of ``/proc/self/task``, all threads, idle ones included); the summary
+reports the largest of them per setting.
 
 Usage (from the repository root, on the machine to measure):
     uv run python scripts/bench/bayes_n_jobs.py [--n-jobs 1 2 4 8] [--xla default single] [--bags 10]
@@ -68,6 +70,7 @@ def bench_task(args):
         "method": method_name,
         "n_classes": int(p.d_info.n_classes),
         "pid": os.getpid(),
+        "threads": len(os.listdir("/proc/self/task")),
         "t_load": t_load,
         "t_nuts": t_nuts,
         "fingerprint": np.mean([np.asarray(cts, dtype=float).mean(axis=0) for cts in ct_ranges], axis=0).tolist(),
@@ -199,6 +202,7 @@ def main():
                     "tasks_per_h": 3600 * len(rows) / out["wall"],
                     "mean_task_s": float(np.mean([r["t_load"] + r["t_nuts"] for r in rows])),
                     "workers": len({r["pid"] for r in rows}),
+                    "max_threads": max(r["threads"] for r in rows),
                     "cores": len(cores),
                     "max_abs_diff": float(np.abs(prints - reference).max()),
                     "load_before": load,
