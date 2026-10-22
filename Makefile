@@ -51,6 +51,7 @@ EXP_predist          := python -m uncawe.predist
 EXP_tables-main      := python -m uncawe.tables.main --classic
 EXP_tables-rank      := python -m uncawe.tables.rank --classic
 EXP_tables-binform   := python -m uncawe.tables.binform
+EXP_tables-estimand-gap := python -m uncawe.tables.estimand_gap
 EXP_tables-displacement := python -m uncawe.tables.displacement
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
