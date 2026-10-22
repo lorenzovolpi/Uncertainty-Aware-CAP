@@ -14,7 +14,8 @@ thread, so ``n_jobs`` processes keep at most about ``n_jobs`` cores busy; the ot
 dispatch, Python) stay mostly idle and the OS may place them on any core. ``n_jobs`` above ``cap.env["N_JOBS"]`` is
 refused.
 
-Reported per setting: wall time, tasks per hour, speed-up against ``n_jobs=1``, the average number of busy cores (CPU
+Reported per setting: wall time, tasks per hour, speed-up against the setting with the fewest
+``n_jobs``, the average number of busy cores (CPU
 time of the subprocess and its workers over the wall time), and the largest absolute difference of the posterior mean
 tables from the first setting (zero means the parallel run gives the same draws). The load average is recorded because
 ``bcuda`` is shared. Each task also records the number of OS threads of its process when it ends (entries of
@@ -211,13 +212,13 @@ def main():
         print(pd.DataFrame(summary[-1:]).to_string(index=False, header=len(summary) == 1), flush=True)
 
     summary = pd.DataFrame(summary)
-    base = summary.loc[summary["n_jobs"] == 1, "wall_s"]
-    summary["speedup"] = base.iloc[0] / summary["wall_s"] if not base.empty else np.nan
+    base = summary.loc[summary["n_jobs"].idxmin()]
+    summary["speedup"] = base["wall_s"] / summary["wall_s"]
     pd.DataFrame(task_rows).to_csv(os.path.join(out_dir, "tasks.csv"), index=False)
     summary.to_csv(os.path.join(out_dir, "summary.csv"), index=False)
     with pd.option_context("display.width", 200, "display.precision", 3):
         print(summary.to_string(index=False))
-    print(f"written to {out_dir}")
+    print(f"speed-up relative to n_jobs={base['n_jobs']}; written to {out_dir}")
 
 
 if __name__ == "__main__":
