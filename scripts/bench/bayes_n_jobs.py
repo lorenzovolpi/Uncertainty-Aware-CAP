@@ -81,6 +81,8 @@ def run_setting(config: dict) -> dict:
     """Body of the subprocess: build the tasks and run them with ``config["n_jobs"]`` workers."""
     from cap.utils.commons import parallel
 
+    # importing main sets qp.environ as a run of main does (seed 0, sample size), which the methods read when built
+    import uncawe.experiments.main  # noqa: F401
     from uncawe.experiments.methods import gen_methods
 
     tasks = []
