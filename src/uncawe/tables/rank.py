@@ -14,7 +14,7 @@ from uncawe.tables import main as main_tables
 
 METRICS = ("acc_err", "winkler")
 LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
-EXCLUDED_METHODS = {"L-CBPE"}
+EXCLUDED_METHODS = {"L-CBPE"} | main_tables.EXCLUDED_METHODS
 BEST_RGB = (138, 154, 91)
 # BEST_RGB = (172, 207, 173)
 WHITE_RGB = (255, 255, 255)

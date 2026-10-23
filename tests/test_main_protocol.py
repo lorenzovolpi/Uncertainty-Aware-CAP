@@ -152,5 +152,46 @@ class MainSchedulingTest(unittest.TestCase):
         self.assertTrue(all(main.BAYES_ENV[name] == "1" for name in main.THREAD_LIMITS))
 
 
+class MainRunFilterTest(unittest.TestCase):
+    def _run(self, **filters):
+        infos = {
+            f"{d}_{h}": SimpleNamespace(
+                domain="classic", d_info=SimpleNamespace(name=d), h_info=SimpleNamespace(name=h, full_name=h)
+            )
+            for d in ("a", "b", "c")
+            for h in ("LR", "kNN")
+        }
+        methods = [("DoC", "doc"), ("BayesCAP", "pop"), ("BayesCAP-real", "real")]
+        with (
+            patch.object(main, "load_info_paths", return_value=list(infos)),
+            patch.object(main.PretrainInfo, "load", side_effect=lambda path, fast: infos[path]),
+            patch.object(main, "get_filtered_datasets", return_value=["a", "b"]),
+            patch.object(main, "all_results_exist", return_value=False) as exists,
+            patch.object(main, "gen_methods", return_value=methods),
+            patch.object(main, "get_method_names", return_value=[name for name, _ in methods]),
+            patch.object(main, "capenv", {"N_JOBS": 1}),
+            patch.object(main, "run_experiment_args") as run,
+        ):
+            main.experiments(Mock(), "classic", **filters)
+        (_, regular), (_, bayes) = (call.args for call in run.call_args_list)
+        return regular, bayes, exists
+
+    def test_default_runs_every_filtered_pair_and_method(self):
+        regular, bayes, _ = self._run()
+        self.assertEqual(len(regular), 4)
+        self.assertEqual(len(bayes), 8)
+        self.assertEqual({args[1] for args in bayes}, {"BayesCAP", "BayesCAP-real"})
+
+    def test_pilot_filters_pairs_and_methods(self):
+        regular, bayes, exists = self._run(datasets=["b", "c"], classifiers=["kNN"], methods=["BayesCAP-real"])
+        self.assertEqual(regular, [])
+        self.assertEqual(bayes, [("b_kNN", "BayesCAP-real", "real")])
+        self.assertEqual(exists.call_args.args[3], ["BayesCAP-real"])
+
+    def test_unknown_method_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "BayesCAP-rea"):
+            main.experiments(Mock(), "classic", methods=["BayesCAP-rea"])
+
+
 if __name__ == "__main__":
     unittest.main()

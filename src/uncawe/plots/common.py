@@ -3,6 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 from cap.models.confidence import ConfidenceInterval
+from matplotlib import colormaps
+from matplotlib.colors import ListedColormap
 from matplotlib.lines import Line2D
 
 import uncawe.env as env
@@ -46,6 +48,12 @@ DEFAULT_MARKER = "X"
 FONT_SCALE = 1.25
 FACET_COL_WRAP = 3
 FACET_LEGEND_ANCHOR = (0.89, 0.65)
+# per-pair scatters of the E2 analyses (plots/displacement.py, plots/pushforward.py)
+SCATTER_GRID_COLOR = "#d9d9d9"
+SCATTER_EDGE_COLOR = "#1f1f1f"
+# the lightest quarter of Blues is close to the white background, so it is cut off
+SEQUENTIAL_CMAP = ListedColormap(colormaps["Blues"](np.linspace(0.25, 1.0, 256)), name="Blues_trunc")
+DIVERGING_CMAP = "RdBu_r"
 
 
 def safe_name(name: str) -> str:
@@ -244,6 +252,38 @@ def ordered_classifiers(df: pd.DataFrame) -> list[str]:
     ordered = [classifier for classifier in preferred if classifier in present]
     ordered.extend(sorted(classifier for classifier in present if classifier not in preferred))
     return ordered
+
+
+def scatter_by_classifier(ax, table: pd.DataFrame, x: str, y: str, color, cmap, norm):
+    """Draw one point per row, one marker shape per classifier; colour encodes ``color`` through ``cmap`` and ``norm``."""
+    sc = None
+    for classifier in ordered_classifiers(table):
+        sub = table.loc[table["classifier"].astype(str) == classifier]
+        sc = ax.scatter(
+            sub[x],
+            sub[y],
+            c=sub[color],
+            cmap=cmap,
+            norm=norm,
+            marker=CLASSIFIER_MARKERS.get(classifier, DEFAULT_MARKER),
+            s=marker_size(45),
+            edgecolors=SCATTER_EDGE_COLOR,
+            linewidths=0.6,
+            zorder=3,
+        )
+    return sc
+
+
+def style_scatter_axes(ax, xlabel: str, ylabel: str):
+    ax.grid(True, color=SCATTER_GRID_COLOR, linewidth=0.7, alpha=0.7, zorder=0)
+    ax.set_xlabel(xlabel, fontsize=font_size(12))
+    ax.set_ylabel(ylabel, fontsize=font_size(12))
+    ax.tick_params(axis="both", labelsize=font_size(10))
+
+
+def classifier_legend(fig, table: pd.DataFrame, **kwargs):
+    classifiers = ordered_classifiers(table)
+    fig.legend(classifier_legend_handles(classifiers), classifiers, frameon=True, fontsize=font_size(10), **kwargs)
 
 
 def classifier_markers(classifiers: list[str]) -> dict[str, str]:

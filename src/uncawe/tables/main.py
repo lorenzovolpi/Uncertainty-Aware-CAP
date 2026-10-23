@@ -76,6 +76,14 @@ metrics_map = {
 }
 
 
+# methods stored in main but left out of its tables and ranks: BayesCAP-real is used only by the E2 analyses
+EXCLUDED_METHODS = {"BayesCAP-real"}
+
+
+def table_method_names() -> list[str]:
+    return [method for method in get_method_names() if method not in EXCLUDED_METHODS]
+
+
 def get_acc_coverage(method: str, true_acc: float, accs_range: np.ndarray) -> float:
     return _confidence_interval(accs_range).coverage(true_acc)
 
@@ -475,7 +483,7 @@ def _results_latex_table(
     mean = stats.xs("mean", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
     std = stats.xs("std", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
 
-    methods = [method for method in get_method_names() if method in mean.columns.get_level_values("method")]
+    methods = [method for method in table_method_names() if method in mean.columns.get_level_values("method")]
     columns = _ordered_columns(methods, metrics)
     rows = _ordered_row_index(mean.index, dataset_order)
     mean = mean.reindex(index=rows)
@@ -770,7 +778,7 @@ def gen_tables(pargs):
             acc_name=acc,
             domain=domain,
             filter_classifiers=classifiers,
-            filter_methods=get_method_names(),
+            filter_methods=table_method_names(),
         )
         dataset_order = _ordered_dataset_names(results.df)
         df = (

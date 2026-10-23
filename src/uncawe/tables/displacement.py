@@ -1,7 +1,9 @@
 """Causes of BayCAP's displacement on stored ``main`` results (work-plan card WP-3, E2.2 of ``docs/ext2_baycap.md``).
 
-BayCAP, as run in ``main``, targets the population table $C\\operatorname{diag}(\\pi^Q)$; every score here is computed
-against the realised table of each target bag (``true_cts``). The analysis uses the bags' true class proportions and
+BayCAP, as run in ``main`` (``BayesCAP``), targets the population table $C\\operatorname{diag}(\\pi^Q)$; the realised
+pushforward ``BayesCAP-real`` (work-plan card WP-4, E2.3) targets the realised table of the target sample. The method is
+an argument (default ``BayesCAP``). Every score here is computed against the realised table of each target bag
+(``true_cts``). The analysis uses the bags' true class proportions and
 recalls, so it is an analysis of the error, not a method. Vanilla accuracy, $|U|=1000$, all (dataset, classifier) pairs.
 
 Per bag, the shift of BayCAP's point estimate from the realised accuracy splits exactly into a recall term and a
@@ -22,7 +24,8 @@ $Q^\\top\\hat CQ$ ($Q$ an orthonormal basis of those vectors): $\\kappa_0=\\sigm
 absolute amplification $1/\\sigma_{\\min}$. With $K=2$, $Q^\\top\\hat CQ=\\mathrm{TPR}-\\mathrm{FPR}$, so $\\kappa_0=1$
 and only $1/\\sigma_{\\min}$ is informative. The difficulty of the problem is the accuracy of $h$ on $V$.
 
-Outputs, under ``<OUT_DIR>/uncawe/tables/displacement/``: a per-pair CSV and one table (diagnostics, interval scores
+Outputs, under ``<OUT_DIR>/uncawe/tables/displacement/`` for ``BayesCAP`` and under
+``<OUT_DIR>/uncawe/tables/displacement/<method>/`` for any other method: a per-pair CSV and one table (diagnostics, interval scores
 and error terms side by side) as a LaTeX tabular fragment, a longtable and a standalone landscape document. Tables follow the ``cap-ml``
 layout (true classes on rows, predicted classes on columns); $\\hat C$ is returned in the paper's layout (predicted
 classes on rows).
@@ -152,7 +155,7 @@ def load_validation_counts(pairs) -> dict:
     return {pair: validation_counts(infos[pair]) for pair in pairs}
 
 
-def bag_scores(row, val_counts: np.ndarray) -> dict:
+def bag_scores(row, val_counts: np.ndarray, method: str = METHOD) -> dict:
     true_ct = np.asarray(row.true_cts, dtype=float)
     estim_ct = np.asarray(row.estim_cts, dtype=float)
     samples = np.asarray(row.estim_acc_ranges, dtype=float)
@@ -160,21 +163,21 @@ def bag_scores(row, val_counts: np.ndarray) -> dict:
     out = error_terms(estim_ct, true_ct)
     out["prior_part"] = prior_part(val_counts, true_ct.sum(axis=1))
     out["abs_prevalence_term"] = abs(out["prevalence_term"])
-    out["coverage"] = main_tables.get_acc_coverage(METHOD, true_acc, samples)
-    out["amplitude"] = main_tables.get_acc_amplitude(METHOD, samples)
-    out["winkler"] = main_tables.get_acc_winkler(METHOD, true_acc, samples)
+    out["coverage"] = main_tables.get_acc_coverage(method, true_acc, samples)
+    out["amplitude"] = main_tables.get_acc_amplitude(method, samples)
+    out["winkler"] = main_tables.get_acc_winkler(method, true_acc, samples)
     # accuracy is linear in the table: both gaps are zero up to floating point
     out["point_gap"] = abs(float(np.mean(samples)) - float(np.trace(estim_ct)))
     out["truth_gap"] = abs(true_acc - float(np.trace(true_ct)))
     return out
 
 
-def pair_table(df: pd.DataFrame, val_counts: dict) -> pd.DataFrame:
+def pair_table(df: pd.DataFrame, val_counts: dict, method: str = METHOD) -> pd.DataFrame:
     """Return one row per (dataset, classifier): means over bags, then the per-pair diagnostics of $\\hat C$ and $V$."""
     rows = []
     for (dataset, classifier), _df in df.groupby(["dataset", "classifier"], sort=False):
         counts = val_counts[(dataset, classifier)]
-        bags = pd.DataFrame([bag_scores(row, counts) for row in _df.itertuples(index=False)])
+        bags = pd.DataFrame([bag_scores(row, counts, method) for row in _df.itertuples(index=False)])
         n_s = counts.sum(axis=1)
         kappa0, inv_sigma_min = conditioning(rate_matrix(counts))
         record = {
@@ -207,21 +210,22 @@ def ordered(table: pd.DataFrame) -> pd.DataFrame:
     return table.sort_values(["dataset", "classifier"]).reset_index(drop=True)
 
 
-def compute_pair_table() -> pd.DataFrame:
-    """Load the stored ``main`` results of BayCAP and the validation counts, and return the ordered per-pair table."""
-    df = load_results()
+def compute_pair_table(method: str = METHOD) -> pd.DataFrame:
+    """Load the stored ``main`` results of ``method`` and the validation counts, and return the ordered per-pair table."""
+    df = load_results(method)
     if df.empty:
-        raise RuntimeError(f"No {METHOD} results found for {EXPERIMENT}. Check that experiment results exist.")
+        raise RuntimeError(f"No {method} results found for {EXPERIMENT}. Check that experiment results exist.")
     pairs = list(df.groupby(["dataset", "classifier"], sort=False).groups)
-    return ordered(pair_table(df, load_validation_counts(pairs)))
+    return ordered(pair_table(df, load_validation_counts(pairs), method))
 
 
 def _fmt_ratio(v: float) -> str:
     return "$\\infty$" if np.isinf(v) else f"{v:.2f}"
 
 
+METHOD_LABELS = {"BayesCAP": "BayCAP", "BayesCAP-real": "BayCAP-real"}
 CAPTION = (
-    "Causes of BayCAP's displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
+    "Causes of {method}'s displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
     "$n^s_j$: validation instances of class $\\omega_j$. Diagnostics: $\\kappa_0(\\hat C)$ and $1/\\sigma_{\\min}$, "
     "condition number and absolute amplification of $\\hat C$ on vectors summing to zero; $\\mathrm{acc}_V$, accuracy "
     "of $h$ on $V$. Interval and error: means over the 100 bags, against the realised table; $\\mathcal{C}_s$, coverage "
@@ -230,6 +234,16 @@ CAPTION = (
     "$\\lVert\\hat\\pi-\\pi\\rVert_1$, prevalence error."
 )
 LABEL = "tab:displacement"
+
+
+def caption(method: str = METHOD) -> str:
+    return CAPTION.replace("{method}", METHOD_LABELS.get(method, method))
+
+
+def label(method: str = METHOD) -> str:
+    return LABEL if method == METHOD else f"{LABEL}-{method}"
+
+
 COLUMNS = {
     "kappa0": ("diagnostics", "$\\kappa_0(\\hat C)$"),
     "inv_sigma_min": ("diagnostics", "$1/\\sigma_{\\min}$"),
@@ -269,15 +283,15 @@ def _latex_table(table: pd.DataFrame) -> str:
     return booktabs_clines(_styled_table(table).to_latex(hrules=True, multicol_align="c", clines="skip-last;data"))
 
 
-def _latex_longtable(table: pd.DataFrame) -> str:
+def _latex_longtable(table: pd.DataFrame, method: str = METHOD) -> str:
     latex = _styled_table(table).to_latex(
         environment="longtable",
         hrules=True,
         multicol_align="c",
         multirow_align="naive",
         clines="skip-last;data",
-        caption=CAPTION,
-        label=LABEL,
+        caption=caption(method),
+        label=label(method),
     )
     return booktabs_clines(latex)
 
@@ -299,22 +313,28 @@ def _latex_document(longtable_path: str) -> str:
     )
 
 
+def table_dir(method: str = METHOD) -> str:
+    """Return the output folder of ``method``: the stored E2.2 folder for ``BayesCAP``, a subfolder for the others."""
+    base = os.path.join(env.root_dir, "tables", TABLE_NAME)
+    return base if method == METHOD else os.path.join(base, method)
+
+
 def _table_dir(pargs) -> str:
-    return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables", TABLE_NAME)
+    return pargs.table_dir if pargs.table_dir is not None else table_dir(pargs.method)
 
 
 def gen_tables(pargs):
-    table = compute_pair_table()
-    table_dir = _table_dir(pargs)
-    tabular_dir = os.path.join(table_dir, "tabular")
+    table = compute_pair_table(pargs.method)
+    out_dir = _table_dir(pargs)
+    tabular_dir = os.path.join(out_dir, "tabular")
     os.makedirs(tabular_dir, exist_ok=True)
 
-    table.to_csv(os.path.join(table_dir, f"{TABLE_NAME}.csv"), index=False)
+    table.to_csv(os.path.join(out_dir, f"{TABLE_NAME}.csv"), index=False)
     with open(os.path.join(tabular_dir, f"{TABLE_NAME}.tex"), "w") as f:
         f.write(_latex_table(table))
     with open(os.path.join(tabular_dir, f"{TABLE_NAME}_long.tex"), "w") as f:
-        f.write(_latex_longtable(table))
-    with open(os.path.join(table_dir, f"{TABLE_NAME}_doc.tex"), "w") as f:
+        f.write(_latex_longtable(table, pargs.method))
+    with open(os.path.join(out_dir, f"{TABLE_NAME}_doc.tex"), "w") as f:
         f.write(_latex_document(f"tabular/{TABLE_NAME}_long.tex"))
 
     with pd.option_context("display.width", 250, "display.max_rows", 200, "display.precision", 3):
@@ -328,20 +348,20 @@ def gen_tables(pargs):
         f"pairs: {len(table)}; max |mean of samples - acc of mean table|: {table['max_point_gap'].max():.2e}; "
         f"max |true acc - trace of true table|: {table['max_truth_gap'].max():.2e}"
     )
-    print(f"tables written to {table_dir}")
+    print(f"tables written to {out_dir}")
 
 
 def gen_pdf(pargs):
-    table_dir = _table_dir(pargs)
+    out_dir = _table_dir(pargs)
     tex_filename = f"{TABLE_NAME}_doc.tex"
-    if not os.path.exists(os.path.join(table_dir, tex_filename)):
-        raise FileNotFoundError(f"{tex_filename} does not exist in {table_dir}. Generate tables first.")
+    if not os.path.exists(os.path.join(out_dir, tex_filename)):
+        raise FileNotFoundError(f"{tex_filename} does not exist in {out_dir}. Generate tables first.")
 
     # longtable needs a second pass to settle the column widths
     for _ in range(2):
         subprocess.run(
             ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", tex_filename],
-            cwd=table_dir,
+            cwd=out_dir,
             check=True,
             stdout=subprocess.DEVNULL,
         )
@@ -352,6 +372,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--tables", action="store_true", help="Generate tables")
     parser.add_argument("-p", "--pdf", action="store_true", help="Generate PDF from tables")
     parser.add_argument("-a", "--all", action="store_true", help="Generate both tables and PDF")
+    parser.add_argument("--method", default=METHOD, help="Method of main to analyse (default: %(default)s)")
     parser.add_argument(
         "--table-dir",
         "--output-dir",
