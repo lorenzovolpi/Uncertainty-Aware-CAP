@@ -3,7 +3,7 @@
 # Typical workflow:
 #   make init                 # once: create REMOTE_DIR and copy env.json, results, ... from OLD_DIR
 #   make setup                # push the code and install the environment with uv
-#   make run-main-classic     # start an experiment in a detached tmux session
+#   make run-main-classic     # start an experiment in a detached tmux session (ATTACH=1 to attach to it)
 #   make status / make logs EXP=main-classic / make attach EXP=main-classic
 #   make explog EXP=main      # experiment log <OUT_DIR>/<experiment>.log (FOLLOW=1 to keep reading)
 #   make pull                 # copy tables and plots back to ./output
@@ -116,6 +116,7 @@ setup: $(RUN_DEPS)
 	$(ON) 'cd $(DIR) && $(UV) sync --locked'
 
 ## Start an experiment in a detached tmux session named uncawe-<name>; output goes to <OUT_DIR>/runs/.
+## ATTACH=1 attaches the terminal to the session once it has started (detach with C-b d; the run goes on).
 run-%: $(RUN_DEPS)
 	@test -n '$(EXP_$*)' || { echo "Unknown experiment '$*'. Known: $(sort $(EXPERIMENTS))"; exit 1; }
 	$(ON) 'cd $(DIR) && mkdir -p output/runs && \
@@ -126,6 +127,7 @@ run-%: $(RUN_DEPS)
 	  tmux new-session -d -s uncawe-$* "set -o pipefail; \
 	    CUDA_VISIBLE_DEVICES=$(GPU) $(JAX_ENV) $(UV) run --locked $(EXP_$*) $(ARGS) 2>&1 | tee -a $$log; \
 	    echo \"exit: \$$? end: \$$(date -Iseconds)\" >> $$log" && echo "started uncawe-$* ($(WHERE)), log: $(DIR)/$$log"'
+	$(if $(ATTACH),$(ON_TTY) 'tmux attach -t uncawe-$* 2>/dev/null || echo "uncawe-$* has already ended: see make logs EXP=$*"')
 
 status:
 	@$(ON) 'tmux ls 2>/dev/null | grep "^uncawe-" || echo "no uncawe sessions"; \
