@@ -13,6 +13,7 @@ from uncawe.tables.pushforward import (
     _latex_longtable,
     _styled_table,
     bag_scores,
+    bootstrap_mean_test,
     comparison_table,
     holm,
     interval_scores,
@@ -127,15 +128,43 @@ class PushforwardTest(unittest.TestCase):
         for name, (w_pop, w_real) in cases.items():
             tests = winkler_tests(pop.assign(winkler=w_pop), real.assign(winkler=w_real))
             p_value = tests["winkler_p"].iloc[0]
+            row = tests.iloc[0]
+            self.assertAlmostEqual(row["winkler_diff_mean"], np.mean(w_real - w_pop))
+            self.assertLessEqual(row["winkler_ci_low"], row["winkler_diff_mean"])
+            self.assertGreaterEqual(row["winkler_ci_high"], row["winkler_diff_mean"])
             if name in ("lower", "higher"):
-                self.assertLess(p_value, 1e-6, name)
-                self.assertEqual(np.sign(tests["winkler_diff_median"].iloc[0]), -1 if name == "lower" else 1)
+                self.assertLess(p_value, 1e-3, name)
+                sign = -1 if name == "lower" else 1
+                self.assertEqual(np.sign(row["winkler_ci_low"]), sign)
+                self.assertEqual(np.sign(row["winkler_ci_high"]), sign)
             elif name == "equal":
                 self.assertEqual(p_value, 1.0)
             else:
                 self.assertGreater(p_value, 0.01, name)
         with self.assertRaisesRegex(ValueError, "differ"):
             winkler_tests(pop.assign(winkler=winkler), real.assign(winkler=winkler, true_acc=true_acc[::-1]))
+
+    def test_bootstrap_tests_the_mean_not_the_median(self):
+        # most bags pay a small extra width, a few missed bags gain a lot: the median is positive, the mean negative
+        diff = np.r_[np.full(85, 0.015), np.full(15, -0.4)]
+        rng = np.random.default_rng(1)
+        diff = diff + rng.normal(0, 1e-4, 100)
+        pop = pd.DataFrame({"dataset": "d", "classifier": "LR", "bag": range(100), "true_acc": rng.uniform(0, 1, 100)})
+        tests = winkler_tests(pop.assign(winkler=1.0), pop.assign(winkler=1.0 + diff))
+        row = tests.iloc[0]
+        self.assertGreater(row["winkler_diff_median"], 0)
+        self.assertLess(row["winkler_diff_mean"], 0)
+        self.assertLess(row["winkler_ci_high"], 0)
+        self.assertLess(row["winkler_p"], 0.01)
+
+    def test_bootstrap_is_seeded(self):
+        diff = np.random.default_rng(2).normal(0, 1, 50)
+        first = bootstrap_mean_test(diff, np.random.default_rng(3))
+        self.assertEqual(first, bootstrap_mean_test(diff, np.random.default_rng(3)))
+        self.assertEqual(bootstrap_mean_test(np.zeros(10), np.random.default_rng(3)), (0.0, 0.0, 1.0))
+        self.assertAlmostEqual(
+            bootstrap_mean_test(np.full(10, -0.05), np.random.default_rng(3), n_resamples=99)[2], 0.01
+        )
 
     def test_holm(self):
         adjusted = holm(np.array([0.01, 0.04, np.nan, 0.03]))

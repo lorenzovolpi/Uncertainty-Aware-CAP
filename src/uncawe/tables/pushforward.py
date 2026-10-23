@@ -12,12 +12,13 @@ $\\hat\\sigma_g/\\hat\\sigma_p$, both read from the per-pair CSV of :mod:`uncawe
 reports the largest gap between the population coverage computed here and the one stored by E2.1, which is zero when
 both read the same results.
 
-The Winkler scores of the two pushforwards are compared on each pair with a two-sided Wilcoxon signed-rank test of the
-per-bag differences (realised minus population): the two are scored on the same bags with the same posterior draws, so
-the bags are paired. The test tells whether a decrease or an increase of the mean Winkler score is larger than the
-variation over the bags; it compares the typical per-bag difference rather than the mean, so the table also stores the
-median difference. The p-values are reported raw and Holm-adjusted over the pairs. All bags of a pair share the same
-validation set and test pool, so the test speaks for these bags, not for new validation sets.
+The Winkler scores of the two pushforwards are compared on each pair with a paired bootstrap of the mean per-bag
+difference (realised minus population): the two are scored on the same bags with the same posterior draws, so the bags
+are paired. The bags are resampled with replacement, which gives a 95% percentile interval of the mean difference and a
+two-sided p-value, so the test tells whether a decrease or an increase of the mean Winkler score is larger than the
+variation over the bags. It tests the mean, which is what the Winkler column reports; the median difference is stored
+as a description of the typical bag. The p-values are reported raw and Holm-adjusted over the pairs. All bags of a pair
+share the same validation set and test pool, so the test speaks for these bags, not for new validation sets.
 
 Outputs, under ``<OUT_DIR>/uncawe/tables/pushforward/``: a per-pair CSV and one table as a LaTeX tabular fragment, a
 longtable and a standalone document.
@@ -29,7 +30,6 @@ from argparse import ArgumentParser
 
 import numpy as np
 import pandas as pd
-from scipy.stats import wilcoxon
 
 from uncawe import env
 from uncawe.config import acc_from_ct
@@ -37,13 +37,15 @@ from uncawe.main import EXPERIMENT
 from uncawe.tables import estimand_gap
 from uncawe.tables import main as main_tables
 from uncawe.tables.displacement import METHOD_LABELS, ordered
-from uncawe.tables.estimand_gap import ACC_NAME, booktabs_clines, load_results
+from uncawe.tables.estimand_gap import ACC_NAME, SEED, booktabs_clines, load_results, pair_rng
 from uncawe.util import decorate_dataset
 
 TABLE_NAME = "pushforward"
 PUSHFORWARDS = {"population": "BayesCAP", "realised": "BayesCAP-real"}
 SCORES = ("coverage", "amplitude", "winkler")
 WINKLER_TEST_LEVEL = 0.05
+WINKLER_CI_LEVEL = 0.95
+BOOTSTRAP_RESAMPLES = 10_000
 # columns read from the per-pair CSV of E2.1
 APPROX_COLUMNS = {
     "n_val": "n_val",
@@ -101,14 +103,33 @@ def holm(p_values: np.ndarray) -> np.ndarray:
     return adjusted
 
 
-def winkler_tests(population: pd.DataFrame, realised: pd.DataFrame) -> pd.DataFrame:
-    """Two-sided Wilcoxon signed-rank test of the per-bag Winkler differences, realised minus population.
+def bootstrap_mean_test(
+    diff: np.ndarray, rng: np.random.Generator, n_resamples: int = BOOTSTRAP_RESAMPLES, level: float = WINKLER_CI_LEVEL
+) -> tuple[float, float, float]:
+    """Paired bootstrap of the mean of ``diff``: return the percentile interval at ``level`` and the two-sided p-value.
+
+    The bags are resampled with replacement ``n_resamples`` times. The p-value is the share of resampled means, shifted
+    to be centred on zero, at least as far from zero as the observed mean, counted as $(k+1)/(B+1)$ so that it is never
+    zero. Constant differences give a zero-width interval, with $p=1$ when they are zero and $p=1/(B+1)$ otherwise.
+    """
+    diff = np.asarray(diff, dtype=float)
+    mean = diff.mean()
+    resampled = diff[rng.integers(0, len(diff), size=(n_resamples, len(diff)))].mean(axis=1)
+    low, high = np.quantile(resampled, [(1 - level) / 2, (1 + level) / 2])
+    extreme = np.count_nonzero(np.abs(resampled - mean) >= abs(mean))
+    return float(low), float(high), (extreme + 1) / (n_resamples + 1)
+
+
+def winkler_tests(population: pd.DataFrame, realised: pd.DataFrame, seed: int = SEED) -> pd.DataFrame:
+    """Paired bootstrap test of the mean per-bag Winkler difference, realised minus population, on each pair.
 
     ``population`` and ``realised`` come from :func:`bag_scores`. The two pushforwards are scored on the same bags of
     ``main``, so the bags are paired by position; the pairing is checked on the realised accuracy of each bag. Pairs
-    present in only one of the two are skipped. A pair whose differences are all zero gets $p=1$.
+    present in only one of the two are skipped. The resampling of each pair uses a generator that depends only on
+    ``seed``, the dataset and the classifier. The median difference is descriptive and is not used by the test.
     """
     keys = ["dataset", "classifier"]
+    columns = ["winkler_diff_mean", "winkler_ci_low", "winkler_ci_high", "winkler_diff_median", "winkler_p"]
     real_groups = dict(list(realised.groupby(keys, sort=False)))
     rows = []
     for key, pop in population.groupby(keys, sort=False):
@@ -118,16 +139,9 @@ def winkler_tests(population: pd.DataFrame, realised: pd.DataFrame) -> pd.DataFr
         if len(pop) != len(real) or not np.allclose(pop["true_acc"].to_numpy(), real["true_acc"].to_numpy()):
             raise ValueError(f"The bags of {key} differ between the two pushforwards")
         diff = real["winkler"].to_numpy() - pop["winkler"].to_numpy()
-        p_value = 1.0 if np.all(diff == 0) else float(wilcoxon(diff, alternative="two-sided").pvalue)
-        rows.append(
-            {
-                "dataset": key[0],
-                "classifier": key[1],
-                "winkler_diff_median": float(np.median(diff)),
-                "winkler_p": p_value,
-            }
-        )
-    tests = pd.DataFrame(rows, columns=keys + ["winkler_diff_median", "winkler_p"])
+        low, high, p_value = bootstrap_mean_test(diff, pair_rng(*key, seed=seed))
+        rows.append(dict(zip(keys + columns, [*key, float(diff.mean()), low, high, float(np.median(diff)), p_value])))
+    tests = pd.DataFrame(rows, columns=keys + columns)
     tests["winkler_p_holm"] = holm(tests["winkler_p"].to_numpy())
     return tests
 
@@ -181,8 +195,8 @@ def compute_comparison_table() -> pd.DataFrame:
 CAPTION = (
     "Population (BayCAP) against realised (BayCAP-real) pushforward on \\texttt{main} (vanilla accuracy, "
     "$|U|=1000$). Coverage $\\mathcal{C}$, amplitude $\\mathcal{A}$ and Winkler score $\\mathcal{W}$ against the "
-    "realised table, means over the 100 bags. $p_{\\mathcal{W}}$: p-value of the two-sided Wilcoxon signed-rank test of "
-    "the per-bag Winkler differences, Holm-adjusted over the pairs. E2.1: $\\hat\\sigma_g/\\hat\\sigma_p$, median over bags, and "
+    "realised table, means over the 100 bags. $p_{\\mathcal{W}}$: two-sided p-value of the paired bootstrap of the mean "
+    "per-bag Winkler difference, Holm-adjusted over the pairs. E2.1: $\\hat\\sigma_g/\\hat\\sigma_p$, median over bags, and "
     "$\\mathcal{C}_{\\approx}$, coverage of the approximate predictive."
 )
 LABEL = "tab:pushforward"
