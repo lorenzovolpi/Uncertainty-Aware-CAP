@@ -2,7 +2,7 @@
 
 ## Claim
 
-BayCAP's interval describes the accuracy that the classifier has *on average* over all target bags with a given prevalence (the population table $C\operatorname{diag}(\pi^Q)$). The paper scores that interval against the accuracy *of the bag at hand*, which is computed from its realised contingency table (`true_cts`). The two quantities differ, because on a finite bag the classifier is right on a random number of instances. We want to find out whether this mismatch makes BayCAP's intervals miscalibrated on the paper's datasets. If it does, we want to fix it with the *realised-table predictive*, which turns each posterior draw into a plausible table of the bag itself. The fix needs no target labels and no tuning. This matters because a CAP interval is useful only if it covers the quantity it is judged on, and BayCAP is the paper's Bayesian method. E2.1 showed that most of BayCAP's miscalibration is not a too-narrow interval but an interval centred on the wrong value, which the predictive cannot repair; the extension therefore also asks where this displacement comes from.
+BayCAP's interval describes the accuracy that the classifier has *on average* over all target bags with a given prevalence (the population table $C\operatorname{diag}(\pi^Q)$). The paper scores that interval against the accuracy *of the bag at hand*, which is computed from its realised contingency table (`true_cts`). The two quantities differ, because on a finite bag the classifier is right on a random number of instances. We want to find out whether this mismatch makes BayCAP's intervals miscalibrated on the paper's datasets. If it does, we want to fix it with the *realised-table predictive*, which turns each posterior draw into a plausible table of the bag itself. The fix needs no target labels and no tuning. This matters because a CAP interval is useful only if it covers the quantity it is judged on, and BayCAP is the paper's Bayesian method. E2.1 showed that most of BayCAP's miscalibration is not a too-narrow interval but an interval centred on the wrong value, which the predictive cannot repair; the extension therefore also asks where this displacement comes from. E2.2 found that the largest displacements come from the uniform prior on the columns of $C$, which pulls every recall towards $1/K$; E2.4 tests a prior learned from the validation data instead, which pulls each recall towards the typical recall of the same classifier.
 
 ## Status
 
@@ -13,6 +13,8 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 | E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work plan §II.10) | [run], analysis below |
 | E2.2, causes of the displacement, on stored results (work-plan card WP-3; `tables/displacement.py`, `plots/displacement.py`) | [run], analysis below |
 | E2.3, the exact realised-table predictive as the method `BayesCAP-real` of `main`, and the E2.2 analysis repeated on it (work-plan card WP-4; `tables/pushforward.py`, `plots/pushforward.py`) | [run], analysis below |
+| `BayCAP` with the hyperparameter `c_prior` $\in\{$uniform, empirical Bayes$\}$ for the prior on the columns of $C$ (work-plan card WP-5) | [proposal], scheduled |
+| E2.4, BayCAP with an empirical-Bayes prior on the recalls, with a zero-cost check of its effect and the NUTS diagnostics of all BayCAP methods (work-plan card WP-6) | [proposal], scheduled; not run |
 | Candidate experiments E2.c1, E2.c2 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis], examined by E2.2 |
 | Cause 4, a difference between $V$ and the test pool shared by all bags | [new hypothesis], not tested |
@@ -23,7 +25,7 @@ The paper-related material of earlier versions (contributions, hypotheses, paper
 
 All experiments score every interval against the realised table of each target bag, as `main` does. They use the measures of the paper (AE, coverage, amplitude, Winkler score at $\alpha=0.05$), the $100$ APP bags of size $1000$ of `main` with the same seeds, and target labels only for scoring.
 
-E2.1 estimates, without new runs, how the realised-table predictive would change BayCAP's intervals; E2.2 explains the displacement that E2.1 found; E2.3 runs the exact predictive in `main` and repeats both analyses on it.
+E2.1 estimates, without new runs, how the realised-table predictive would change BayCAP's intervals; E2.2 explains the displacement that E2.1 found; E2.3 runs the exact predictive in `main` and repeats both analyses on it; E2.4 replaces the prior on $C$ that E2.2 found responsible for the largest displacements, with both pushforwards.
 
 ## E2.1: approximate check on stored results
 
@@ -107,6 +109,27 @@ E2.1 estimates, without new runs, how the realised-table predictive would change
 
   What this shows: the realised-table predictive is the right pushforward for the quantity that `main` scores, and it costs nothing in coverage. It adds to the interval exactly the bag-level spread, which repairs the pairs whose population interval was centred correctly but too narrow, and lowers the Winkler score significantly wherever the interval was displaced; where it raises the score, the increase is small and confined to pairs that already covered. It does not move the centre, so it cannot repair displacement: the causes found by E2.2 (the prior on $C$ for large $K$, a fixed-sign prevalence error with a badly conditioned $\hat C$, the residual recall error on binary datasets) are the same under both pushforwards, and `letter`, `isolet`, `hand_digits`, `german`, `wine-quality` and `mammographic` remain under-covered. The approximation of E2.1 predicts all of this within about $0.01$ of coverage.
 
+## E2.4: BayCAP with an empirical-Bayes prior on the recalls
+
+**Why.** E2.2 found that the $\operatorname{Dir}(\mathbf 1)$ prior on the columns of $C$ explains the largest displacements: on `dry-bean`, `hand_digits`, `letter` and `isolet` the shift is almost entirely the prior part $R_0$ of the recall term, because the prior pulls every recall towards $1/K$ (§T.5). E2.3 showed that the realised pushforward widens the interval but does not move its centre, so these pairs stay displaced: the fix has to act on the prior. An empirical-Bayes prior (§T.9) gives the recalls of a classifier a common $\operatorname{Beta}$ prior whose centre $\hat m$ (the typical recall) and strength $\hat\nu$ (how alike the recalls are) are estimated from the validation counts; each recall is then pulled towards the typical recall of the same classifier, up for some classes and down for others, so the pulls cancel on accuracy on average instead of adding up. The prior uses only the labels of $V$, like the rest of BayCAP, and changes only the concentration parameters of the Dirichlet prior on the columns of $C$, so BayesianCC is otherwise unchanged. The experiment first predicts the effect of the new prior in closed form, from the step in which $V$ updates the recalls (the check), then measures it with NUTS (the variant), and the check explains the variant.
+
+- **Design.**
+  - **Inputs:** the $15$ datasets, $5$ classifiers and $100$ UPP bags of size $1000$ of `main` ($75$ pairs); the validation counts $f_{ij}$, rebuilt as in E2.2; the results of four methods of `main`, all built from `methods/baycap.py:BayCAP` with the prior on $\pi^Q$, the NUTS settings ($500$ warm-up iterations, $1000$ draws) and the seed of `BayesCAP`: `BayesCAP` (population pushforward, $\operatorname{Dir}(\mathbf 1)$ prior on $C$), `BayesCAP-real` (realised pushforward, $\operatorname{Dir}(\mathbf 1)$), `BayesCAP-EB` (population, empirical Bayes) and `BayesCAP-EB-real` (realised, empirical Bayes). `BayesCAP` is built from `BayCAP` instead of `cap-ml`'s `ACC_BayesCAP` (user's decision of 2026-10-26), so that it can store the NUTS diagnostics; `BayesCAP` and `BayesCAP-real` are run again to store them, and their draws, and so all their stored measures, must be unchanged.
+  - **Varied:** the prior on the columns of $C$, $\operatorname{Dir}(\mathbf 1)$ or empirical Bayes, and the pushforward, population or realised, each method with its own run; data, bags, prior on $\pi^Q$, sampler settings and seed are held fixed, so with the same prior the two pushforwards share their NUTS draws (as found for E2.3). The empirical-Bayes prior gives column $j$ of $C$ the Dirichlet parameters $\alpha_{jj}=\hat\nu\hat m$ and $\alpha_{ij}=\hat\nu(1-\hat m)/(K-1)$ for $i\ne j$, where $(\hat m,\hat\nu)$ maximise the beta-binomial likelihood of the diagonal counts of $V$, within $\nu\le10^4$ and $m\in[10^{-3},1-10^{-3}]$ (§T.9).
+  - **Measures:** vanilla accuracy only, per pair.
+    - *Check (no runs).* Three estimates of each recall from $V$ alone: the plain recall $f_{jj}/n^s_j$; the posterior mean under $\operatorname{Dir}(\mathbf 1)$, $\frac{f_{jj}+1}{n^s_j+K}$; the posterior mean under empirical Bayes, $\frac{f_{jj}+\hat\nu\hat m}{n^s_j+\hat\nu}$. For each estimate $\tilde r_j$ and each bag $b$, with true class proportions $\pi^{(b)}$ and realised recalls $r^{(b)}_j$, the recall error $\Delta^{(b)}=\sum_j\pi^{(b)}_j(\tilde r_j-r^{(b)}_j)$; per pair, its mean over the bags (the displacement it predicts) and the mean of $\lvert\Delta^{(b)}\rvert$ (the typical size of the error). The $\operatorname{Dir}(\mathbf 1)$ version validates the check against the recall term $R$ of `BayesCAP`, since the check leaves out the step in which the target bag updates $C$. Also $\hat m$, $\hat\nu$, whether the fit reached a bound, and the standard deviation that empirical Bayes leaves out of the interval, $\sum_j\pi_j(1-w_j)\,\operatorname{sd}(\hat m)$ with $w_j=n^s_j/(n^s_j+\hat\nu)$ and $\pi$ uniform, $\operatorname{sd}(\hat m)$ from the curvature of the log-likelihood at its maximum (§T.9).
+    - *Variant.* For the four methods: coverage, amplitude, Winkler score and predicted coverage $\mathcal C_s$; the error measures of E2.2 (shift, recall term $R$, prior part $R_0$, prevalence term $P$ and its mean absolute value, $\lVert\hat\pi-\pi\rVert_1$). Within each pushforward, the paired bootstrap test of the mean Winkler difference of E2.3 between the empirical-Bayes method and its $\operatorname{Dir}(\mathbf 1)$ counterpart, Holm-adjusted over the $75$ pairs. The change of the recall term, $R$ of `BayesCAP-EB` minus $R$ of `BayesCAP`, against the change the check predicts, the difference between the mean errors of the empirical-Bayes and $\operatorname{Dir}(\mathbf 1)$ estimates.
+    - *NUTS diagnostics.* For the four methods, per bag: the number of divergent transitions, the largest split-$\hat R$ (one chain split in two halves) and the smallest effective sample size over the parameters of $\pi^Q$ and $C$; per pair, the share of bags with divergences, the largest split-$\hat R$ and the smallest effective sample size.
+  - **Estimand:** population table for `BayesCAP` and `BayesCAP-EB`, realised table for `BayesCAP-real` and `BayesCAP-EB-real`; all four scored against the realised table of each bag (`true_cts`). $(\hat m,\hat\nu)$ use only the labels of $V$, so the empirical-Bayes variants are methods. The check and the error measures use the bags' true class proportions and recalls, so they are an analysis, not a method.
+  - **Cost:** four runs of `main` on `bcuda` with `JAX=cpu`, one per method, each $75\times100=7500$ NUTS runs: `BayesCAP-EB` and `BayesCAP-EB-real`, then `BayesCAP` and `BayesCAP-real` after their stored results have been checked against a recomputation and deleted. The recomputation of `BayesCAP` on CPU took about $46$ minutes (work plan §I.2), so each run is expected to take about as long. The check costs nothing.
+- **Representation.**
+  - **Comparison table:** one row per pair, grouped by dataset and ordered by $K$: coverage, amplitude and Winkler score of the four methods; for each pushforward, the $95\%$ bootstrap interval of the mean Winkler difference (empirical Bayes minus $\operatorname{Dir}(\mathbf 1)$) and its Holm-adjusted p-value.
+  - **Prior table:** one row per pair, same order: $K$, minimum and median $n^s_j$, $\hat m$, $\hat\nu$ (marked when at a bound), the left-out standard deviation; the mean and mean absolute recall error of the three estimates of the check; $R$, $R_0$ and $P$ of `BayesCAP` and `BayesCAP-EB`; the NUTS diagnostics of the four methods.
+  - **Scatter, check against variant:** the change of the recall term predicted by the check on the horizontal axis, the observed one on the vertical axis, one point per pair, coloured by $K$, with the line $y=x$; a second panel with the $\operatorname{Dir}(\mathbf 1)$ check against $R$ of `BayesCAP`, which validates the check.
+  - **Scatter, coverage:** coverage with the $\operatorname{Dir}(\mathbf 1)$ prior on the horizontal axis, with the empirical-Bayes prior on the vertical axis, one point per pair, one panel per pushforward, with lines at $0.95$ on both axes.
+  - **The E2.2 table and scatters** of `BayesCAP-EB` and `BayesCAP-EB-real`, next to those of `BayesCAP` and `BayesCAP-real`.
+- **Analysis.** Not run.
+
 # Candidate experiments
 
 Ideas that came up while working on E2.1 and E2.2. They are not scheduled and are numbered E2.c<n> (c for candidate); one becomes an experiment of the main section only when the user decides so, and then it gets the next number E2.<n> and a full specification.
@@ -118,7 +141,7 @@ Ideas that came up while working on E2.1 and E2.2. They are not scheduled and ar
 
 # Theory
 
-This part explains what E2.1 and E2.2 need and nothing more. We follow the notation of the reference paper: $C_{ij}=P(\hat Y=\omega_i\mid Y=\omega_j)$ is the probability that an instance of true class $\omega_j$ is predicted as $\omega_i$, and $\pi^Q$ is the vector of class prevalences of the target bag $U$, with $N^Q=\lvert U\rvert$ instances and $K$ classes. The population table is $T=C\operatorname{diag}(\pi^Q)$: entry $(i,j)$ is the probability that a random target instance has true class $\omega_j$ and is predicted as $\omega_i$. Accuracy is the sum of its diagonal, $\sum_j C_{jj}\pi^Q_j$.
+This part explains what the experiments need and nothing more. We follow the notation of the reference paper: $C_{ij}=P(\hat Y=\omega_i\mid Y=\omega_j)$ is the probability that an instance of true class $\omega_j$ is predicted as $\omega_i$, and $\pi^Q$ is the vector of class prevalences of the target bag $U$, with $N^Q=\lvert U\rvert$ instances and $K$ classes. The population table is $T=C\operatorname{diag}(\pi^Q)$: entry $(i,j)$ is the probability that a random target instance has true class $\omega_j$ and is predicted as $\omega_i$. Accuracy is the sum of its diagonal, $\sum_j C_{jj}\pi^Q_j$.
 
 ## T.1 BayCAP in brief
 
@@ -221,7 +244,7 @@ which is negative whenever the classifier beats guessing ($r_j>1/K$): every reca
 
 **Why the interval is displaced and not just wide.** The posterior standard deviation of a recall is about $\sqrt{\tilde r_j(1-\tilde r_j)/(n^s_j+K+1)}$, the usual standard error of a proportion with the imaginary counts included. The shift shrinks like $K/n^s_j$, the standard deviation only like $1/\sqrt{n^s_j}$, so with large $K$ the shift is several standard deviations. Averaging into accuracy makes it worse: the random errors of the $K$ recalls partly cancel, so the standard deviation of the accuracy is smaller than that of each recall, while the prior pushes every recall in the same direction, so the shifts add up. The result is a narrow interval in the wrong place, and the predictive, which only adds spread around the same centre, cannot repair it.
 
-Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$ (one imaginary count per column instead of $K$), are studied in [[ext10_baycap_priors_tempering|Extension 10]].
+Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$ (one imaginary count per column instead of $K$), are studied in [[ext10_baycap_priors_tempering|Extension 10]]. E2.4 tests instead a prior whose centre and weight are estimated from $V$ (§T.9): $\operatorname{Dir}(1/K)$ puts most of its mass near the edges of the simplex, which is hard to justify as a description of the classifier, while a prior estimated from the data says what $V$ says.
 
 **The prior on $\pi^Q$ is not a cause.** `main` draws the target prevalences uniformly over all possible prevalence vectors (quapy's `UPP`), which is exactly BayCAP's default prior $\operatorname{Dir}(\mathbf 1)$ on $\pi^Q$. When the prior matches how the bags are generated, the interval for $\pi^Q$ covers at the nominal rate on average over the bags, so this prior alone cannot explain the under-coverage.
 
@@ -260,6 +283,107 @@ covering both chance errors in the counts and systematic errors in $C$, such as 
 
 The difficulty of the problem is measured by the accuracy of $h$ on $V$, which is drawn from the source distribution without any prior shift. No cross-validation is needed: BayCAP evaluates the classifier $h$ that is already trained, and its predictions on $V$ are stored; cross-validating on $V$ would train other classifiers on less data. Difficulty and conditioning are related but different: a weak classifier often has similar columns, but a $26$-class classifier with modest recalls can still separate the classes well. In a correct model, low accuracy alone widens the interval rather than displacing it, so if displacement follows the accuracy on $V$ but not $\kappa_0$, it points to a mechanism not described here.
 
+## T.9 An empirical-Bayes prior on the recalls (E2.4)
+
+*Intuition:* the $K$ classes are judged by the same classifier, so they tell us what a typical recall of that classifier looks like. If $25$ classes have a recall around $0.95$, the $26$th is very likely around $0.95$ as well, not around $1/26$. Empirical Bayes estimates the typical recall and how much the recalls differ from the validation data, and pulls each recall towards the typical one: strongly when the class has few validation instances, weakly when it has many.
+
+The numerical examples of this section are illustrative, computed by hand, not results. We write $n_j=n^s_j$ and $f_j=f_{jj}$ for the validation instances of class $\omega_j$ and the correctly classified ones, and $r_j=C_{jj}$ for the recall.
+
+**The model for the validation counts.** The instances of $V$ are drawn independently from the source distribution, so each instance of class $\omega_j$ is classified correctly with the same probability $r_j$, independently of the others. The number of correct ones is therefore a binomial count:
+
+$$
+f_j\mid r_j\sim\operatorname{Binomial}(n_j,r_j),\qquad P(f_j\mid r_j)=\binom{n_j}{f_j}r_j^{f_j}(1-r_j)^{n_j-f_j}.
+$$
+
+Each class is like a coin with unknown probability of heads $r_j$, tossed $n_j$ times.
+
+**The plain recall is the maximum-likelihood estimate.** The value of $r_j$ that makes the observed count most probable maximises the log-likelihood $\ell(r_j)=f_j\ln r_j+(n_j-f_j)\ln(1-r_j)$ (the binomial coefficient does not depend on $r_j$). Setting the derivative to zero,
+
+$$
+\frac{f_j}{r_j}-\frac{n_j-f_j}{1-r_j}=0\iff r_j=\frac{f_j}{n_j}=\hat r_j .
+$$
+
+Since $\mathbb E[f_j]=n_jr_j$ and $\operatorname{Var}(f_j)=n_jr_j(1-r_j)$, the plain recall is unbiased, $\mathbb E[\hat r_j]=r_j$, with variance $r_j(1-r_j)/n_j$: right on average, but noisy when $n_j$ is small, and with no statement of its own uncertainty ($f_j=n_j$ gives $\hat r_j=1$ "for sure").
+
+**A Beta prior and the posterior mean.** A Bayesian describes the uncertainty on $r_j$ by a distribution on $[0,1]$. The Beta distribution has density $p(r)=r^{a-1}(1-r)^{b-1}/B(a,b)$, with $B(a,b)=\int_0^1r^{a-1}(1-r)^{b-1}dr=\Gamma(a)\Gamma(b)/\Gamma(a+b)$. Using $\Gamma(x+1)=x\,\Gamma(x)$, its mean and variance are
+
+$$
+\mathbb E[r]=\frac{B(a+1,b)}{B(a,b)}=\frac{a}{a+b},\qquad \operatorname{Var}[r]=\frac{ab}{(a+b)^2(a+b+1)} .
+$$
+
+We write $a=\nu m$ and $b=\nu(1-m)$: the **centre** $m=\mathbb E[r]$ is the recall the prior expects, and the **strength** $\nu=a+b$ sets how concentrated the prior is, $\operatorname{Var}[r]=m(1-m)/(\nu+1)$. By Bayes' theorem the posterior is proportional to likelihood times prior,
+
+$$
+p(r_j\mid f_j)\propto r_j^{f_j}(1-r_j)^{n_j-f_j}\cdot r_j^{a-1}(1-r_j)^{b-1}=r_j^{f_j+a-1}(1-r_j)^{n_j-f_j+b-1},
+$$
+
+which is again a Beta, $\operatorname{Beta}(f_j+a,\,n_j-f_j+b)$ (conjugacy). The update adds the observed successes to $a$ and the observed failures to $b$: the prior acts as $\nu$ imaginary validation instances, a share $m$ of which are correct. As a single estimate we take the posterior mean, which minimises the expected squared error, since $\mathbb E[(r_j-c)^2\mid f_j]=\operatorname{Var}(r_j\mid f_j)+(\mathbb E[r_j\mid f_j]-c)^2$ is smallest at $c=\mathbb E[r_j\mid f_j]$:
+
+$$
+\tilde r_j=\frac{f_j+\nu m}{n_j+\nu}=w_j\,\hat r_j+(1-w_j)\,m,\qquad w_j=\frac{n_j}{n_j+\nu}.
+$$
+
+It is a weighted average of what $V$ says and what the prior says, with the shares of real and imaginary instances as weights. For a fixed true recall, averaging over the possible validation sets ($\mathbb E[f_j]=n_jr_j$), its bias points towards $m$:
+
+$$
+\mathbb E[\tilde r_j]-r_j=\frac{\nu}{n_j+\nu}\,(m-r_j).
+$$
+
+**The uniform prior is the case $m=1/K$, $\nu=K$.** BayCAP puts $\operatorname{Dir}(\mathbf 1)$ on the whole column $C_{:j}$. A Dirichlet vector can be built as $p_i=G_i/\sum_lG_l$ from independent $G_i\sim\operatorname{Gamma}(\alpha_i,1)$; the sum of the other entries, $G_{-j}=\sum_{i\ne j}G_i$, is $\operatorname{Gamma}(\sum_{i\ne j}\alpha_i,1)$, and $G_j/(G_j+G_{-j})$ is Beta-distributed. So one entry of a $\operatorname{Dir}(\alpha)$ vector is $\operatorname{Beta}(\alpha_j,\sum_{i\ne j}\alpha_i)$, and under $\operatorname{Dir}(\mathbf 1)$ the recall is $\operatorname{Beta}(1,K-1)$: $m=1/K$ and $\nu=K$, chosen without looking at the data. The formulas above then give $\tilde r_j=\frac{f_j+1}{n_j+K}$ and the bias $\frac{K(1/K-r_j)}{n_j+K}$ of §T.5. As a check against the stored results, `isolet` LR ($K=26$, $n_j\approx105$, recall on $V$ $0.95$) gives $26(0.038-0.95)/131\approx-0.181$, the $R_0$ that E2.2 reports.
+
+**Choosing $m$ and $\nu$ from the data.** Empirical Bayes assumes that the $K$ recalls of one classifier are themselves draws from a common Beta, as if the classes were coins from the same factory:
+
+$$
+r_j\sim\operatorname{Beta}\big(\nu m,\nu(1-m)\big)\ \text{independently},\qquad f_j\mid r_j\sim\operatorname{Binomial}(n_j,r_j),\qquad j=1,\dots,K.
+$$
+
+The assumption is that the classes are exchangeable: before looking at $V$, there is no reason to expect a particular class to be harder than another. The recalls are not observed, but the counts are, and the probability of a count under $(m,\nu)$ averages the binomial over all possible recalls (with $a=\nu m$, $b=\nu(1-m)$):
+
+$$
+P(f_j\mid m,\nu)=\int_0^1\binom{n_j}{f_j}r^{f_j}(1-r)^{n_j-f_j}\frac{r^{a-1}(1-r)^{b-1}}{B(a,b)}\,dr=\binom{n_j}{f_j}\frac{B(f_j+a,\,n_j-f_j+b)}{B(a,b)},
+$$
+
+the beta-binomial distribution: the integral is the definition of $B$ with the exponents $f_j+a$ and $n_j-f_j+b$. The classes are independent, so, dropping the binomial coefficients, the log-likelihood of $(m,\nu)$ is
+
+$$
+\ell(m,\nu)=\sum_{j=1}^K\Big[\ln B\big(f_j+\nu m,\,n_j-f_j+\nu(1-m)\big)-\ln B\big(\nu m,\,\nu(1-m)\big)\Big],
+$$
+
+and $(\hat m,\hat\nu)$ is its maximum. There is no closed form: the maximum is found numerically over $(\operatorname{logit}m,\ln\nu)$, which can take any real value, with $\ln B$ computed from log-Gamma functions. The cost is negligible.
+
+**Why rare classes count less.** Under the model, the plain recalls have mean and variance (laws of total expectation and total variance, with $\mathbb E[r_j(1-r_j)]=m(1-m)-\operatorname{Var}(r_j)=m(1-m)\frac{\nu}{\nu+1}$)
+
+$$
+\mathbb E[\hat r_j]=m,\qquad \operatorname{Var}(\hat r_j)=\underbrace{\mathbb E\Big[\tfrac{r_j(1-r_j)}{n_j}\Big]}_{\text{binomial noise}}+\underbrace{\operatorname{Var}(r_j)}_{\text{true spread}}=\frac{m(1-m)}{\nu+1}\cdot\frac{n_j+\nu}{n_j}.
+$$
+
+A class with few instances has a noisier $\hat r_j$. Approximating each $\hat r_j$ as normal with these moments, the log-likelihood becomes a sum of squares $-\frac12\sum_j(\hat r_j-m)^2/\operatorname{Var}(\hat r_j)$ plus terms in $\nu$, and its maximum in $m$ is a weighted mean, $\hat m\approx\sum_jw_j\hat r_j/\sum_jw_j$, with the weights $w_j=n_j/(n_j+\nu)$ of the posterior mean. The exact maximum does the same automatically. A simpler method of moments (the plain average of the $\hat r_j$ for $m$, and the spread across classes minus the average binomial noise for the variance) gives every class the same weight; in an illustrative example with $n_j=200,200,200,5$ and $f_j=190,192,188,3$, it puts $m$ at $0.86$, dragged down by the class with $5$ instances, while the weighted mean with a large $\nu$ is $573/605\approx0.947$. Since the pairs of `main` have very unequal $n^s_j$ (down to $3$ on `poker_hand`), E2.4 uses maximum likelihood.
+
+**The limit cases.** If the counts vary no more than binomial noise alone explains, the likelihood keeps increasing with $\nu$: as $\nu\to\infty$ the prior collapses on $m$, the beta-binomial becomes $\operatorname{Binomial}(n_j,m)$, the maximum is the pooled recall $\hat m=\sum_jf_j/\sum_jn_j$, and every class gets it. If the classes truly differ a lot, $\hat\nu$ is small, $w_j\approx1$, and each class keeps its plain recall. With $K=2$ two counts determine two parameters, and $\hat\nu$ often lands on one of the two limits; at $K=2$ the uniform prior was already harmless (E2.2: $R_0$ between $-0.001$ and $-0.006$). If every recall on $V$ is $1$, $\hat m\to1$. The fit is therefore bounded, $\nu\le10^4$ and $m\in[10^{-3},1-10^{-3}]$, and E2.4 reports the pairs where it reaches a bound.
+
+**From the Beta to a prior on the whole column.** BayCAP needs a prior on each column of $C$, not only on its diagonal entry, because it estimates $\pi^Q$ from $q=C\pi^Q$. By the aggregation property above, the Dirichlet with
+
+$$
+\alpha_{jj}=\hat\nu\hat m,\qquad \alpha_{ij}=\frac{\hat\nu(1-\hat m)}{K-1}\quad(i\ne j)
+$$
+
+has diagonal entry $C_{jj}\sim\operatorname{Beta}(\hat\nu\hat m,\hat\nu(1-\hat m))$, since the other parameters sum to $\hat\nu(1-\hat m)$. Only the concentration parameters change; the likelihoods of $V$ and of the target counts, the prior on $\pi^Q$ and the sampler are those of BayesianCC. By conjugacy, $V$ turns the prior into $\operatorname{Dir}(f_{\cdot j}+\alpha_{\cdot j})$, whose diagonal mean is $\tilde r_j=\frac{f_j+\hat\nu\hat m}{n_j+\hat\nu}$; the target bag then updates $C$ and $\pi^Q$ together, as before. Two consequences:
+
+- *The spread of the mistakes is fixed by $(\hat m,\hat\nu)$.* In a Dirichlet column, $C_{jj}$ is independent of how the rest of the column, $1-C_{jj}$, is shared among the wrong classes, and that share follows $\operatorname{Dir}(\alpha_{ij},\,i\ne j)$, here with all parameters equal to $\beta=\hat\nu(1-\hat m)/(K-1)$. A small $\beta$ lets the mistakes concentrate on the few classes that $V$ shows to be confused, while the uniform prior adds one imaginary mistake to every wrong class, which flattens the column (illustrative: with $104$ instances, $99$ correct and $5$ mistakes on $2$ of $25$ wrong classes, $\operatorname{Dir}(\mathbf 1)$ gives the $23$ never-confused classes a total of $23/130\approx0.18$ of the column). Choosing $\beta$ independently of $(\hat m,\hat\nu)$ would leave the Dirichlet family and change BayesianCC.
+- *Small concentrations.* For an accurate classifier $\beta<1$ (illustrative: $\hat\nu=41$, $\hat m=0.95$ give $\beta\approx0.08$); a cell never filled on $V$ then has a posterior density that grows without bound at $0$. In the unconstrained coordinates where NUTS samples, the density stays finite but has a long tail, which can slow the sampler down. This is why E2.4 records the NUTS diagnostics.
+
+**What happens to the shift.** With the uniform prior every recall above $1/K$ is pulled down, and the pulls add up in $A=\sum_j\pi_jr_j$. With the empirical-Bayes prior the bias of class $\omega_j$ is $\frac{\hat\nu}{n_j+\hat\nu}(\hat m-r_j)$: positive for the classes below the typical recall and negative for those above it. Under the model, $\mathbb E[m-r_j]=0$, so the biases cancel on accuracy on average over the classes; under UPP the prevalences are drawn independently of the classifier, so this holds on average over the bags. Two limits remain. The classes may not be exchangeable: a truly hard class is pulled up towards the others, and bags dominated by it are displaced (pooling reduces the total squared error over the classes, not the error of every class). And causes 2 and 4 of E2.2 are not addressed.
+
+**Using $V$ twice.** $V$ chooses $(\hat m,\hat\nu)$ and then updates $C$ again, while the posterior treats $(\hat m,\hat\nu)$ as known constants. A fully Bayesian model would average over them, $p(r_j\mid V)=\int p(r_j\mid V,m,\nu)\,p(m,\nu\mid V)\,dm\,d\nu$, and by the law of total variance
+
+$$
+\operatorname{Var}(r_j\mid V)=\underbrace{\mathbb E\big[\operatorname{Var}(r_j\mid V,m,\nu)\mid V\big]}_{\text{kept by empirical Bayes}}+\underbrace{\operatorname{Var}\big(\mathbb E[r_j\mid V,m,\nu]\mid V\big)}_{\text{left out}},
+$$
+
+where the left-out term is about $(1-w_j)^2\operatorname{Var}(\hat m)$ if the uncertainty on $\nu$ is ignored. The error of $\hat m$ is shared by all the classes, so on accuracy it does not average out: the left-out standard deviation of the accuracy is about $\sum_j\pi_j(1-w_j)\operatorname{sd}(\hat m)$. $\operatorname{sd}(\hat m)$ is estimated from the curvature of $\ell$ at its maximum (the inverse of the observed information, in the coordinates $(\operatorname{logit}m,\ln\nu)$, with $\operatorname{sd}(\hat m)=\hat m(1-\hat m)\operatorname{sd}(\operatorname{logit}\hat m)$). In an illustrative case like `isolet` ($K=26$, $n_j=104$, $\hat\nu=41$, spread of the recalls $0.04$) it is about $0.002$, against about $0.0036$ for the standard deviation that the uncertainty on $C$ gives the accuracy, so the $C$ part of the width would be about $13\%$ too small; the uncertainty on $\pi^Q$ makes the effect on the whole interval smaller. Because $V$ is drawn once, the error of $\hat m$ is the same in every bag of a pair: if it matters, it appears as a small displacement, not as random width. A second, smaller effect: each class enters $\hat m$, so the centre it is pulled towards has been moved slightly towards itself, and the pull is a little too weak; the effect is of order $1/K$. E2.4 reports the left-out standard deviation per pair. The fully Bayesian version, which samples $(m,\nu)$ with NUTS, would change the model of BayesianCC and is not pursued.
+
+**What the check can and cannot predict.** The check of E2.4 computes $\tilde r_j$ from $V$ alone and compares it with the realised recalls of each bag. It predicts the recall term of the shift, not the coverage (it has no interval), and it leaves out the step in which the target bag updates $C$, the effect of the mistakes on $\hat\pi$ (the prevalence term), and the left-out variance. The variant measures all of these, and the comparison of the two tells which of them matter.
+
 # Implementation
 
 Components:
@@ -277,6 +401,8 @@ Components:
 - **`tables/displacement.py` and `plots/displacement.py`** (for E2.3): take the method as `--method` (default `BayesCAP`); for any other method the outputs go to a subfolder named after the method (e.g. `<OUT_DIR>/uncawe/tables/displacement/BayesCAP-real/`), so the stored E2.2 outputs keep their paths and are not overwritten.
 - **`tables/pushforward.py`** (E2.3): the comparison table, one row per pair where both pushforwards are stored (so it also works on the pilot), with the approximate coverage and $\hat\sigma_g/\hat\sigma_p$ read from the E2.1 CSV, which must exist; as a check, it reports the largest gap between its population coverage and the one stored by E2.1. CSV, LaTeX and PDF under `<OUT_DIR>/uncawe/tables/pushforward/`.
 - **`plots/pushforward.py`** (E2.3): the two coverage scatters, coloured by $\hat\sigma_g/\hat\sigma_p$ on a log scale, under `<OUT_DIR>/uncawe/plots/main/pushforward/`.
+- **`methods/baycap.py:BayCAP` with `c_prior`** (for E2.4, work-plan card WP-5, planned): the hyperparameter `c_prior` $\in\{$`"uniform"`, `"empirical-bayes"`$\}$, default `"uniform"`, which keeps the current model. With `"empirical-bayes"`, `fit` estimates $(\hat m,\hat\nu)$ from the diagonal and the class totals of the validation table by maximising the beta-binomial log-likelihood of §T.9 over $(\operatorname{logit}m,\ln\nu)$, within the bounds of §T.9, and stores them, whether a bound was reached, and $\operatorname{sd}(\hat m)$ as fitted attributes; `model` uses the concentration matrix $\alpha$ of §T.9 in place of the matrix of ones. In the `cap` layout a column of $C$ is a row of `p_c_cond_y`, so $\alpha$ is built transposed.
+- **E2.4 in `main`** (work-plan card WP-6, planned): `BayesCAP` built as `BayCAP(acc, estimand="population")` instead of `ACC_BayesCAP`; the methods `BayesCAP-EB` and `BayesCAP-EB-real` (`c_prior="empirical-bayes"`, population and realised), results only like `BayesCAP-real`; `BayCAP` exposes the NUTS diagnostics of each `predict_ct_range` call (divergences, largest split-$\hat R$, smallest effective sample size), which the evaluation of contingency methods in `experiments/main.py` adds to the result frame as new per-bag columns. A table module and a plot module for E2.4 reuse the bootstrap test of `tables/pushforward.py` and the validation counts and decomposition of `tables/displacement.py`; `tables/displacement.py` and `plots/displacement.py` already take `--method`.
 
 Tests:
 
@@ -287,11 +413,13 @@ Tests:
 - a fixed `random_state` gives identical outputs; the layout is checked against a hand-computed $2\times2$ example (guards against transposed tables);
 - E2.2: the recall and prevalence terms sum exactly to the shift on a hand-computed table; the prior part equals $\frac{f_{jj}+1}{n^s_j+K}-\frac{f_{jj}}{n^s_j}$ on a hand-computed validation table; $\kappa_0$ and $1/\sigma_{\min}$ match hand-computed $2\times2$ ($\kappa_0=1$, $1/\sigma_{\min}=1/(\mathrm{TPR}-\mathrm{FPR})$) and $3\times3$ examples and are infinite for singular ones; the recall and prevalence terms add up to the shift also on a bag with an absent class; $\hat C$ is in the paper's layout; the predicted coverage is $0.95$ with no shift, symmetric in the sign of the shift, about $0.5$ at one half-width, and undefined for a zero amplitude; the method argument reads the results of the given method and keeps the E2.2 output folders for `BayesCAP` (`tests/test_displacement.py`);
 - E2.3: the factory builds `BayesCAP-real` with the priors, NUTS settings and seed of `BayesCAP`, and the tables, ranks and default plots of `main` exclude it (`tests/test_methods.py`); the filters of `main` restrict the pairs and methods and send `BayesCAP-real` to the BayCAP pool (`tests/test_main_protocol.py`); the comparison table keeps the pairs stored for both methods, requires every pair in the E2.1 CSV, and has the expected layout, and both figures build (`tests/test_pushforward.py`).
+- E2.4 (planned): the log-likelihood matches `scipy.stats.betabinom`; the fit recovers $(m,\nu)$ on synthetic counts with many classes; when all classes share one recall, the fit reaches the upper bound of $\nu$ and gives $\hat m=\sum_jf_j/\sum_jn_j$; the concentration matrix has diagonal $\hat\nu\hat m$ and off-diagonal sums $\hat\nu(1-\hat m)$, in the `cap` layout; `c_prior="uniform"` reproduces the current draws for a fixed `random_state`; `BayesCAP` built from `BayCAP` reproduces `ACC_BayesCAP`; the diagnostics are stored for every bag of the four BayCAP methods; the check gives $\tilde r_j=\frac{f_j+1}{n_j+K}$ and the empirical-Bayes $\tilde r_j$ on hand-computed counts.
 
 Reproducibility and comparability:
 
 - `main` and `binform` and their output paths are unchanged; E2.1 and E2.2 only read stored results;
 - E2.3 adds the rows of `BayesCAP-real` to `main` and leaves the stored results of every other method untouched; with the same bags, seeds and NUTS settings, its posterior draws equal those of the stored `BayesCAP` on the same platform and JAX version, while bitwise agreement is not expected across JAX platforms, in which case the two pushforwards would be compared on different but equally distributed draws; a check on 5 pairs (`scripts/bench/xla_vs_stored.py`, 2026-10-22) found the stored `BayesCAP` results different from a CPU recomputation (coverage changes up to $0.05$, on `wine-quality`) and `BayesCAP-real` identical, so `BayesCAP` is recomputed on CPU before E2.3 and the old results are kept in `<OUT_DIR>/uncawe/main_22_10_26/`; E2.1 and E2.2 were computed on the old results;
+- E2.4 (planned) adds the rows of `BayesCAP-EB` and `BayesCAP-EB-real` and reruns `BayesCAP` and `BayesCAP-real` to store the NUTS diagnostics; before the stored results of `BayesCAP` are deleted, `scripts/bench/xla_vs_stored.py` must show that `BayCAP(estimand="population")` reproduces them, so that the rerun changes no stored measure and adds only the diagnostic columns; the paper's tables are then unaffected;
 - every row records the prior, the seeds and the pushforward (population or predictive).
 
 # Appendix
@@ -302,7 +430,7 @@ Reproducibility and comparability:
 
 ## B. Relation to other extensions
 
-- **[[ext10_baycap_priors_tempering|Extension 10]]**: priors (on $\pi^Q$ and on $C$) and tempering of BayCAP (temperature $\tau$); it compares tempering with the realised-table predictive and studies priors on $C$ that avoid the shift of §T.5, such as $\operatorname{Dir}(1/K)$.
+- **[[ext10_baycap_priors_tempering|Extension 10]]**: priors (on $\pi^Q$ and on $C$) and tempering of BayCAP (temperature $\tau$); it compares tempering with the realised-table predictive and studies priors on $C$ that avoid the shift of §T.5, such as $\operatorname{Dir}(1/K)$; the empirical-Bayes prior of E2.4 is tested here, because it is the fix suggested by E2.2.
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics.
 - **[[ext3_uncertainty_budget|Extension 3]]**: the estimand gap is its finite-$U$ term; its regime map varies $\lvert U\rvert$ and $\lvert V\rvert$.
 - **[[extensions_to_evaluate#B. Transductive BayCAP and the link to CBPE [new]|Proposal B]]**: keeps the soft-posterior (CBPE mixture) variant of the realised-table predictive.
@@ -311,7 +439,7 @@ Reproducibility and comparability:
 
 ## C. Out of scope
 
-- tempering, informative priors, and the choice of prior on $C$ ([[ext10_baycap_priors_tempering|Extension 10]]);
+- tempering, informative priors, and priors on $C$ other than the empirical-Bayes prior of E2.4 ([[ext10_baycap_priors_tempering|Extension 10]]); the fully hierarchical version of that prior, which would change the model of BayesianCC;
 - the soft-posterior variant of the realised-table predictive (Proposal B);
 - post-hoc interval recalibration;
 - violations of PPS.

@@ -162,8 +162,8 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
-
-No open cards (2026-10-23).
+| WP-5 | Empirical-Bayes prior on the columns of $C$ for `BayCAP` | method | Scheduled | — | 2026-10-26 |
+| WP-6 | E2.4: BayCAP with an empirical-Bayes prior on the recalls | experiment | Scheduled | WP-5 | 2026-10-26 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -205,6 +205,40 @@ Entry template:
 - **Log:** <dated notes on progress: pilot run, problems, decisions>
 - **Outcome:** <filled when the branch is merged: merge commit; decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card>
 ```
+
+### WP-5 Empirical-Bayes prior on the columns of $C$ for `BayCAP`
+
+- **Kind / status:** method / Scheduled
+- **Source:** [[ext2_baycap]] (E2.4, §T.9)
+- **Goal:** add to `BayCAP` (`src/uncawe/methods/baycap.py`) a hyperparameter `c_prior` that selects the prior on the columns of $C$. `"uniform"` (default) is $\operatorname{Dir}(\mathbf 1_K)$, the current model, unchanged. `"empirical-bayes"` gives column $j$ the prior $\operatorname{Dir}(\alpha_{\cdot j})$ with $\alpha_{jj}=\hat\nu\hat m$ and $\alpha_{ij}=\hat\nu(1-\hat m)/(K-1)$ for $i\ne j$, so that the recall $C_{jj}$ has the prior $\operatorname{Beta}(\hat\nu\hat m,\hat\nu(1-\hat m))$. $(\hat m,\hat\nu)$ are fitted in `fit` by maximising the beta-binomial log-likelihood $\sum_j[\ln B(f_j+\nu m,\,n_j-f_j+\nu(1-m))-\ln B(\nu m,\,\nu(1-m))]$ of the diagonal counts $f_j$ of the validation table, out of the $n_j$ validation instances of each class, numerically over $(\operatorname{logit}m,\ln\nu)$, within $\nu\le10^4$ and $m\in[10^{-3},1-10^{-3}]$; the fit stores $\hat m$, $\hat\nu$, whether a bound was reached, and $\operatorname{sd}(\hat m)$ from the curvature of the log-likelihood at its maximum. Everything else of the BayesianCC model is unchanged: the likelihoods of $V$ and of the target predicted counts, the prior on $\pi^Q$, NUTS, the seed, and both estimands. In the `cap` layout a column of $C$ is a row of `p_c_cond_y`, so the concentration matrix is built transposed. Why: the $\operatorname{Dir}(\mathbf 1)$ prior pulls every recall towards $1/K$, which displaces BayCAP's interval on datasets with large $K$ and accurate classifiers; the empirical-Bayes prior pulls each recall towards the typical recall of the classifier.
+- **Estimand:** as `BayCAP`: population table with `estimand="population"`, realised table with `estimand="realised"`.
+- **Scope:** `methods/baycap.py` (`c_prior`, the fit of $(\hat m,\hat\nu)$, the concentration matrix in `model`); `tests/test_baycap.py`; §II.5 and the `BayCAP` row of §II.12. Not in this card: the methods of `main`, the diagnostics and the E2.4 analysis (WP-6).
+- **Depends on:** none.
+- **Comparability:** with `c_prior="uniform"` the model and the NUTS draws are unchanged, so no stored result changes.
+- **Deviations from Part V:** none expected.
+- **Done when:** code and tests are merged into `devel`, and §II.5 describes `c_prior` as not evaluated. The tests check that the log-likelihood matches `scipy.stats.betabinom`; that the fit recovers $(m,\nu)$ on synthetic counts with many classes; that, when all classes share one recall, the fit reaches the upper bound of $\nu$ and gives $\hat m=\sum_jf_j/\sum_jn_j$; that the concentration matrix has diagonal $\hat\nu\hat m$ and off-diagonal sums $\hat\nu(1-\hat m)$, in the `cap` layout; and that `c_prior="uniform"` reproduces the current draws for a fixed `random_state`.
+- **Commands:** none (method only).
+- **Log:** 2026-10-26: card added by the user.
+- **Outcome:** —
+
+### WP-6 E2.4: BayCAP with an empirical-Bayes prior on the recalls
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext2_baycap]] (E2.4)
+- **Goal:** evaluate the empirical-Bayes prior on the columns of $C$ (WP-5) against the $\operatorname{Dir}(\mathbf 1)$ prior, with both pushforwards, each method in its own run. The $\operatorname{Dir}(\mathbf 1)$ prior pulls every recall towards $1/K$, which displaces BayCAP's interval on datasets with large $K$ and accurate classifiers; the empirical-Bayes prior pulls each recall towards the typical recall $\hat m$ of the classifier, with strength $\hat\nu$, both estimated from $V$ by maximum likelihood of the beta-binomial.
+  - *Methods:* two new methods of `main`, results only (excluded by default from the tables, ranks and plots of `main`, like `BayesCAP-real`): `BayesCAP-EB` (`BayCAP`, `estimand="population"`, `c_prior="empirical-bayes"`) and `BayesCAP-EB-real` (`estimand="realised"`), with the prior on $\pi^Q$, the NUTS settings and the seed of `BayesCAP`. `BayesCAP` is built as `BayCAP(acc, estimand="population")` instead of `cap-ml`'s `ACC_BayesCAP` (user's decision of 2026-10-26), so that it can store the diagnostics.
+  - *NUTS diagnostics:* `BayCAP` exposes, for each `predict_ct_range` call, the number of divergent transitions, the largest split-$\hat R$ (one chain split in two halves) and the smallest effective sample size over the parameters of $\pi^Q$ and $C$; the evaluation of contingency methods in `experiments/main.py` stores them as new per-bag columns of the results, for `BayesCAP`, `BayesCAP-real`, `BayesCAP-EB` and `BayesCAP-EB-real`. `BayesCAP` and `BayesCAP-real` are run again to store them.
+  - *Check (no runs):* per pair, the mean over the bags of $\sum_j\pi^{(b)}_j(\tilde r_j-r^{(b)}_j)$, with $\pi^{(b)}$ and $r^{(b)}_j$ the true class proportions and realised recalls of bag $b$, and of its absolute value, for three estimates of the recalls from $V$ alone: plain $f_j/n_j$, $\operatorname{Dir}(\mathbf 1)$ $\frac{f_j+1}{n_j+K}$, empirical Bayes $\frac{f_j+\hat\nu\hat m}{n_j+\hat\nu}$; also $\hat m$, $\hat\nu$, bounds reached, and the standard deviation left out by empirical Bayes, $\sum_j\pi_j(1-w_j)\operatorname{sd}(\hat m)$ with $w_j=n_j/(n_j+\hat\nu)$ and $\pi$ uniform.
+  - *Tables and plots:* a comparison table, one row per pair grouped by dataset and ordered by $K$, with coverage, amplitude and Winkler score of the four methods and, within each pushforward, the paired bootstrap test of the mean Winkler difference of E2.3 (empirical Bayes minus $\operatorname{Dir}(\mathbf 1)$, Holm-adjusted over the $75$ pairs); a prior table with $K$, minimum and median $n_j$, the check, $R$, $R_0$ and $P$ of `BayesCAP` and `BayesCAP-EB`, and the diagnostics of the four methods; a scatter of the predicted against the observed change of the recall term, with a panel validating the $\operatorname{Dir}(\mathbf 1)$ check against $R$ of `BayesCAP`; a scatter of coverage with the empirical-Bayes prior against coverage with $\operatorname{Dir}(\mathbf 1)$, one panel per pushforward; the E2.2 table and scatters of the two new methods (`tables/displacement.py` and `plots/displacement.py` with `--method`).
+- **Estimand:** population table for `BayesCAP` and `BayesCAP-EB`, realised table for `BayesCAP-real` and `BayesCAP-EB-real`; all four scored against the realised table (`true_cts`). The check and the error measures use target labels, so they are an analysis.
+- **Scope:** `experiments/methods.py` (`BayesCAP` from `BayCAP`, the two new methods); `methods/baycap.py` (the diagnostics); `experiments/main.py` (the diagnostic columns); the exclusion lists of `tables/main.py` and `plots/common.py`; a new table module in `src/uncawe/tables/` (reusing `tables/pushforward.py` for the bootstrap test and `tables/displacement.py` for the validation counts and the decomposition) and a new plot module in `src/uncawe/plots/`; `Makefile` targets; tests; §I.2 (`BayesCAP` built from `BayCAP`), §II.5, §II.12.
+- **Depends on:** WP-5; stored `main` results and pretrain data; `BayesCAP` on CPU (§I.2).
+- **Comparability:** `BayesCAP` and `BayesCAP-real` are rerun, and their stored parquet files must be deleted first, because `main` skips existing results. Before deleting, `scripts/bench/xla_vs_stored.py` must show that `BayCAP(estimand="population")` reproduces the stored `BayesCAP` results on CPU; the rerun then changes no stored measure and only adds the diagnostic columns, and the paper's tables are unaffected. The other methods of `main` are untouched.
+- **Deviations from Part V:** none expected.
+- **Done when:** the full runs of the four methods have stored results with diagnostics, and the E2.4 tables and plots are generated; the results are described in Part II with their location, the `cap-ml` commit and the date of the runs.
+- **Commands:** to be filled when the code exists. Runs on `bcuda` with `JAX=cpu`: `BayesCAP-EB` and `BayesCAP-EB-real`; then `BayesCAP` and `BayesCAP-real`, after the check with `scripts/bench/xla_vs_stored.py` and the deletion of their stored results. Each run is $75\times100=7500$ NUTS runs, expected to take about as long as the CPU recomputation of `BayesCAP` (about $46$ minutes, §I.2).
+- **Log:** 2026-10-26: card added by the user.
+- **Outcome:** —
 
 ## III.3 Completed cards
 
