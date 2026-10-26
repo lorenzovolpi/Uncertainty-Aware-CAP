@@ -5,10 +5,12 @@ realised-table posterior predictive of ``docs/ext2_baycap.md``. The
 posterior model, the priors and the NUTS sampler are copied from ``cap-ml``
 ``cap.models.confidence.ACC_BayesCAP`` (commit ``bb20aa5`` of branch
 ``devel``); only the pushforward of the posterior draws to contingency tables
-is extended.
+is extended. Work-plan card WP-5 adds the empirical-Bayes prior on the
+columns of $C$ (``c_prior``, §T.9 of ``docs/ext2_baycap.md``).
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from numbers import Number
 from typing import Literal, Self
 
@@ -21,9 +23,16 @@ import quapy as qp
 from cap.models.confidence import P_C_COND_Y, P_TEST_C, P_TEST_Y, BayesCAP, CTCAPWithConfidence
 from cap.models.cont_table import CAPContingencyTable
 from quapy.data import LabelledCollection
+from scipy.optimize import minimize
+from scipy.special import betaln, digamma, expit, logit
 from sklearn.metrics import confusion_matrix
 
 ESTIMANDS = ("population", "realised")
+C_PRIORS = ("uniform", "empirical-bayes")
+
+# bounds of the empirical-Bayes fit (§T.9); the lower bound on nu is only a numerical safeguard
+EB_M_BOUNDS = (1e-3, 1 - 1e-3)
+EB_NU_BOUNDS = (1e-3, 1e4)
 
 
 def realised_tables(cts: np.ndarray, pred_counts: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -70,15 +79,165 @@ def realised_tables(cts: np.ndarray, pred_counts: np.ndarray, rng: np.random.Gen
     return np.swapaxes(counts, 1, 2) / pred_counts.sum()
 
 
+def beta_binomial_loglik(m: float, nu: float, f: np.ndarray, n: np.ndarray) -> float:
+    r"""Beta-binomial log-likelihood of $(m,\nu)$ for the diagonal validation counts.
+
+    $\ell(m,\nu)=\sum_j[\ln B(f_j+\nu m,\,n_j-f_j+\nu(1-m))-\ln B(\nu m,\,\nu(1-m))]$,
+    i.e. the log-probability of the counts $f_j$ out of $n_j$ when each recall
+    is drawn from $\operatorname{Beta}(\nu m,\nu(1-m))$, without the binomial
+    coefficients (which do not depend on $(m,\nu)$).
+
+    :param m: centre of the Beta prior, in $(0,1)$.
+    :param nu: strength of the Beta prior, positive.
+    :param f: correctly classified validation instances of each class.
+    :param n: validation instances of each class.
+    """
+    f, n = np.asarray(f, dtype=float), np.asarray(n, dtype=float)
+    a, b = nu * m, nu * (1 - m)
+    return float(np.sum(betaln(f + a, n - f + b) - betaln(a, b)))
+
+
+def _loglik_grad(theta: np.ndarray, f: np.ndarray, n: np.ndarray) -> tuple[float, np.ndarray]:
+    """Log-likelihood and its gradient in the coordinates (logit m, ln nu)."""
+    m, nu = expit(theta[0]), np.exp(theta[1])
+    a, b = nu * m, nu * (1 - m)
+    common = digamma(nu) - digamma(n + nu)
+    d_a = np.sum(digamma(f + a) - digamma(a) + common)
+    d_b = np.sum(digamma(n - f + b) - digamma(b) + common)
+    grad = np.array([nu * m * (1 - m) * (d_a - d_b), a * d_a + b * d_b])
+    return beta_binomial_loglik(m, nu, f, n), grad
+
+
+@dataclass(frozen=True)
+class BetaBinomialFit:
+    r"""Maximum-likelihood estimate of the Beta prior on the recalls (§T.9).
+
+    :param m: the centre $\hat m$ (the typical recall).
+    :param nu: the strength $\hat\nu$.
+    :param m_at_bound: whether $\hat m$ is on a bound of ``EB_M_BOUNDS``.
+    :param nu_at_bound: whether $\hat\nu$ is on a bound of ``EB_NU_BOUNDS``.
+    :param sd_m: $\operatorname{sd}(\hat m)$ from the curvature of the
+        log-likelihood at its maximum; NaN when $\hat m$ is on a bound or the
+        curvature is not negative.
+    :param loglik: the log-likelihood at the maximum.
+    """
+
+    m: float
+    nu: float
+    m_at_bound: bool
+    nu_at_bound: bool
+    sd_m: float
+    loglik: float
+
+    @property
+    def at_bound(self) -> bool:
+        return self.m_at_bound or self.nu_at_bound
+
+
+def fit_beta_binomial(
+    f: np.ndarray, n: np.ndarray, starts_ln_nu: tuple[float, ...] = (0.0, 3.0, 6.0)
+) -> BetaBinomialFit:
+    r"""Fit $(\hat m,\hat\nu)$ by maximising the beta-binomial log-likelihood.
+
+    The maximum is searched over $(\operatorname{logit}m,\ln\nu)$ with L-BFGS-B
+    and the analytic gradient, within ``EB_M_BOUNDS`` and ``EB_NU_BOUNDS``,
+    from the pooled recall $\sum_jf_j/\sum_jn_j$ and each value of
+    ``starts_ln_nu``; the best maximum is kept.
+
+    $\operatorname{sd}(\hat m)=\hat m(1-\hat m)\operatorname{sd}(\operatorname{logit}\hat m)$,
+    with the variance of $\operatorname{logit}\hat m$ from the inverse of the
+    observed information (minus the Hessian of the log-likelihood, by central
+    differences of the gradient). When $\hat\nu$ is on a bound, $\nu$ is
+    treated as fixed and only the curvature in $\operatorname{logit}m$ is used.
+
+    :param f: correctly classified validation instances of each class
+        (the diagonal of the validation table).
+    :param n: validation instances of each class (its class totals).
+    """
+    f, n = np.asarray(f, dtype=float), np.asarray(n, dtype=float)
+    if f.shape != n.shape or f.ndim != 1:
+        raise ValueError(f"f and n must be vectors of the same shape; found {f.shape} and {n.shape}")
+    if np.any(f < 0) or np.any(f > n) or n.sum() == 0:
+        raise ValueError("counts must satisfy 0 <= f <= n, with at least one validation instance")
+
+    bounds = [tuple(logit(EB_M_BOUNDS)), tuple(np.log(EB_NU_BOUNDS))]
+    m0 = np.clip(f.sum() / n.sum(), *EB_M_BOUNDS)
+
+    def neg(theta):
+        ll, grad = _loglik_grad(theta, f, n)
+        return -ll, -grad
+
+    best = None
+    for ln_nu in starts_ln_nu:
+        res = minimize(neg, np.array([logit(m0), ln_nu]), jac=True, method="L-BFGS-B", bounds=bounds)
+        if best is None or res.fun < best.fun:
+            best = res
+    theta = best.x
+
+    at_bound = [np.isclose(theta[i], bounds[i], rtol=0, atol=1e-6).any() for i in range(2)]
+    free = [i for i in range(2) if not at_bound[i]]
+    sd_m = np.nan
+    if 0 in free:
+        eps = 1e-5
+        hess = np.empty((2, 2))
+        for i in range(2):
+            step = np.zeros(2)
+            step[i] = eps
+            hess[:, i] = (_loglik_grad(theta + step, f, n)[1] - _loglik_grad(theta - step, f, n)[1]) / (2 * eps)
+        info = -(hess + hess.T)[np.ix_(free, free)] / 2
+        if np.all(np.linalg.eigvalsh(info) > 0):
+            var_logit_m = np.linalg.inv(info)[0, 0]
+            m = expit(theta[0])
+            sd_m = float(m * (1 - m) * np.sqrt(var_logit_m))
+
+    return BetaBinomialFit(
+        m=float(expit(theta[0])),
+        nu=float(np.exp(theta[1])),
+        m_at_bound=bool(at_bound[0]),
+        nu_at_bound=bool(at_bound[1]),
+        sd_m=sd_m,
+        loglik=-float(best.fun),
+    )
+
+
+def eb_concentration(n_classes: int, m: float, nu: float) -> np.ndarray:
+    r"""Dirichlet concentrations of the empirical-Bayes prior on the columns of $C$.
+
+    Column $j$ of $C$ gets $\alpha_{jj}=\nu m$ and $\alpha_{ij}=\nu(1-m)/(K-1)$
+    for $i\ne j$, so that the recall $C_{jj}$ is $\operatorname{Beta}(\nu m,\nu(1-m))$.
+    The matrix is returned in the ``cap-ml`` layout of ``p_c_cond_y`` (row $j$
+    is the column $C_{:j}$, i.e. the true class on rows), so each row sums to
+    $\nu$; with a constant diagonal and constant off-diagonal entries it is
+    symmetric, so the two layouts coincide.
+    """
+    if n_classes < 2:
+        raise ValueError(f"n_classes must be at least 2; found {n_classes}")
+    off = nu * (1 - m) / (n_classes - 1)
+    alpha = np.full((n_classes, n_classes), off)
+    np.fill_diagonal(alpha, nu * m)
+    return alpha
+
+
 class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
     r"""BayCAP with a selectable estimand.
 
     The posterior over the target prevalence $\pi^Q$ and the rate matrix $C$
     is the BayesianCC model of ``ACC_BayesCAP``: a Dirichlet prior on
-    $\pi^Q$ (uniform by default), a uniform Dirichlet prior on each column of
-    $C$, a multinomial likelihood for the validation contingency table and a
+    $\pi^Q$ (uniform by default), a Dirichlet prior on each column of $C$, a
+    multinomial likelihood for the validation contingency table and a
     multinomial likelihood for the predicted counts $n^t$ of the target
     sample. It is sampled with NumPyro NUTS from ``PRNGKey(random_state)``.
+
+    The prior on the columns of $C$ is selected by ``c_prior``:
+
+    - ``"uniform"`` is $\operatorname{Dir}(\mathbf 1_K)$, as in ``ACC_BayesCAP``.
+    - ``"empirical-bayes"`` gives column $j$ the prior
+      $\operatorname{Dir}(\alpha_{\cdot j})$ with $\alpha_{jj}=\hat\nu\hat m$
+      and $\alpha_{ij}=\hat\nu(1-\hat m)/(K-1)$, so that the recall $C_{jj}$
+      is $\operatorname{Beta}(\hat\nu\hat m,\hat\nu(1-\hat m))$; ``fit``
+      estimates $(\hat m,\hat\nu)$ from the diagonal and the class totals of
+      the validation table (:func:`fit_beta_binomial`) and stores the fit in
+      ``eb_fit``.
 
     The estimand decides how each posterior draw becomes a contingency table:
 
@@ -101,6 +260,8 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
 
     :param acc_fn: a ``cap-ml`` contingency-table performance function.
     :param estimand: ``"population"`` or ``"realised"``.
+    :param c_prior: prior on the columns of $C$, ``"uniform"`` or
+        ``"empirical-bayes"``.
     :param num_warmup: number of NUTS warm-up iterations.
     :param num_samples: number of posterior draws retained after warm-up.
     :param prior: Dirichlet parameter of the prior on $\pi^Q$: ``"uniform"``,
@@ -114,6 +275,7 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         self,
         acc_fn: Callable,
         estimand: Literal["population", "realised"] = "population",
+        c_prior: Literal["uniform", "empirical-bayes"] = "uniform",
         num_warmup: int = 500,
         num_samples: int = 1000,
         prior: str | Number | np.ndarray = "uniform",
@@ -121,8 +283,11 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
     ):
         if estimand not in ESTIMANDS:
             raise ValueError(f"estimand must be one of {ESTIMANDS}; found {estimand!r}")
+        if c_prior not in C_PRIORS:
+            raise ValueError(f"c_prior must be one of {C_PRIORS}; found {c_prior!r}")
         CAPContingencyTable.__init__(self, acc_fn)
         self.estimand = estimand
+        self.c_prior = c_prior
         self.num_warmup = num_warmup
         self.num_samples = num_samples
         self.random_state = qp.environ["_R_SEED"] if random_state is None else random_state
@@ -132,16 +297,30 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         val_yhat = np.argmax(posteriors, axis=-1)
         self.classes = val.classes
         self.val_ct = confusion_matrix(val.y, val_yhat, labels=val.classes)
+        n_classes = len(self.classes)
+        if self.c_prior == "empirical-bayes":
+            # cap-ml layout: true classes on rows, so the diagonal holds f_j and the row sums n_j
+            self.eb_fit = fit_beta_binomial(np.diag(self.val_ct), self.val_ct.sum(axis=1))
+            self.c_alpha = eb_concentration(n_classes, self.eb_fit.m, self.eb_fit.nu)
+        else:
+            self.eb_fit = None
+            self.c_alpha = np.ones((n_classes, n_classes))
         return self
 
-    def model(self, pred_posterior_count: np.ndarray, train_class_cond_count: np.ndarray, alpha: np.ndarray):
+    def model(
+        self,
+        pred_posterior_count: np.ndarray,
+        train_class_cond_count: np.ndarray,
+        alpha: np.ndarray,
+        c_alpha: np.ndarray,
+    ):
         train_class_count = train_class_cond_count.sum(axis=1)
 
-        K = len(pred_posterior_count)
         L = len(train_class_count)
 
         pi_ = numpyro.sample(P_TEST_Y, dist.Dirichlet(jnp.asarray(alpha, dtype=jnp.float32)))
-        p_c_cond_y = numpyro.sample(P_C_COND_Y, dist.Dirichlet(jnp.ones(K).repeat(L).reshape(L, K)))
+        # row y of p_c_cond_y is the column C_{:y} of the paper, with concentrations c_alpha[y]
+        p_c_cond_y = numpyro.sample(P_C_COND_Y, dist.Dirichlet(jnp.asarray(c_alpha, dtype=jnp.float32)))
 
         with numpyro.plate("plate", L):
             numpyro.sample("F_yc", dist.Multinomial(train_class_count, p_c_cond_y), obs=train_class_cond_count)
@@ -157,7 +336,13 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
             progress_bar=False,
         )
         rng_key = jax.random.PRNGKey(self.random_state)
-        mcmc.run(rng_key, pred_posterior_count=posterior_count, train_class_cond_count=self.val_ct, alpha=alpha)
+        mcmc.run(
+            rng_key,
+            pred_posterior_count=posterior_count,
+            train_class_cond_count=self.val_ct,
+            alpha=alpha,
+            c_alpha=self.c_alpha,
+        )
         return mcmc.get_samples()
 
     def _alpha(self) -> np.ndarray:

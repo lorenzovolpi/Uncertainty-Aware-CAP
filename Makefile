@@ -7,6 +7,7 @@
 #   make status / make logs EXP=main-classic / make attach EXP=main-classic
 #   make explog EXP=main      # experiment log <OUT_DIR>/<experiment>.log (FOLLOW=1 to keep reading)
 #   make pull                 # copy tables and plots back to ./output
+#   make test                 # run the unit tests on this machine, in the foreground
 #
 # Local runs: `make fetch-data` once (pretrain files and datasets from REMOTE), then
 #   make run-binform WHERE=local JAX=cpu
@@ -91,10 +92,10 @@ REV_COMMIT   := $(shell git rev-parse HEAD)
 REV_DESCRIBE := $(shell git describe --always --dirty)
 JAX_ENV      := $(if $(JAX),JAX_PLATFORMS=$(JAX))
 
-.PHONY: help list init push setup run-% status logs explog attach stop pull fetch-data pull-results push-results
+.PHONY: help list init push setup run-% status logs explog attach stop pull fetch-data pull-results push-results test
 
 help:
-	@sed -n '2,15p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
+	@sed -n '2,16p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 	@echo "Experiments (make run-<name>):"
 	@$(foreach e,$(sort $(EXPERIMENTS)),printf '  %-18s %s\n' '$(e)' '$(EXP_$(e))';)
 
@@ -173,3 +174,7 @@ pull-results:
 
 push-results:
 	$(foreach r,$(RESULTS),test ! -d $(LOCAL_OUT)/uncawe/$(r) || rsync -az --ignore-existing $(LOCAL_OUT)/uncawe/$(r) $(REMOTE):$(REMOTE_DIR)/output/uncawe/;)
+
+## Run the unit tests on this machine, in the foreground (ARGS are passed to unittest, e.g. ARGS=-v).
+test:
+	uv run --locked python -m unittest discover -s tests $(ARGS)

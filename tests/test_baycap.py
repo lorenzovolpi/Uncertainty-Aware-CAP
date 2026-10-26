@@ -8,8 +8,11 @@ import numpy as np
 from cap.error import vanilla_acc
 from cap.models.confidence import ACC_BayesCAP
 from quapy.data import LabelledCollection
+from scipy.special import gammaln
+from scipy.stats import betabinom
 
-from uncawe.methods import BayCAP, realised_tables
+from uncawe.methods import BayCAP, beta_binomial_loglik, eb_concentration, fit_beta_binomial, realised_tables
+from uncawe.methods.baycap import EB_NU_BOUNDS
 
 NUTS_PARAMS = {"num_warmup": 50, "num_samples": 40}
 
@@ -82,6 +85,67 @@ class RealisedTablesTest(unittest.TestCase):
             realised_tables(-self.cts, self.pred_counts, rng)
 
 
+class EmpiricalBayesFitTest(unittest.TestCase):
+    def test_loglik_matches_scipy_betabinom(self):
+        f = np.array([0, 3, 9, 10, 47])
+        n = np.array([4, 5, 10, 10, 50])
+        for m, nu in ((0.3, 2.0), (0.9, 40.0), (0.5, 1e3)):
+            with self.subTest(m=m, nu=nu):
+                expected = betabinom.logpmf(f, n, nu * m, nu * (1 - m)).sum()
+                log_binom = np.sum(gammaln(n + 1) - gammaln(f + 1) - gammaln(n - f + 1))
+                self.assertAlmostEqual(beta_binomial_loglik(m, nu, f, n) + log_binom, expected, places=8)
+
+    def test_recovers_parameters_with_many_classes(self):
+        rng = np.random.default_rng(0)
+        m, nu, n_classes = 0.9, 50.0, 400
+        n = rng.integers(50, 300, n_classes)
+        f = rng.binomial(n, rng.beta(nu * m, nu * (1 - m), n_classes))
+
+        fit = fit_beta_binomial(f, n)
+
+        self.assertFalse(fit.at_bound)
+        self.assertAlmostEqual(fit.m, m, delta=0.01)
+        self.assertLess(abs(np.log(fit.nu / nu)), np.log(1.3))
+        self.assertGreater(fit.sd_m, 0.0)
+        self.assertLess(fit.sd_m, 0.01)
+
+    def test_common_recall_reaches_upper_bound_and_pools(self):
+        n = np.array([100, 200, 50, 400, 150])
+        f = (0.8 * n).astype(int)
+
+        fit = fit_beta_binomial(f, n)
+
+        self.assertTrue(fit.nu_at_bound)
+        self.assertFalse(fit.m_at_bound)
+        self.assertAlmostEqual(fit.nu, EB_NU_BOUNDS[1], delta=1e-6 * EB_NU_BOUNDS[1])
+        # the pooled recall is the maximum only as nu -> infinity; at the bound it is off by O(1/nu)
+        self.assertAlmostEqual(fit.m, f.sum() / n.sum(), delta=1e-4)
+        self.assertTrue(np.isfinite(fit.sd_m))
+
+    def test_perfect_recalls_reach_the_bound_of_m(self):
+        n = np.array([30, 40, 50])
+
+        fit = fit_beta_binomial(n, n)
+
+        self.assertTrue(fit.m_at_bound)
+        self.assertTrue(np.isnan(fit.sd_m))
+
+    def test_rejects_invalid_counts(self):
+        with self.assertRaisesRegex(ValueError, "0 <= f <= n"):
+            fit_beta_binomial(np.array([5, 3]), np.array([4, 3]))
+        with self.assertRaisesRegex(ValueError, "same shape"):
+            fit_beta_binomial(np.array([1, 2]), np.array([3, 4, 5]))
+
+    def test_concentration_matrix(self):
+        m, nu, n_classes = 0.95, 41.0, 4
+        alpha = eb_concentration(n_classes, m, nu)
+
+        np.testing.assert_allclose(np.diag(alpha), nu * m)
+        # cap-ml layout: row j is the column C_{:j}; its off-diagonal entries sum to nu (1 - m)
+        np.testing.assert_allclose(alpha.sum(axis=1) - np.diag(alpha), nu * (1 - m))
+        np.testing.assert_allclose(alpha[~np.eye(n_classes, dtype=bool)], nu * (1 - m) / (n_classes - 1))
+
+
 class BayCAPTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -137,6 +201,37 @@ class BayCAPTest(unittest.TestCase):
     def test_rejects_unknown_estimand(self):
         with self.assertRaisesRegex(ValueError, "estimand must be one of"):
             BayCAP(vanilla_acc, estimand="realized")
+
+    def test_rejects_unknown_c_prior(self):
+        with self.assertRaisesRegex(ValueError, "c_prior must be one of"):
+            BayCAP(vanilla_acc, c_prior="empirical_bayes")
+
+    def test_uniform_c_prior_reproduces_current_draws(self):
+        default = self.fit(BayCAP(vanilla_acc, random_state=5, **NUTS_PARAMS))
+        uniform = self.fit(BayCAP(vanilla_acc, c_prior="uniform", random_state=5, **NUTS_PARAMS))
+        ref = self.fit(ACC_BayesCAP(vanilla_acc, random_state=5, **NUTS_PARAMS))
+
+        self.assertIsNone(uniform.eb_fit)
+        np.testing.assert_array_equal(uniform.c_alpha, np.ones((3, 3)))
+        expected = ref.predict_ct_range(self.X, self.test_posteriors)
+        np.testing.assert_array_equal(default.predict_ct_range(self.X, self.test_posteriors), expected)
+        np.testing.assert_array_equal(uniform.predict_ct_range(self.X, self.test_posteriors), expected)
+
+    def test_empirical_bayes_fits_validation_counts(self):
+        method = self.fit(BayCAP(vanilla_acc, c_prior="empirical-bayes", random_state=5, **NUTS_PARAMS))
+
+        val_ct = method.val_ct  # cap-ml layout: true classes on rows
+        expected = fit_beta_binomial(np.diag(val_ct), val_ct.sum(axis=1))
+        self.assertEqual(method.eb_fit, expected)
+        np.testing.assert_allclose(method.c_alpha, eb_concentration(3, expected.m, expected.nu))
+
+        for estimand in ("population", "realised"):
+            with self.subTest(estimand=estimand):
+                method.estimand = estimand
+                cts = method.predict_ct_range(self.X, self.test_posteriors)
+                self.assertEqual(cts.shape, (NUTS_PARAMS["num_samples"], 3, 3))
+                self.assertTrue(np.all(np.isfinite(cts)))
+                np.testing.assert_allclose(cts.sum(axis=(1, 2)), 1.0, rtol=1e-5)
 
 
 if __name__ == "__main__":
