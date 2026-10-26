@@ -289,13 +289,19 @@ The difficulty of the problem is measured by the accuracy of $h$ on $V$, which i
 
 The numerical examples of this section are illustrative, computed by hand, not results. We write $n_j=n^s_j$ and $f_j=f_{jj}$ for the validation instances of class $\omega_j$ and the correctly classified ones, and $r_j=C_{jj}$ for the recall.
 
-**The model for the validation counts.** The instances of $V$ are drawn independently from the source distribution, so each instance of class $\omega_j$ is classified correctly with the same probability $r_j$, independently of the others. The number of correct ones is therefore a binomial count:
+**The model for the validation counts.** Each class is like a coin with unknown probability of heads $r_j$, tossed $n_j$ times. The randomness is in the instances, not in the classifier: $h$ is fixed, and a given instance is always classified the same way. What is random is which instances end up in $V$.
+
+- *One instance is one toss.* An instance $X$ of class $\omega_j$ is a draw from the class-conditional distribution $P(X\mid Y=\omega_j)$ of the source. Its success indicator $B=\mathbb 1\{h(X)=\omega_j\}$ is a Bernoulli variable with $P(B=1)=P(h(X)=\omega_j\mid Y=\omega_j)=C_{jj}=r_j$: the recall is the share of the class that $h$ classifies correctly, and a random draw from the class lands in that share with probability $r_j$.
+- *The tosses are independent and identical.* The instances of $V$ are drawn independently from the source, so the $n_j$ indicators $B_1,\dots,B_{n_j}$ of class $\omega_j$ are independent, each with probability $r_j$. This needs $h$ to be trained on data other than $V$, as in the paper's protocol; if $h$ had seen $V$, the indicators would depend on $V$ through $h$.
+- *Counting the successes gives the binomial.* $f_j=\sum_kB_k$. By independence, a particular sequence with $f$ successes and $n_j-f$ failures has probability $r_j^f(1-r_j)^{n_j-f}$, and there are $\binom{n_j}{f}$ ways to choose which positions are the successes, so
 
 $$
-f_j\mid r_j\sim\operatorname{Binomial}(n_j,r_j),\qquad P(f_j\mid r_j)=\binom{n_j}{f_j}r_j^{f_j}(1-r_j)^{n_j-f_j}.
+f_j\mid r_j\sim\operatorname{Binomial}(n_j,r_j),\qquad P(f_j\mid r_j)=\binom{n_j}{f_j}r_j^{f_j}(1-r_j)^{n_j-f_j},
 $$
 
-Each class is like a coin with unknown probability of heads $r_j$, tossed $n_j$ times.
+with mean $n_jr_j$ and variance $n_jr_j(1-r_j)$, $n_j$ times those of one toss.
+
+Two remarks. In an i.i.d. sample $n_j$ is itself random; the model conditions on it (how many of these $n_j$ instances are classified correctly), which is legitimate because $n_j$ carries no information on $r_j$. And $V$ is drawn once, so its $f_j$ is one number: the binomial describes how $f_j$ would vary over the validation sets we could have drawn, and this variation is the uncertainty on $r_j$. Recording the predicted class instead of "correct or not" turns each toss into the roll of a $K$-faced die with probabilities $C_{:j}$, and the column of counts into $\operatorname{Multinomial}(n_j,C_{:j})$, the likelihood $\mathcal L_V$ of BayCAP (§T.1); the binomial is that multinomial with all the wrong faces merged into one.
 
 **The plain recall is the maximum-likelihood estimate.** The value of $r_j$ that makes the observed count most probable maximises the log-likelihood $\ell(r_j)=f_j\ln r_j+(n_j-f_j)\ln(1-r_j)$ (the binomial coefficient does not depend on $r_j$). Setting the derivative to zero,
 
