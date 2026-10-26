@@ -33,7 +33,9 @@ def build_result_frame(
     estim_cts: list,
     t_train: float,
     t_test_ave: float,
+    extra_columns: dict[str, list] | None = None,
 ) -> RDF:
+    """Return one row per target bag; ``extra_columns`` adds optional per-bag columns (e.g. the NUTS diagnostics)."""
     p = context.pretrain
     true_accs = [acc_fn(ct) for ct in context.true_cts]
     acc_err = cap.error.ae(np.asarray(true_accs), np.asarray(estim_accs)).tolist()
@@ -55,4 +57,5 @@ def build_result_frame(
         val_prev=[context.val_prev] * context.size,
         t_train=t_train,
         t_test_ave=t_test_ave,
+        **(extra_columns or {}),
     )

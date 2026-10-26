@@ -6,6 +6,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
+from uncawe.methods.baycap import fit_beta_binomial
 from uncawe.plots import displacement as displacement_plots
 from uncawe.tables import displacement, estimand_gap
 from uncawe.tables.displacement import (
@@ -15,11 +16,13 @@ from uncawe.tables.displacement import (
     class_props_and_recalls,
     conditioning,
     error_terms,
+    method_c_prior,
     ordered,
     pair_table,
     predicted_coverage,
     prior_part,
     rate_matrix,
+    smoothed_recalls,
     sum_zero_basis,
 )
 
@@ -64,6 +67,20 @@ class DisplacementTest(unittest.TestCase):
         expected = 0.5 * (9 / 12 - 0.8) + 0.5 * (8 / 12 - 0.7)
         self.assertAlmostEqual(prior_part(self.val_counts, [0.5, 0.5]), expected)
         self.assertAlmostEqual(prior_part(self.val_counts, [1.0, 0.0]), 9 / 12 - 0.8)
+
+    def test_prior_part_follows_the_prior_of_the_method(self):
+        self.assertEqual(method_c_prior("BayesCAP"), "uniform")
+        self.assertEqual(method_c_prior("BayesCAP-real"), "uniform")
+        self.assertEqual(method_c_prior("BayesCAP-EB"), "empirical-bayes")
+        self.assertEqual(method_c_prior("BayesCAP-EB-real"), "empirical-bayes")
+        np.testing.assert_allclose(smoothed_recalls(self.val_counts), [9 / 12, 8 / 12])
+        fit = fit_beta_binomial(np.array([8, 7]), np.array([10, 10]))
+        eb = smoothed_recalls(self.val_counts, "empirical-bayes")
+        np.testing.assert_allclose(eb, (np.array([8, 7]) + fit.nu * fit.m) / (10 + fit.nu))
+        expected = 0.5 * (eb[0] - 0.8) + 0.5 * (eb[1] - 0.7)
+        self.assertAlmostEqual(prior_part(self.val_counts, [0.5, 0.5], eb), expected)
+        with self.assertRaisesRegex(ValueError, "c_prior"):
+            smoothed_recalls(self.val_counts, "flat")
 
     def test_predicted_coverage(self):
         self.assertAlmostEqual(predicted_coverage(0.0, 0.1), 0.95)
@@ -150,6 +167,12 @@ class DisplacementTest(unittest.TestCase):
         self.assertEqual((ternary["kappa0"], ternary["inv_sigma_min"]), (1.0, 1.0))
         self.assertEqual(ternary["min_val_per_class"], 10)
         self.assertEqual(ternary["median_val_per_class"], 20)
+        # the empirical-Bayes methods use their own prior part; the other columns do not depend on the prior
+        eb = ordered(pair_table(df, val_counts, "BayesCAP-EB"))
+        eb_recalls = smoothed_recalls(self.val_counts, "empirical-bayes")
+        self.assertAlmostEqual(eb.iloc[0]["prior_part"], 0.5 * (eb_recalls[0] - 0.8) + 0.5 * (eb_recalls[1] - 0.7))
+        same = ["shift", "recall_term", "prevalence_term", "coverage", "amplitude", "winkler", "kappa0"]
+        pd.testing.assert_frame_equal(eb[same], table[same])
 
     def test_single_table_layout(self):
         table = pd.DataFrame(

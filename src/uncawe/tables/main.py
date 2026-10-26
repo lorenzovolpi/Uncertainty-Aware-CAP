@@ -76,8 +76,8 @@ metrics_map = {
 }
 
 
-# methods stored in main but left out of its tables and ranks: BayesCAP-real is used only by the E2 analyses
-EXCLUDED_METHODS = {"BayesCAP-real"}
+# methods stored in main but left out of its tables and ranks: the BayCAP variants are used only by the E2 analyses
+EXCLUDED_METHODS = {"BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real"}
 
 
 def table_method_names() -> list[str]:

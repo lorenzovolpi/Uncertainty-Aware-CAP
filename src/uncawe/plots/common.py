@@ -19,6 +19,8 @@ METHOD_COLORS = {
     "O-LEAP": "#4C78A8",
     "BayesCAP": "#F58518",
     "BayesCAP-real": "#9D755D",
+    "BayesCAP-EB": "#EECA3B",
+    "BayesCAP-EB-real": "#FF9DA6",
     "PQ": "#E45756",
     "RQBS": "#B279A2",
     "DoC": "#54A24B",
@@ -34,6 +36,8 @@ METHOD_PLOT_LABELS = {
     "O-LEAP": "LEAP",
     "BayesCAP": "BayCAP",
     "BayesCAP-real": "BayCAP-real",
+    "BayesCAP-EB": "BayCAP-EB",
+    "BayesCAP-EB-real": "BayCAP-EB-real",
 }
 
 ACC_NAME = "vanilla_accuracy"

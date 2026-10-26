@@ -12,7 +12,7 @@ from scipy.special import gammaln
 from scipy.stats import betabinom
 
 from uncawe.methods import BayCAP, beta_binomial_loglik, eb_concentration, fit_beta_binomial, realised_tables
-from uncawe.methods.baycap import EB_NU_BOUNDS
+from uncawe.methods.baycap import EB_NU_BOUNDS, NUTS_DIAGNOSTICS, P_C_COND_Y, P_TEST_Y, nuts_diagnostics
 
 NUTS_PARAMS = {"num_warmup": 50, "num_samples": 40}
 
@@ -146,6 +146,31 @@ class EmpiricalBayesFitTest(unittest.TestCase):
         np.testing.assert_allclose(alpha[~np.eye(n_classes, dtype=bool)], nu * (1 - m) / (n_classes - 1))
 
 
+class NutsDiagnosticsTest(unittest.TestCase):
+    def test_independent_draws_converge(self):
+        rng = np.random.default_rng(0)
+        draws = {"pi": rng.normal(size=(1, 1000, 3)), "C": rng.normal(size=(1, 1000, 3, 3))}
+        out = nuts_diagnostics(draws, np.zeros(1000, dtype=bool))
+
+        self.assertEqual(tuple(out), NUTS_DIAGNOSTICS)
+        self.assertEqual(out["nuts_divergences"], 0)
+        self.assertLess(out["nuts_max_rhat"], 1.02)
+        self.assertGreater(out["nuts_min_ess"], 500)
+
+    def test_drifting_chain_is_flagged(self):
+        rng = np.random.default_rng(0)
+        # one entry drifts: its two halves disagree, and its draws are strongly autocorrelated
+        stuck = np.cumsum(rng.normal(size=1000))
+        draws = {"pi": np.stack([rng.normal(size=1000), stuck], axis=-1)[None]}
+        diverging = np.zeros(1000, dtype=bool)
+        diverging[[3, 500]] = True
+        out = nuts_diagnostics(draws, diverging)
+
+        self.assertEqual(out["nuts_divergences"], 2)
+        self.assertGreater(out["nuts_max_rhat"], 1.1)
+        self.assertLess(out["nuts_min_ess"], 50)
+
+
 class BayCAPTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -232,6 +257,25 @@ class BayCAPTest(unittest.TestCase):
                 self.assertEqual(cts.shape, (NUTS_PARAMS["num_samples"], 3, 3))
                 self.assertTrue(np.all(np.isfinite(cts)))
                 np.testing.assert_allclose(cts.sum(axis=(1, 2)), 1.0, rtol=1e-5)
+
+    def test_diagnostics_of_the_last_run_leave_draws_unchanged(self):
+        method = BayCAP(vanilla_acc, random_state=5, **NUTS_PARAMS)
+        with self.assertRaisesRegex(RuntimeError, "predict_ct_range"):
+            method.last_nuts_diagnostics()
+        self.fit(method)
+        cts = method.predict_ct_range(self.X, self.test_posteriors)
+        out = method.last_nuts_diagnostics()
+
+        self.assertEqual(tuple(out), NUTS_DIAGNOSTICS)
+        self.assertIsInstance(out["nuts_divergences"], int)
+        self.assertGreaterEqual(out["nuts_divergences"], 0)
+        self.assertTrue(np.isfinite(out["nuts_max_rhat"]) and out["nuts_max_rhat"] > 0)
+        self.assertTrue(0 < out["nuts_min_ess"])
+        # the draws of pi and C behind the diagnostics are those of the returned tables
+        draws, diverging = method._last_nuts
+        self.assertEqual(diverging.shape, (NUTS_PARAMS["num_samples"],))
+        pi, c = draws[P_TEST_Y][0], draws[P_C_COND_Y][0]
+        np.testing.assert_allclose(np.einsum("sy,syc->syc", pi, c), cts, rtol=1e-6)
 
 
 if __name__ == "__main__":

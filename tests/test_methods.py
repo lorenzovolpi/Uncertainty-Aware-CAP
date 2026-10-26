@@ -3,6 +3,7 @@ import unittest
 from cap.models.confidence import ACC_BayesCAP
 
 from uncawe.experiments.methods import (
+    BAYCAP_VARIANTS,
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
     METHOD_CLASS,
@@ -10,37 +11,59 @@ from uncawe.experiments.methods import (
     get_method_names,
 )
 from uncawe.methods.baycap import BayCAP
-from uncawe.plots.common import DEFAULT_METHODS
+from uncawe.plots.common import DEFAULT_METHODS, METHOD_COLORS, METHOD_PLOT_LABELS
 from uncawe.tables import main as main_tables
 from uncawe.tables import rank
+from uncawe.tables.common import METHOD_LATEX_LABELS
+from uncawe.tables.displacement import METHOD_LABELS
+
+BAYCAP_METHODS = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real"]
+E2_METHODS = ["BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real"]
 
 
-class BayesCAPRealFactoryTest(unittest.TestCase):
+class BayCAPFactoryTest(unittest.TestCase):
     def setUp(self):
         self.methods = dict(gen_methods())
 
-    def test_factory_builds_realised_baycap_with_main_settings(self):
-        self.assertIs(METHOD_CLASS["BayesCAP-real"], BayCAP)
-        self.assertIn("BayesCAP-real", get_method_names())
-        real, population = self.methods["BayesCAP-real"], self.methods["BayesCAP"]
-        self.assertIsInstance(real, BayCAP)
-        self.assertIsInstance(population, ACC_BayesCAP)
-        self.assertEqual(real.estimand, "realised")
-        self.assertEqual((real.num_samples, real.num_warmup), (BOOTSTRAP_ITERS, BAYES_WARMUPS))
-        self.assertEqual((real.num_samples, real.num_warmup), (population.num_samples, population.num_warmup))
-        # ACC_BayesCAP stores its seed as ``randm_state``; equal seeds give equal NUTS draws
-        self.assertEqual(real.random_state, population.randm_state)
-        self.assertEqual(real.prior, population.prior)
+    def test_factory_builds_every_baycap_method_with_main_settings(self):
+        reference = ACC_BayesCAP(None, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
+        expected = {
+            "BayesCAP": ("population", "uniform"),
+            "BayesCAP-real": ("realised", "uniform"),
+            "BayesCAP-EB": ("population", "empirical-bayes"),
+            "BayesCAP-EB-real": ("realised", "empirical-bayes"),
+        }
+        self.assertEqual(BAYCAP_VARIANTS, expected)
+        for name, (estimand, c_prior) in expected.items():
+            with self.subTest(method=name):
+                method = self.methods[name]
+                self.assertIs(METHOD_CLASS[name], BayCAP)
+                self.assertIsInstance(method, BayCAP)
+                self.assertEqual((method.estimand, method.c_prior), (estimand, c_prior))
+                self.assertEqual((method.num_samples, method.num_warmup), (BOOTSTRAP_ITERS, BAYES_WARMUPS))
+                # ACC_BayesCAP stores its seed as ``randm_state``; equal seeds give equal NUTS draws
+                self.assertEqual(method.random_state, reference.randm_state)
+                self.assertEqual(method.prior, reference.prior)
 
     def test_factory_names_match_method_class(self):
         self.assertEqual(list(self.methods), get_method_names())
 
-    def test_main_tables_ranks_and_plots_exclude_it(self):
-        self.assertNotIn("BayesCAP-real", main_tables.table_method_names())
+    def test_main_tables_ranks_and_plots_exclude_the_e2_methods(self):
         self.assertIn("BayesCAP", main_tables.table_method_names())
-        self.assertNotIn("BayesCAP-real", rank._methods())
         self.assertNotIn("L-CBPE", rank._methods())
-        self.assertNotIn("BayesCAP-real", DEFAULT_METHODS)
+        for name in E2_METHODS:
+            with self.subTest(method=name):
+                self.assertNotIn(name, main_tables.table_method_names())
+                self.assertNotIn(name, rank._methods())
+                self.assertNotIn(name, DEFAULT_METHODS)
+
+    def test_every_baycap_method_has_labels_and_a_colour(self):
+        for name in BAYCAP_METHODS:
+            with self.subTest(method=name):
+                self.assertIn(name, METHOD_COLORS)
+                self.assertIn(name, METHOD_PLOT_LABELS)
+                self.assertIn(name, METHOD_LATEX_LABELS)
+                self.assertIn(name, METHOD_LABELS)
 
 
 if __name__ == "__main__":

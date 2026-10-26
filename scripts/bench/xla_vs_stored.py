@@ -15,7 +15,9 @@ Reported per (pair, method), vanilla accuracy: whether the 100 bags are the same
 tables ``true_cts``, without which the comparison is void), whether the results are identical bit for bit, the largest
 absolute difference of the mean estimated tables (``estim_cts``) and of the accuracy samples (``estim_acc_ranges``),
 and coverage, amplitude and Winkler score (means over the bags, against the realised table) of the stored and the new
-results. Methods target as in ``main``: ``BayesCAP`` the population table, ``BayesCAP-real`` the realised table; both
+results. Since WP-6, ``BayesCAP`` is built from ``methods/baycap.py:BayCAP`` instead of ``cap-ml``'s ``ACC_BayesCAP``, so
+the script also checks that ``BayCAP(estimand="population")`` reproduces the stored ``BayesCAP`` results, before they are
+deleted and recomputed with the NUTS diagnostics (E2.4 of ``docs/ext2_baycap.md``). Methods target as in ``main``: ``BayesCAP`` the population table, ``BayesCAP-real`` the realised table; both
 are scored against the realised table.
 
 Usage (from the repository root): uv run python scripts/bench/xla_vs_stored.py [--n-jobs 16]
