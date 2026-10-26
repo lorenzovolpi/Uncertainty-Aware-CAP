@@ -13,7 +13,7 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 | E2.1, approximate check on stored `main` results (`tables/estimand_gap.py`, work plan §II.10) | [run], analysis below |
 | E2.2, causes of the displacement, on stored results (work-plan card WP-3; `tables/displacement.py`, `plots/displacement.py`) | [run], analysis below |
 | E2.3, the exact realised-table predictive as the method `BayesCAP-real` of `main`, and the E2.2 analysis repeated on it (work-plan card WP-4; `tables/pushforward.py`, `plots/pushforward.py`) | [run], analysis below |
-| `BayCAP` with the hyperparameter `c_prior` $\in\{$uniform, empirical Bayes$\}$ for the prior on the columns of $C$ (work-plan card WP-5) | implemented (branch `wp-5/eb-prior`), not evaluated |
+| `BayCAP` with the hyperparameter `c_prior` $\in\{$uniform, empirical Bayes$\}$ for the prior on the columns of $C$ (work-plan card WP-5) | implemented (work plan §II.5), not evaluated |
 | E2.4, BayCAP with an empirical-Bayes prior on the recalls, with a zero-cost check of its effect and the NUTS diagnostics of all BayCAP methods (work-plan card WP-6) | [proposal], scheduled; not run |
 | Candidate experiments E2.c1, E2.c2 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis], examined by E2.2 |
