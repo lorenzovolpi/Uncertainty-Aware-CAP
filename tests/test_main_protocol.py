@@ -6,6 +6,7 @@ import numpy as np
 
 from uncawe.experiments import main
 from uncawe.experiments.records import EvaluationContext
+from uncawe.methods.baycap import NUTS_DIAGNOSTICS, BayCAP
 
 
 class _Protocol:
@@ -44,6 +45,23 @@ class _ContingencyMethod:
 
     def ci_from_cts(self, cts):
         return _Interval(0.5)
+
+
+class _BayCAP(BayCAP, _ContingencyMethod):
+    """A BayCAP whose NUTS run is replaced by fixed tables; each bag reports its index as divergences."""
+
+    def __init__(self):
+        _ContingencyMethod.__init__(self)
+
+    fit = _ContingencyMethod.fit
+    switch = _ContingencyMethod.switch
+    ci_from_cts = _ContingencyMethod.ci_from_cts
+
+    def predict_ct_range(self, X, posteriors):
+        return _ContingencyMethod.predict_ct_range(self, X, posteriors)
+
+    def last_nuts_diagnostics(self):
+        return {"nuts_divergences": self.predict_calls, "nuts_max_rhat": 1.0, "nuts_min_ess": 500.0}
 
 
 class _DirectMethod:
@@ -102,6 +120,28 @@ class MainProtocolTest(unittest.TestCase):
         self.assertEqual(method.switch_calls, 3)
         self.assertEqual(len(results), 3)
         self.assertEqual(build.call_count, 3)
+
+    @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
+    @patch("uncawe.experiments.main.os.path.exists", return_value=False)
+    @patch("uncawe.experiments.main.build_result_frame", return_value=Mock())
+    def test_contingency_method_stores_baycap_diagnostics_per_bag(self, build, _exists, _path):
+        for method, expected in (
+            (_ContingencyMethod(), None),
+            (
+                _BayCAP(),
+                {"nuts_divergences": [1, 2], "nuts_max_rhat": [1.0, 1.0], "nuts_min_ess": [500.0, 500.0]},
+            ),
+        ):
+            with self.subTest(method=type(method).__name__):
+                build.reset_mock()
+                main._evaluate_contingency_method(
+                    self.pretrain, "method", method, self.dataset, Mock(), Mock(), self.context
+                )
+                self.assertEqual(build.call_count, 3)
+                for call in build.call_args_list:
+                    self.assertEqual(call.kwargs["extra_columns"], expected)
+                if expected is not None:
+                    self.assertEqual(tuple(expected), NUTS_DIAGNOSTICS)
 
     @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
     @patch("uncawe.experiments.main.os.path.exists", return_value=False)

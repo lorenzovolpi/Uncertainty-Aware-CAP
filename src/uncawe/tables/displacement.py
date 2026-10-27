@@ -12,8 +12,11 @@ prevalence term,
 $$\\hat A-A=\\sum_j\\pi_j(\\hat r_j-r_j)+\\sum_j(\\hat\\pi_j-\\pi_j)\\,\\hat r_j,$$
 
 with $\\hat\\pi,\\hat r$ read from the stored mean table ``estim_cts`` and $\\pi,r$ from ``true_cts``. The prior part of
-the recall term, $\\sum_j\\pi_j\\left(\\frac{f_{jj}+1}{n^s_j+K}-\\frac{f_{jj}}{n^s_j}\\right)$, is computed on the
-validation counts $f_{ij}$ rebuilt from the stored validation posteriors and labels, as ``BayCAP.fit`` builds them.
+the recall term, $\\sum_j\\pi_j(\\tilde r_j-f_{jj}/n^s_j)$, is computed on the validation counts $f_{ij}$ rebuilt from
+the stored validation posteriors and labels, as ``BayCAP.fit`` builds them, with $\\tilde r_j$ the posterior mean of the
+recall given $V$ under the method's prior on the columns of $C$: $\\frac{f_{jj}+1}{n^s_j+K}$ under
+$\\operatorname{Dir}(\\mathbf 1)$, $\\frac{f_{jj}+\\hat\\nu\\hat m}{n^s_j+\\hat\\nu}$ under the empirical-Bayes prior of
+``BayesCAP-EB`` and ``BayesCAP-EB-real`` (work-plan card WP-6, E2.4).
 
 Per pair, the predicted coverage tells how much of the under-coverage the shift alone explains: it is the coverage the
 interval would have if its width were right for the spread of the error across bags and every bag were shifted by the
@@ -43,7 +46,9 @@ from sklearn.metrics import confusion_matrix
 
 from uncawe import env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct
+from uncawe.experiments.methods import BAYCAP_VARIANTS
 from uncawe.main import EXPERIMENT
+from uncawe.methods.baycap import fit_beta_binomial
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.tables import main as main_tables
 from uncawe.tables.estimand_gap import ACC_NAME, CLASSIFIER_ORDER, DOMAIN, METHOD, booktabs_clines, load_results
@@ -80,19 +85,46 @@ def error_terms(estim_ct: np.ndarray, true_ct: np.ndarray) -> dict:
     }
 
 
-def prior_part(val_counts: np.ndarray, true_props: np.ndarray) -> float:
-    """Return $\\sum_j\\pi_j\\left(\\frac{f_{jj}+1}{n^s_j+K}-\\frac{f_{jj}}{n^s_j}\\right)$, the shift that the
-    $\\operatorname{Dir}(\\mathbf 1)$ prior on the columns of $C$ adds to the recalls estimated on $V$.
+def method_c_prior(method: str) -> str:
+    """Return the prior on the columns of $C$ of a BayCAP method of ``main`` (``"uniform"`` for any other name)."""
+    return BAYCAP_VARIANTS.get(method, ("population", "uniform"))[1]
 
-    ``val_counts`` is the validation confusion table in the ``cap-ml`` layout (true classes on rows).
+
+def plain_recalls(val_counts: np.ndarray) -> np.ndarray:
+    """Return the recalls $f_{jj}/n^s_j$ of a ``cap-ml`` validation table (NaN for a class absent from $V$)."""
+    val_counts = np.asarray(val_counts, dtype=float)
+    n_s = val_counts.sum(axis=1)
+    return np.divide(np.diag(val_counts), n_s, out=np.full_like(n_s, np.nan), where=n_s > 0)
+
+
+def smoothed_recalls(val_counts: np.ndarray, c_prior: str = "uniform") -> np.ndarray:
+    """Return the posterior means of the recalls given $V$ under the prior ``c_prior`` on the columns of $C$.
+
+    ``"uniform"``: $\\frac{f_{jj}+1}{n^s_j+K}$; ``"empirical-bayes"``: $\\frac{f_{jj}+\\hat\\nu\\hat m}{n^s_j+\\hat\\nu}$,
+    with $(\\hat m,\\hat\\nu)$ fitted on the same counts as ``BayCAP.fit`` does (``fit_beta_binomial``).
     """
     val_counts = np.asarray(val_counts, dtype=float)
-    n_classes = val_counts.shape[0]
     n_s = val_counts.sum(axis=1)
     f_diag = np.diag(val_counts)
-    plain = np.divide(f_diag, n_s, out=np.full_like(n_s, np.nan), where=n_s > 0)
-    smoothed = (f_diag + 1) / (n_s + n_classes)
-    return float(np.sum(np.asarray(true_props, dtype=float) * (smoothed - plain)))
+    if c_prior == "uniform":
+        return (f_diag + 1) / (n_s + val_counts.shape[0])
+    if c_prior == "empirical-bayes":
+        fit = fit_beta_binomial(f_diag, n_s)
+        return (f_diag + fit.nu * fit.m) / (n_s + fit.nu)
+    raise ValueError(f"Unknown c_prior {c_prior!r}")
+
+
+def prior_part(val_counts: np.ndarray, true_props: np.ndarray, smoothed: np.ndarray | None = None) -> float:
+    """Return $\\sum_j\\pi_j(\\tilde r_j-f_{jj}/n^s_j)$, the shift that the prior on the columns of $C$ adds to the
+    recalls estimated on $V$.
+
+    ``val_counts`` is the validation confusion table in the ``cap-ml`` layout (true classes on rows); ``smoothed`` are
+    the recalls $\\tilde r_j$ of :func:`smoothed_recalls`, by default those of the $\\operatorname{Dir}(\\mathbf 1)$
+    prior, $\\frac{f_{jj}+1}{n^s_j+K}$.
+    """
+    if smoothed is None:
+        smoothed = smoothed_recalls(val_counts)
+    return float(np.sum(np.asarray(true_props, dtype=float) * (smoothed - plain_recalls(val_counts))))
 
 
 def predicted_coverage(shift: float, amplitude: float, confidence_level: float = CONFIDENCE_LEVEL) -> float:
@@ -155,13 +187,13 @@ def load_validation_counts(pairs) -> dict:
     return {pair: validation_counts(infos[pair]) for pair in pairs}
 
 
-def bag_scores(row, val_counts: np.ndarray, method: str = METHOD) -> dict:
+def bag_scores(row, val_counts: np.ndarray, method: str = METHOD, smoothed: np.ndarray | None = None) -> dict:
     true_ct = np.asarray(row.true_cts, dtype=float)
     estim_ct = np.asarray(row.estim_cts, dtype=float)
     samples = np.asarray(row.estim_acc_ranges, dtype=float)
     true_acc = acc_from_ct(ACC_NAME, true_ct)
     out = error_terms(estim_ct, true_ct)
-    out["prior_part"] = prior_part(val_counts, true_ct.sum(axis=1))
+    out["prior_part"] = prior_part(val_counts, true_ct.sum(axis=1), smoothed)
     out["abs_prevalence_term"] = abs(out["prevalence_term"])
     out["coverage"] = main_tables.get_acc_coverage(method, true_acc, samples)
     out["amplitude"] = main_tables.get_acc_amplitude(method, samples)
@@ -173,11 +205,16 @@ def bag_scores(row, val_counts: np.ndarray, method: str = METHOD) -> dict:
 
 
 def pair_table(df: pd.DataFrame, val_counts: dict, method: str = METHOD) -> pd.DataFrame:
-    """Return one row per (dataset, classifier): means over bags, then the per-pair diagnostics of $\\hat C$ and $V$."""
+    """Return one row per (dataset, classifier): means over bags, then the per-pair diagnostics of $\\hat C$ and $V$.
+
+    The prior part uses the prior on the columns of $C$ of ``method`` (:func:`method_c_prior`).
+    """
     rows = []
+    c_prior = method_c_prior(method)
     for (dataset, classifier), _df in df.groupby(["dataset", "classifier"], sort=False):
         counts = val_counts[(dataset, classifier)]
-        bags = pd.DataFrame([bag_scores(row, counts, method) for row in _df.itertuples(index=False)])
+        smoothed = smoothed_recalls(counts, c_prior)
+        bags = pd.DataFrame([bag_scores(row, counts, method, smoothed) for row in _df.itertuples(index=False)])
         n_s = counts.sum(axis=1)
         kappa0, inv_sigma_min = conditioning(rate_matrix(counts))
         record = {
@@ -223,14 +260,19 @@ def _fmt_ratio(v: float) -> str:
     return "$\\infty$" if np.isinf(v) else f"{v:.2f}"
 
 
-METHOD_LABELS = {"BayesCAP": "BayCAP", "BayesCAP-real": "BayCAP-real"}
+METHOD_LABELS = {
+    "BayesCAP": "BayCAP",
+    "BayesCAP-real": "BayCAP-real",
+    "BayesCAP-EB": "BayCAP-EB",
+    "BayesCAP-EB-real": "BayCAP-EB-real",
+}
 CAPTION = (
     "Causes of {method}'s displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
     "$n^s_j$: validation instances of class $\\omega_j$. Diagnostics: $\\kappa_0(\\hat C)$ and $1/\\sigma_{\\min}$, "
     "condition number and absolute amplification of $\\hat C$ on vectors summing to zero; $\\mathrm{acc}_V$, accuracy "
     "of $h$ on $V$. Interval and error: means over the 100 bags, against the realised table; $\\mathcal{C}_s$, coverage "
     "predicted from the mean shift and amplitude alone (normal approximation); $\\hat A-A$, shift; $R$, "
-    "recall term; $R_0$, its prior part; $P$, $|P|$, prevalence term and its absolute value; "
+    "recall term; $R_0$, its prior part (under the method's prior on $C$); $P$, $|P|$, prevalence term and its absolute value; "
     "$\\lVert\\hat\\pi-\\pi\\rVert_1$, prevalence error."
 )
 LABEL = "tab:displacement"

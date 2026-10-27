@@ -6,7 +6,9 @@ posterior model, the priors and the NUTS sampler are copied from ``cap-ml``
 ``cap.models.confidence.ACC_BayesCAP`` (commit ``bb20aa5`` of branch
 ``devel``); only the pushforward of the posterior draws to contingency tables
 is extended. Work-plan card WP-5 adds the empirical-Bayes prior on the
-columns of $C$ (``c_prior``, §T.9 of ``docs/ext2_baycap.md``).
+columns of $C$ (``c_prior``, §T.9 of ``docs/ext2_baycap.md``), and work-plan
+card WP-6 the NUTS diagnostics of each ``predict_ct_range`` call
+(``last_nuts_diagnostics``).
 """
 
 from collections.abc import Callable
@@ -22,6 +24,7 @@ import numpyro.distributions as dist
 import quapy as qp
 from cap.models.confidence import P_C_COND_Y, P_TEST_C, P_TEST_Y, BayesCAP, CTCAPWithConfidence
 from cap.models.cont_table import CAPContingencyTable
+from numpyro.diagnostics import effective_sample_size, split_gelman_rubin
 from quapy.data import LabelledCollection
 from scipy.optimize import minimize
 from scipy.special import betaln, digamma, expit, logit
@@ -29,6 +32,9 @@ from sklearn.metrics import confusion_matrix
 
 ESTIMANDS = ("population", "realised")
 C_PRIORS = ("uniform", "empirical-bayes")
+
+# per-bag NUTS diagnostics stored by the experiments (``nuts_diagnostics``)
+NUTS_DIAGNOSTICS = ("nuts_divergences", "nuts_max_rhat", "nuts_min_ess")
 
 # bounds of the empirical-Bayes fit (§T.9); the lower bound on nu is only a numerical safeguard
 EB_M_BOUNDS = (1e-3, 1 - 1e-3)
@@ -77,6 +83,27 @@ def realised_tables(cts: np.ndarray, pred_counts: np.ndarray, rng: np.random.Gen
     n = np.broadcast_to(pred_counts, rho.shape[:2])
     counts = rng.multinomial(n, rho)
     return np.swapaxes(counts, 1, 2) / pred_counts.sum()
+
+
+def nuts_diagnostics(draws: dict[str, np.ndarray], diverging: np.ndarray) -> dict[str, float]:
+    r"""Summarise the convergence of one NUTS run.
+
+    :param draws: posterior draws of each parameter, grouped by chain, of shape
+        ``(n_chains, n_draws, ...)``.
+    :param diverging: flags of the divergent transitions after warm-up.
+    :return: ``nuts_divergences``, the number of divergent transitions;
+        ``nuts_max_rhat``, the largest split-$\hat R$ over all the entries of
+        all the parameters (each chain is split in two halves, so a single
+        chain gives two); ``nuts_min_ess``, the smallest effective sample size
+        over the same entries.
+    """
+    rhat = [np.asarray(split_gelman_rubin(np.asarray(x))).ravel() for x in draws.values()]
+    ess = [np.asarray(effective_sample_size(np.asarray(x))).ravel() for x in draws.values()]
+    return {
+        "nuts_divergences": int(np.sum(diverging)),
+        "nuts_max_rhat": float(np.max(np.concatenate(rhat))),
+        "nuts_min_ess": float(np.min(np.concatenate(ess))),
+    }
 
 
 def beta_binomial_loglik(m: float, nu: float, f: np.ndarray, n: np.ndarray) -> float:
@@ -239,6 +266,12 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
       the validation table (:func:`fit_beta_binomial`) and stores the fit in
       ``eb_fit``.
 
+    After each ``predict_ct_range`` call, :meth:`last_nuts_diagnostics` returns
+    the number of divergent transitions, the largest split-$\hat R$ and the
+    smallest effective sample size of that NUTS run, over the entries of
+    $\pi^Q$ and $C$ (:func:`nuts_diagnostics`). Recording them does not
+    change the draws.
+
     The estimand decides how each posterior draw becomes a contingency table:
 
     - ``"population"`` returns the population table
@@ -342,8 +375,21 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
             train_class_cond_count=self.val_ct,
             alpha=alpha,
             c_alpha=self.c_alpha,
+            extra_fields=("diverging",),
+        )
+        # kept for last_nuts_diagnostics, which is computed on request so that it does not count in the test time
+        grouped = mcmc.get_samples(group_by_chain=True)
+        self._last_nuts = (
+            {name: np.asarray(jax.device_get(grouped[name])) for name in (P_TEST_Y, P_C_COND_Y)},
+            np.asarray(jax.device_get(mcmc.get_extra_fields()["diverging"])),
         )
         return mcmc.get_samples()
+
+    def last_nuts_diagnostics(self) -> dict[str, float]:
+        """Return the NUTS diagnostics (:func:`nuts_diagnostics`) of the last ``sample_posterior`` call."""
+        if getattr(self, "_last_nuts", None) is None:
+            raise RuntimeError("No NUTS run yet: call predict_ct_range first")
+        return nuts_diagnostics(*self._last_nuts)
 
     def _alpha(self) -> np.ndarray:
         n_classes = len(self.classes)

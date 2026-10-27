@@ -5,7 +5,6 @@ from collections.abc import Iterator
 from cap.models.confidence import (
     CBPE,
     RQBS,
-    ACC_BayesCAP,
     BootstrapCTCAP,
     BootstrapDirectCAP,
     CAPWithConfidence,
@@ -52,8 +51,18 @@ METHOD_CLASS = {
     "L-CBPE": CBPE,
     "RQBS": RQBS,
     "PQ": PrediQuant,
-    "BayesCAP": ACC_BayesCAP,
+    "BayesCAP": BayCAP,
     "BayesCAP-real": BayCAP,
+    "BayesCAP-EB": BayCAP,
+    "BayesCAP-EB-real": BayCAP,
+}
+# estimand and prior on the columns of C of the BayCAP methods of main (methods/baycap.py:BayCAP): BayesCAP-real is
+# E2.3, the EB methods are E2.4 of docs/ext2_baycap.md; all share the priors on pi, NUTS settings and default seed
+BAYCAP_VARIANTS = {
+    "BayesCAP": ("population", "uniform"),
+    "BayesCAP-real": ("realised", "uniform"),
+    "BayesCAP-EB": ("population", "empirical-bayes"),
+    "BayesCAP-EB-real": ("realised", "empirical-bayes"),
 }
 
 
@@ -90,12 +99,12 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
             predict_train_prev=True,
         ),
     )
-    yield "BayesCAP", ACC_BayesCAP(acc, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS)
-    # realised-table predictive (E2.3 of docs/ext2_baycap.md): same priors, NUTS settings and default seed as BayesCAP
-    yield (
-        "BayesCAP-real",
-        BayCAP(acc, estimand="realised", num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS),
-    )
+    # BayesCAP is built from BayCAP, with the draws of cap-ml's ACC_BayesCAP, so that it stores the NUTS diagnostics
+    for name, (estimand, c_prior) in BAYCAP_VARIANTS.items():
+        yield (
+            name,
+            BayCAP(acc, estimand=estimand, c_prior=c_prior, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS),
+        )
 
 
 def get_method_names() -> list[str]:
