@@ -147,7 +147,15 @@ This part explains what the experiments need and nothing more. We follow the not
 
 *Intuition:* BayCAP lists many plausible values of $(\pi^Q,C)$, computes the accuracy each one implies, and reports the range of the middle $95\%$.
 
-BayCAP uses two kinds of counts. From the labelled validation set $V$ it uses $f_{ij}$, the number of validation instances of true class $\omega_j$ predicted as $\omega_i$, with $n^s_j=\sum_i f_{ij}$ instances of class $\omega_j$. From the unlabelled target bag it uses $n^t_i$, the number of target instances predicted as $\omega_i$. Two likelihood terms say how probable these counts are for given $(\pi^Q,C)$:
+BayCAP uses two kinds of counts. From the labelled validation set $V$ it uses $f_{ij}$, the number of validation instances of true class $\omega_j$ predicted as $\omega_i$, with $n^s_j=\sum_i f_{ij}$ instances of class $\omega_j$. From the unlabelled target bag it uses $n^t_i$, the number of target instances predicted as $\omega_i$.
+
+**The multinomial distribution.** Roll a die with $K$ faces $n$ times, independently, with probability $p_i$ of face $i$, and count how often each face comes out, $x_1,\dots,x_K$. By independence, one particular sequence of rolls with these counts has probability $\prod_ip_i^{x_i}$, and there are $n!/\prod_ix_i!$ sequences with the same counts (the ways of choosing which rolls give which face), so
+
+$$
+\operatorname{Mult}(x\mid n,p)=\frac{n!}{\prod_ix_i!}\prod_ip_i^{x_i}.
+$$
+
+**The two likelihoods.** Within class $\omega_j$ of $V$, each instance is predicted as $\omega_i$ with probability $C_{ij}$, independently of the others: the predictions are rolls of a die with the probabilities of column $j$ of $C$. In $U$, a random instance is predicted as $\omega_i$ with probability $\sum_jC_{ij}\pi^Q_j$, by the law of total probability (the probability of an outcome is the sum, over the ways it can happen, of the probability of each way: here, true class $\omega_j$ with probability $\pi^Q_j$, then prediction $\omega_i$ with probability $C_{ij}$); in vector form, the predicted shares are $C\pi^Q$. The two likelihood terms say how probable the observed counts are for given $(\pi^Q,C)$:
 
 $$
 \mathcal L_V(C)=\prod_{j=1}^K \operatorname{Mult}\!\left(f_{\cdot j}\mid n^s_j,\,C_{:j}\right),
@@ -155,7 +163,15 @@ $$
 \mathcal L_U(\pi^Q,C)=\operatorname{Mult}\!\left(n^t\mid N^Q,\,C\pi^Q\right).
 $$
 
-In words: within each true class of $V$, the predictions are like draws from the probabilities in column $j$ of $C$; in $U$, each prediction is like a draw from the probabilities $C\pi^Q$ (first pick a class with probability $\pi^Q_j$, then a prediction with probability $C_{ij}$). The priors are a Dirichlet distribution on $\pi^Q$ (uniform by default, `prior`) and a uniform Dirichlet $\operatorname{Dir}(\mathbf 1)$ on each column of $C$ (fixed in the code). A sampler (NUTS) draws $R$ pairs $(\pi^{(r)},C^{(r)})$ from the posterior. Each draw gives a table $T^{(r)}=C^{(r)}\operatorname{diag}(\pi^{(r)})$ and an accuracy $A(T^{(r)})$. The point estimate is the mean of these accuracies, and the interval runs from their $2.5\%$ to their $97.5\%$ percentile.
+**The priors.** A Dirichlet distribution $\operatorname{Dir}(\alpha)$ is a distribution over probability vectors $p$ (non-negative, summing to one), with density proportional to $\prod_ip_i^{\alpha_i-1}$. With all $\alpha_i=1$ the density is constant: every probability vector is equally likely. BayCAP puts a Dirichlet prior on $\pi^Q$ (uniform by default, `prior`) and the uniform $\operatorname{Dir}(\mathbf 1)$ on each column of $C$ (fixed in the code).
+
+**The posterior.** Bayes' rule combines prior and data: the posterior is proportional to prior times likelihood,
+
+$$
+p(\pi^Q,C\mid V,U)\propto\operatorname{Dir}(\pi^Q;\alpha)\prod_j\operatorname{Dir}(C_{:j};\mathbf 1)\;\mathcal L_V(C)\,\mathcal L_U(\pi^Q,C).
+$$
+
+It has no closed form, so a Markov chain Monte Carlo sampler (NUTS) draws $R$ pairs $(\pi^{(r)},C^{(r)})$ whose histogram approximates it; by the law of large numbers, averages over many draws approximate averages over the posterior. Each draw gives a table $T^{(r)}=C^{(r)}\operatorname{diag}(\pi^{(r)})$ and an accuracy $A(T^{(r)})$. The point estimate is the mean of these accuracies, and the interval runs from their $2.5\%$ to their $97.5\%$ percentile.
 
 *Implementation note:* in `cap-ml` and `quapy`, `p_c_cond_y` is indexed `[y, c]`, so it stores $C^\top$, and the tables returned by `ACC_BayesCAP` have true classes on rows.
 
@@ -166,11 +182,19 @@ In words: within each true class of $V$, the predictions are like draws from the
 - The **population accuracy** $\sum_j C_{jj}\pi^Q_j$ is the accuracy the classifier has on average over all bags with prevalence $\pi^Q$. BayCAP's posterior is about $(\pi^Q,C)$, so its interval is an interval for this quantity.
 - The **realised accuracy** is the fraction of instances of this bag that the classifier gets right. It is computed from the bag's realised table (its true labels), and `main` scores against it (`true_cts`).
 
-The bag contains $n_j$ instances of class $\omega_j$, and each one is classified correctly with probability $C_{jj}$, independently of the others. The number of correct predictions in class $\omega_j$ is therefore a binomial count, with mean $n_jC_{jj}$ and variance $n_jC_{jj}(1-C_{jj})$. Adding over the classes and dividing by $N^Q$, the realised accuracy has mean equal to the population accuracy and variance
+**One instance.** Let $B$ be $1$ if an instance of class $\omega_j$ is classified correctly and $0$ otherwise. It is $1$ with probability $p=C_{jj}$. Its mean is $\mathbb E[B]=1\cdot p+0\cdot(1-p)=p$; since $B^2=B$, also $\mathbb E[B^2]=p$; the variance is the mean of the square minus the square of the mean, $\operatorname{Var}(B)=p-p^2=p(1-p)$.
+
+**One class.** The bag contains $n_j$ instances of class $\omega_j$, each classified correctly independently of the others. The number of correct predictions $c_j$ is the sum of their $n_j$ indicators, a binomial count. The mean of a sum is the sum of the means, and the variance of a sum of independent variables is the sum of their variances, so $\mathbb E[c_j]=n_jC_{jj}$ and $\operatorname{Var}(c_j)=n_jC_{jj}(1-C_{jj})$.
+
+**The bag.** The realised accuracy is $A_{\text{real}}=\frac1{N^Q}\sum_jc_j$. The counts of different classes are independent, so the same two rules apply again, together with $\operatorname{Var}(aX)=a^2\operatorname{Var}(X)$ for a constant $a$ (here $a=1/N^Q$). With $n_j=N^Q\pi^Q_j$,
 
 $$
-\frac{1}{(N^Q)^2}\sum_j n_j\,C_{jj}(1-C_{jj}).
+\mathbb E[A_{\text{real}}]=\frac1{N^Q}\sum_jn_jC_{jj}=\sum_jC_{jj}\pi^Q_j,
+\qquad
+\operatorname{Var}(A_{\text{real}})=\frac{1}{(N^Q)^2}\sum_j n_j\,C_{jj}(1-C_{jj}):
 $$
+
+the mean is the population accuracy, and the variance is the fluctuation around it.
 
 *Example.* Binary, $n_0=n_1=500$, $C_{00}=0.9$, $C_{11}=0.7$. The population accuracy is $0.8$. The standard deviation of the realised accuracy is $\sqrt{500\cdot0.9\cdot0.1+500\cdot0.7\cdot0.3}/1000\approx0.012$, so on a typical bag the realised accuracy lies anywhere in $[0.776,0.824]$.
 
@@ -180,15 +204,17 @@ BayCAP's interval contains no term for this fluctuation. When $V$ is small, the 
 
 *Intuition:* we cannot see the true labels of the bag, but we can see its predictions; for each prediction we guess a plausible true class, and the guessed labels give a plausible realised table.
 
-Take a target instance predicted as $\omega_i$. If $(\pi^Q,C)$ were known, Bayes' rule would give the probability that its true class is $\omega_j$:
+**The probability of the true class given the prediction.** The definition of conditional probability is $P(A\mid B)=P(A\cap B)/P(B)$. Take a target instance predicted as $\omega_i$. If $(\pi^Q,C)$ were known, the probability of "true class $\omega_j$ and prediction $\omega_i$" would be entry $(i,j)$ of the population table, $C_{ij}\pi^Q_j$ (T.1), and the probability of "prediction $\omega_i$" would be the sum of row $i$, $q_i=\sum_lC_{il}\pi^Q_l$ (the law of total probability of T.1). So
 
 $$
 \rho_{ij}=P(Y=\omega_j\mid\hat Y=\omega_i)=\frac{C_{ij}\,\pi^Q_j}{\sum_l C_{il}\,\pi^Q_l}.
 $$
 
-The numerator is entry $(i,j)$ of the population table and the denominator is the sum of row $i$, so $\rho_{i\cdot}$ is row $i$ of the table rescaled to sum to one. On the diagonal, $\rho_{ii}$ is the precision of class $\omega_i$. For each posterior draw $r$, the predictive computes $\rho^{(r)}$ from $(\pi^{(r)},C^{(r)})$ and assigns true classes to the $n^t_i$ instances predicted as $\omega_i$ by one multinomial draw, $\operatorname{Mult}(n^t_i,\rho^{(r)}_{i\cdot})$, i.e. by $n^t_i$ independent picks with probabilities $\rho^{(r)}_{i\cdot}$. The resulting count table, divided by $N^Q$, is a sample $\tilde T^{(r)}$ of the realised table, and $A(\tilde T^{(r)})$ is a sample of the realised accuracy. The posterior is unchanged; only the last step changes, at the cost of one multinomial draw per sample. The samples now contain both the uncertainty about $(\pi^Q,C)$ and the bag-level fluctuation of T.2.
+Row $i$ of $\rho$ is row $i$ of the table rescaled to sum to one. On the diagonal, $\rho_{ii}$ is the precision of class $\omega_i$.
 
-**Where the predictive puts the centre.** For one draw, the realised accuracy samples have mean $\sum_i\frac{n^t_i}{N^Q}\rho_{ii}$, while the population accuracy of the same draw is $\sum_jC_{jj}\pi^Q_j=\sum_iq_i\rho_{ii}$, with $q_i=\sum_lC_{il}\pi^Q_l$ the share of the bag that the draw expects to be predicted as $\omega_i$. The two differ only where the observed shares $n^t_i/N^Q$ differ from $q_i$. BayCAP chooses $\pi^Q$ so that $q$ matches the observed shares as well as the model allows, so the centre is expected to move little and the predictive mostly changes the width [new hypothesis, confirmed by E2.3: the two centres differ by at most $0.009$]. In particular, the pull of the prior on $C$ towards $1/K$ acts on $C^{(r)}$, and so on $\rho^{(r)}$, and is expected to remain.
+**Sampling a realised table.** For each posterior draw $r$, the predictive computes $\rho^{(r)}$ from $(\pi^{(r)},C^{(r)})$ and assigns true classes to the $n^t_i$ instances predicted as $\omega_i$ by one multinomial draw, $\operatorname{Mult}(n^t_i,\rho^{(r)}_{i\cdot})$, i.e. by $n^t_i$ independent picks with probabilities $\rho^{(r)}_{i\cdot}$. The resulting count table, divided by $N^Q$, is a sample $\tilde T^{(r)}$ of the realised table, and $A(\tilde T^{(r)})$ is a sample of the realised accuracy. The posterior is unchanged; only the last step changes, at the cost of one multinomial draw per sample. The samples now contain both the uncertainty about $(\pi^Q,C)$ and the bag-level fluctuation of T.2.
+
+**Where the predictive puts the centre.** Of the $n^t_i$ instances predicted as $\omega_i$, each is correct with probability $\rho_{ii}$, so for one draw the realised accuracy samples have mean $\sum_i\frac{n^t_i}{N^Q}\rho_{ii}$. The population accuracy of the same draw can be written in the same form: multiplying the definitions, $q_i\rho_{ii}=\sum_lC_{il}\pi^Q_l\cdot\frac{C_{ii}\pi^Q_i}{\sum_lC_{il}\pi^Q_l}=C_{ii}\pi^Q_i$, so $\sum_jC_{jj}\pi^Q_j=\sum_iq_i\rho_{ii}$, where $q_i$ is the share of the bag that the draw expects to be predicted as $\omega_i$. The two means differ by $\sum_i\big(\frac{n^t_i}{N^Q}-q_i\big)\rho_{ii}$, i.e. only where the observed shares $n^t_i/N^Q$ differ from $q_i$. BayCAP chooses $\pi^Q$ so that $q$ matches the observed shares as well as the model allows, so the centre is expected to move little and the predictive mostly changes the width [new hypothesis, confirmed by E2.3: the two centres differ by at most $0.009$]. In particular, the pull of the prior on $C$ towards $1/K$ acts on $C^{(r)}$, and so on $\rho^{(r)}$, and is expected to remain.
 
 *Toy check* (`scripts/toys/ext2_estimand_gap.py`, toy result, binary, not BayCAP on real data): $C_{10}=0.1$, $C_{11}=0.7$, $\lvert U\rvert=1000$, $\pi^Q_1=0.5$ with fixed class counts, $n_s$ validation instances per class, uniform priors, $3000$ bags, Monte Carlo error about $\pm0.01$.
 
@@ -204,7 +230,7 @@ With few validation instances the uncertainty about $C$ dominates and the popula
 
 *Intuition:* `main` did not store the posterior tables, so E2.1 cannot redo the predictive exactly; for accuracy, it adds to each stored accuracy sample a random error of the right size.
 
-For accuracy only the diagonal matters: of the $n^t_i$ instances predicted as $\omega_i$, each is correct with probability $\rho^{(r)}_{ii}$, so the predictive accuracy of draw $r$ is a sum of binomial counts divided by $N^Q$,
+**The exact accuracy of one draw.** For accuracy only the diagonal matters. One cell of a multinomial is binomial (merge all the other faces of the die into one), so, of the $n^t_i$ instances predicted as $\omega_i$, the number assigned to the true class $\omega_i$ is $\operatorname{Bin}(n^t_i,\rho^{(r)}_{ii})$, with mean $n^t_i\rho^{(r)}_{ii}$ and variance $n^t_i\rho^{(r)}_{ii}(1-\rho^{(r)}_{ii})$ (T.2). The draws for different predicted classes are independent, so their variances add, and dividing by $N^Q$ divides the variance by $(N^Q)^2$:
 
 $$
 \tilde A^{(r)}=\frac{1}{N^Q}\sum_i \operatorname{Bin}\!\left(n^t_i,\rho^{(r)}_{ii}\right),
@@ -212,37 +238,53 @@ $$
 \sigma_g^2=\frac{1}{(N^Q)^2}\sum_i n^t_i\,\rho^{(r)}_{ii}\left(1-\rho^{(r)}_{ii}\right),
 $$
 
-with mean close to the population accuracy of the draw and variance $\sigma_g^2$. E2.1 makes two simplifications: it uses one $\bar\rho$ per bag (the stored mean table `estim_cts`, each row rescaled to one) instead of one per draw, and it replaces the sum of binomials with a normal distribution, which is accurate when the counts are large. Each approximate predictive sample is then the stored accuracy sample plus independent noise $\mathcal N(0,\hat\sigma_g^2)$. Both $n^t$ and $\bar\rho$ use no target labels. The ratio $\hat\sigma_g/\hat\sigma_p$, with $\hat\sigma_p$ the standard deviation of the stored samples, measures how much the predictive can widen the interval: under normality, adding independent noise multiplies the width by $\sqrt{1+(\hat\sigma_g/\hat\sigma_p)^2}$, so a ratio of $0.3$ widens it by about $4\%$. The approximation does not apply to macro-F1 or macro-K, whose off-diagonal cells matter; `main` stores the macro-F1 and macro-K samples of `BayesCAP-real` from E2.3, which would allow checking it.
+with mean close to the population accuracy of the draw (T.3) and variance $\sigma_g^2$.
+
+**The two simplifications.** E2.1 uses one $\bar\rho$ per bag (the stored mean table `estim_cts`, each row rescaled to one) instead of one per draw. And it replaces the sum of binomials with a normal distribution: by the central limit theorem, a sum of many independent indicators is approximately normal, so the approximation is accurate when the counts are large. Each approximate predictive sample is then the stored accuracy sample plus independent noise $\mathcal N(0,\hat\sigma_g^2)$. Both $n^t$ and $\bar\rho$ use no target labels.
+
+**How much wider.** Let $\hat\sigma_p$ be the standard deviation of the stored samples. Adding independent noise adds its variance, so the predictive samples have variance $\hat\sigma_p^2+\hat\sigma_g^2$. For normal samples the $95\%$ interval is the mean $\pm1.96$ standard deviations, so its width is proportional to the standard deviation, and the width is multiplied by
+
+$$
+\frac{\sqrt{\hat\sigma_p^2+\hat\sigma_g^2}}{\hat\sigma_p}=\sqrt{1+(\hat\sigma_g/\hat\sigma_p)^2}.
+$$
+
+The ratio $\hat\sigma_g/\hat\sigma_p$ therefore measures how much the predictive can widen the interval: a ratio of $0.3$ widens it by about $4\%$ ($\sqrt{1.09}\approx1.044$). The approximation does not apply to macro-F1 or macro-K, whose off-diagonal cells matter; `main` stores the macro-F1 and macro-K samples of `BayesCAP-real` from E2.3, which would allow checking it.
 
 ## T.5 Displacement and the prior on $C$ (cause 1)
 
 *Intuition:* if an interval is centred on the wrong value, making it wider helps only when it becomes wide enough to reach the true value, and then it is too wide to be useful.
 
-**Where the error goes.** Accuracy is the sum of the diagonal of the table, $A=\sum_j\pi_jr_j$, where $r_j=C_{jj}$ is the recall of class $\omega_j$: accuracy is the recalls averaged with weights $\pi_j$. BayCAP's point estimate has the same form, $\hat A=\sum_j\hat\pi_j\hat r_j$, with $\hat\pi_j$ and $\hat r_j$ read from its mean table. The difference splits exactly into two parts:
+**Where the error goes.** Accuracy is the sum of the diagonal of the table, $A=\sum_j\pi_jr_j$, where $r_j=C_{jj}$ is the recall of class $\omega_j$: accuracy is the recalls averaged with weights $\pi_j$. BayCAP's point estimate has the same form, $\hat A=\sum_j\hat\pi_j\hat r_j$, with $\hat\pi_j$ and $\hat r_j$ read from its mean table. Adding and subtracting $\sum_j\pi_j\hat r_j$,
+
+$$
+\hat A-A=\Big(\sum_j\pi_j\hat r_j-\sum_j\pi_jr_j\Big)+\Big(\sum_j\hat\pi_j\hat r_j-\sum_j\pi_j\hat r_j\Big),
+$$
+
+so the difference splits exactly into two parts:
 
 $$
 \hat A-A=\underbrace{\sum_j\pi_j(\hat r_j-r_j)}_{\text{recall term}}+\underbrace{\sum_j(\hat\pi_j-\pi_j)\,\hat r_j}_{\text{prevalence term}},
 $$
 
-where $\pi$ and $r$ are the class proportions and realised recalls of the bag. The recall term is the error from estimating how good the classifier is; the prevalence term is the error from estimating how many instances of each class the bag contains. Accuracy is linear in the table, so the mean of BayCAP's accuracy samples is exactly the accuracy of its mean table, and the split applies to the point estimate as it is.
+where $\pi$ and $r$ are the class proportions and realised recalls of the bag. The recall term is the error from estimating how good the classifier is; the prevalence term is the error from estimating how many instances of each class the bag contains. The split applies to the point estimate as it is, because the mean is linear: the accuracy of each draw is the sum of the diagonal of its table, and the mean of a sum is the sum of the means, so the mean of BayCAP's accuracy samples is exactly the accuracy of its mean table.
 
-**The prior as imaginary counts.** A column $C_{:j}$ lists the probabilities that an instance of class $\omega_j$ is predicted as each of the $K$ classes. It works like a die with $K$ faces: each validation instance of class $\omega_j$ is a roll, and $f_{ij}$ counts how often face $\omega_i$ came out. The prior $\operatorname{Dir}(\mathbf 1)$ says that every composition of the column is equally likely. A Dirichlet prior has a convenient property: after observing the counts, the posterior is again a Dirichlet whose parameters are the prior's plus the counts. The prior acts exactly like imaginary rolls added before the data, here one roll on each of the $K$ faces. The mean of a face is its count divided by the total count, so the recall becomes
+**The prior as imaginary counts.** A column $C_{:j}$ lists the probabilities that an instance of class $\omega_j$ is predicted as each of the $K$ classes. It works like a die with $K$ faces: each validation instance of class $\omega_j$ is a roll, and $f_{ij}$ counts how often face $\omega_i$ came out. The prior $\operatorname{Dir}(\mathbf 1)$ says that every composition of the column is equally likely. Multiplying the prior density, proportional to $\prod_iC_{ij}^{1-1}$, by the likelihood of the column, proportional to $\prod_iC_{ij}^{f_{ij}}$ (T.1), gives a posterior proportional to $\prod_iC_{ij}^{f_{ij}+1-1}$, which is again a Dirichlet, $\operatorname{Dir}(f_{\cdot j}+\mathbf 1)$: the posterior parameters are the prior's plus the counts (*conjugacy*). The prior acts exactly like imaginary rolls added before the data, here one roll on each of the $K$ faces. The mean of a $\operatorname{Dir}(\beta)$ vector is $\beta_i/\sum_l\beta_l$ (T.9 derives it), a face's count divided by the total count, so the recall becomes
 
 $$
 \tilde r_j=\frac{f_{jj}+1}{n^s_j+K}
 $$
 
-instead of the plain $f_{jj}/n^s_j$; with $K=2$ this is Laplace's rule for a coin, $(h+1)/(n+2)$. The difference $\tilde r_j-f_{jj}/n^s_j$ is the prior part of the recall error, the quantity E2.2 measures. Averaged over possible validation sets, where $f_{jj}$ is on average $n^s_jr_j$, it equals
+instead of the plain $f_{jj}/n^s_j$; with $K=2$ this is Laplace's rule for a coin, $(h+1)/(n+2)$. The difference $\tilde r_j-f_{jj}/n^s_j$ is the prior part of the recall error, the quantity E2.2 measures. Averaged over possible validation sets, where $f_{jj}$ is on average $n^s_jr_j$ (T.2), it equals
 
 $$
-\mathbb E[\tilde r_j]-r_j=\frac{n^s_jr_j+1}{n^s_j+K}-r_j=\frac{1-Kr_j}{n^s_j+K},
+\mathbb E[\tilde r_j]-r_j=\frac{n^s_jr_j+1}{n^s_j+K}-r_j=\frac{n^s_jr_j+1-(n^s_j+K)r_j}{n^s_j+K}=\frac{1-Kr_j}{n^s_j+K},
 $$
 
 which is negative whenever the classifier beats guessing ($r_j>1/K$): every recall is pulled towards $1/K$. For a good classifier the pull is about $-K/n^s_j$: negligible for binary problems, large when $K$ is comparable to the number of validation instances per class.
 
-**Why the data do not undo it.** Bayes' rule combines prior and data once, $\text{posterior}\propto\text{prior}\times\text{likelihood}$; the sampler converges to this combination, not to the true $C$. The prior fades only when the real counts $n^s_j$ greatly outnumber the $K$ imaginary ones. Moreover, "every column equally likely" is not neutral about the recall: under $\operatorname{Dir}(\mathbf 1)$ a single entry of the column follows a $\operatorname{Beta}(1,K-1)$ distribution, with mean $1/K$ and $P(r_j>0.9)=0.1^{K-1}$, so with $26$ classes the prior considers a recall above $0.9$ practically impossible. The target bag cannot correct this: its predicted counts depend on $C$ and $\pi^Q$ only through the $K$ numbers $C\pi^Q$, far too few to pin down the $K^2$ entries of $C$.
+**Why the data do not undo it.** Bayes' rule combines prior and data once, $\text{posterior}\propto\text{prior}\times\text{likelihood}$; the sampler converges to this combination, not to the true $C$. The prior fades only when the real counts $n^s_j$ greatly outnumber the $K$ imaginary ones. Moreover, "every column equally likely" is not neutral about the recall. One entry of a $\operatorname{Dir}(\alpha)$ vector follows a $\operatorname{Beta}(\alpha_j,\sum_{i\ne j}\alpha_i)$ distribution (T.9), so under $\operatorname{Dir}(\mathbf 1)$ the recall is $\operatorname{Beta}(1,K-1)$, with density $(K-1)(1-r)^{K-2}$ and mean $1/(1+(K-1))=1/K$. Integrating the density from $x$ to $1$ gives $P(r_j>x)=(1-x)^{K-1}$, so $P(r_j>0.9)=0.1^{K-1}$: with $26$ classes the prior considers a recall above $0.9$ practically impossible. The target bag cannot correct this: its predicted counts depend on $C$ and $\pi^Q$ only through the predicted shares $C\pi^Q$, $K$ numbers summing to one, far too few to pin down the $K^2$ entries of $C$.
 
-**Why the interval is displaced and not just wide.** The posterior standard deviation of a recall is about $\sqrt{\tilde r_j(1-\tilde r_j)/(n^s_j+K+1)}$, the usual standard error of a proportion with the imaginary counts included. The shift shrinks like $K/n^s_j$, the standard deviation only like $1/\sqrt{n^s_j}$, so with large $K$ the shift is several standard deviations. Averaging into accuracy makes it worse: the random errors of the $K$ recalls partly cancel, so the standard deviation of the accuracy is smaller than that of each recall, while the prior pushes every recall in the same direction, so the shifts add up. The result is a narrow interval in the wrong place, and the predictive, which only adds spread around the same centre, cannot repair it.
+**Why the interval is displaced and not just wide.** By the variance of a Beta distribution (T.9), $ab/\big((a+b)^2(a+b+1)\big)$ with $a=f_{jj}+1$ and $b=n^s_j-f_{jj}+K-1$, so $a+b=n^s_j+K$, the posterior standard deviation of a recall is $\sqrt{\tilde r_j(1-\tilde r_j)/(n^s_j+K+1)}$, the usual standard error of a proportion with the imaginary counts included. The shift shrinks like $K/n^s_j$, the standard deviation only like $1/\sqrt{n^s_j}$, so with large $K$ the shift is several standard deviations. Averaging into accuracy makes it worse. If the random errors $\varepsilon_j$ of the recalls are independent with standard deviation $\sigma$, the error of the accuracy, $\sum_j\pi_j\varepsilon_j$, has variance $\sum_j\pi_j^2\sigma^2$, which is smaller than $\sigma^2$ because $\sum_j\pi_j^2<1$ when more than one class is present ($1/K$ for equal prevalences): the random errors partly cancel. The prior instead pushes every recall in the same direction, so with shifts $\delta_j$ of the same sign the shift of the accuracy, $\sum_j\pi_j\delta_j$, is a weighted average of them and does not shrink. The result is a narrow interval in the wrong place, and the predictive, which only adds spread around the same centre, cannot repair it.
 
 Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$ (one imaginary count per column instead of $K$), are studied in [[ext5_baycap_priors_tempering|Extension 5]]. E2.4 tests instead a prior whose centre and weight are estimated from $V$ (§T.9): $\operatorname{Dir}(1/K)$ puts most of its mass near the edges of the simplex, which is hard to justify as a description of the classifier, while a prior estimated from the data says what $V$ says.
 
@@ -250,24 +292,40 @@ Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$
 
 ## T.6 Other effects on the width
 
-- **Fixed class counts (too wide).** $\mathcal L_U$ treats the class of each target instance as random, while APP bags have fixed class counts. The model therefore expects more variation in $n^t$ than there is, trusts the counts too little, and makes the interval wider. In the toy, at $n_s=5000$, coverage of the population accuracy is $0.97$ on APP bags and $0.94$ on bags with random class counts, so the effect is small there. Candidate E2.c2 would measure it.
+- **Fixed class counts (too wide).** $\mathcal L_U$ treats the class of each target instance as random, while APP bags have fixed class counts. With random classes, $n^t_i$ is a binomial count with $N^Q$ tries and probability $q_i$, so its variance is $N^Qq_i(1-q_i)$. With fixed counts $n_j=N^Q\pi_j$, $n^t_i$ is a sum of independent binomials, one per class, $\operatorname{Bin}(n_j,C_{ij})$, with variance $\sum_jn_jC_{ij}(1-C_{ij})$. Using $\sum_j\pi_jC_{ij}=q_i$, the difference is
+  $$
+  N^Q\Big[q_i(1-q_i)-\sum_j\pi_jC_{ij}(1-C_{ij})\Big]=N^Q\Big[\sum_j\pi_jC_{ij}^2-q_i^2\Big]\ge0,
+  $$
+  $N^Q$ times the variance of $C_{ij}$ across the classes, weighted by $\pi$. The model therefore expects more variation in $n^t$ than there is, trusts the counts too little, and makes the interval wider. In the toy, at $n_s=5000$, coverage of the population accuracy is $0.97$ on APP bags and $0.94$ on bags with random class counts, so the effect is small there. Candidate E2.c2 would measure it.
 - **Uncertainty on $C$ (modelled).** A finite $V$ leaves real uncertainty about $C$; $\mathcal L_V$ represents it, and it dominates when $V$ has few instances per class.
 
 ## T.7 Conditioning of $C$ (cause 2)
 
 *Intuition:* if the classifier behaves almost the same on two classes, its predictions say little about how many instances of each class the bag contains, and every small error in $C$ or in the counts becomes a large error in $\hat\pi$.
 
-**A binary example** (illustrative numbers). With $\mathrm{TPR}=C_{11}$ and $\mathrm{FPR}=C_{10}$, the fraction of the bag predicted positive is $q=\mathrm{FPR}+(\mathrm{TPR}-\mathrm{FPR})\,\pi_1$, so $\pi_1=(q-\mathrm{FPR})/(\mathrm{TPR}-\mathrm{FPR})$. With $\mathrm{TPR}=0.9$ and $\mathrm{FPR}=0.1$ the denominator is $0.8$; with $\mathrm{TPR}=0.55$ and $\mathrm{FPR}=0.45$ it is $0.1$, and the chance error of $q$ on a bag of $1000$ instances, about $\pm0.016$, becomes about $\pm0.16$ on $\pi_1$. Any error in $q$, $\mathrm{TPR}$ or $\mathrm{FPR}$ is multiplied by $1/(\mathrm{TPR}-\mathrm{FPR})$.
+**A binary example** (illustrative numbers). With $\mathrm{TPR}=C_{11}$ and $\mathrm{FPR}=C_{10}$, the fraction of the bag predicted positive is $q=\mathrm{FPR}\,(1-\pi_1)+\mathrm{TPR}\,\pi_1=\mathrm{FPR}+(\mathrm{TPR}-\mathrm{FPR})\,\pi_1$ (law of total probability), so $\pi_1=(q-\mathrm{FPR})/(\mathrm{TPR}-\mathrm{FPR})$. With $\mathrm{TPR}=0.9$ and $\mathrm{FPR}=0.1$ the denominator is $0.8$; with $\mathrm{TPR}=0.55$ and $\mathrm{FPR}=0.45$ it is $0.1$, and the chance error of $q$ on a bag of $1000$ instances, about $\pm0.016$ (the standard deviation of a proportion, $\sqrt{q(1-q)/1000}\approx\sqrt{0.25/1000}$), becomes about $\pm0.16$ on $\pi_1$. Any error in $q$, $\mathrm{TPR}$ or $\mathrm{FPR}$ is multiplied by $1/(\mathrm{TPR}-\mathrm{FPR})$.
 
-**The condition number.** For $K$ classes the role of $\mathrm{TPR}-\mathrm{FPR}$ is played by the singular values of $C$, which measure how much $C$ stretches or shrinks vectors in each direction. Singular values are used rather than eigenvalues because $C$ is not symmetric: its eigenvalues can be complex and do not measure stretching. The condition number $\kappa=\sigma_{\max}/\sigma_{\min}$ bounds how much relative errors grow when $\pi$ is recovered from $q=C\pi$:
+**Singular values.** For $K$ classes the role of $\mathrm{TPR}-\mathrm{FPR}$ is played by the singular values of $C$. They measure how much $C$ stretches or shrinks vectors: for every vector $v$, $\sigma_{\min}\lVert v\rVert\le\lVert Cv\rVert\le\sigma_{\max}\lVert v\rVert$, and both bounds are reached in some direction. Singular values are used rather than eigenvalues because $C$ is not symmetric: its eigenvalues can be complex and do not measure stretching.
+
+**The condition number.** Suppose the predicted shares carry an error, $q+\delta q=C(\pi+\delta\pi)$. Since $q=C\pi$, subtracting gives $\delta q=C\,\delta\pi$, so $\lVert\delta q\rVert\ge\sigma_{\min}\lVert\delta\pi\rVert$ and $\lVert\delta\pi\rVert\le\lVert\delta q\rVert/\sigma_{\min}$. Also $\lVert q\rVert=\lVert C\pi\rVert\le\sigma_{\max}\lVert\pi\rVert$, i.e. $1/\lVert\pi\rVert\le\sigma_{\max}/\lVert q\rVert$. Multiplying the two inequalities,
+
+$$
+\frac{\lVert\delta\pi\rVert}{\lVert\pi\rVert}\le\kappa\,\frac{\lVert\delta q\rVert}{\lVert q\rVert},
+\qquad
+\kappa=\frac{\sigma_{\max}}{\sigma_{\min}}:
+$$
+
+the condition number $\kappa$ bounds how much relative errors grow when $\pi$ is recovered from $q$. An error $\delta C$ in the matrix adds, to first order, a term of the same form (a standard result of numerical linear algebra), so
 
 $$
 \frac{\lVert\delta\pi\rVert}{\lVert\pi\rVert}\lesssim\kappa\left(\frac{\lVert\delta q\rVert}{\lVert q\rVert}+\frac{\lVert\delta C\rVert}{\lVert C\rVert}\right),
 $$
 
-covering both chance errors in the counts and systematic errors in $C$, such as the prior's. Prevalences sum to one, so every error in $\pi$ or in $q$ sums to zero, and $C$ maps such vectors to vectors that also sum to zero. E2.2 therefore uses $\kappa_0$, the condition number computed only over vectors that sum to zero; $\kappa_0\ge1$, with $\kappa_0=1$ for a perfect classifier.
+covering both chance errors in the counts and systematic errors in $C$, such as the prior's.
 
-**The absolute amplification** [new hypothesis, 2026-10-20]. With $K=2$ the vectors that sum to zero form a single direction, so $C$ acts on them as one number, $\mathrm{TPR}-\mathrm{FPR}$, and $\kappa_0=1$ for every binary classifier, however poor: a ratio of the largest to the smallest stretching is uninformative when there is only one stretching. The binary example above uses instead the factor $1/(\mathrm{TPR}-\mathrm{FPR})$, which multiplies absolute errors. Its general form is $1/\sigma_{\min}$, with $\sigma_{\min}$ the smallest singular value of $C$ on the vectors that sum to zero: an error $\delta q$ in the predicted proportions becomes an error of up to $\lVert\delta q\rVert/\sigma_{\min}$ in $\hat\pi$. E2.2 reports both: $1/\sigma_{\min}$ compares pairs of any $K$, including binary ones, while $\kappa_0$ tells, for $K>2$, whether the amplification concerns only some directions.
+**Restricting to vectors that sum to zero.** Prevalences sum to one, so every error in $\pi$ or in $q$ sums to zero. The columns of $C$ sum to one, so for a vector $v$ that sums to zero the entries of $Cv$ sum to $\sum_i\sum_jC_{ij}v_j=\sum_jv_j\sum_iC_{ij}=\sum_jv_j=0$: $C$ maps such vectors to vectors that also sum to zero. E2.2 therefore uses $\kappa_0$, the condition number computed only over vectors that sum to zero; $\kappa_0\ge1$, with $\kappa_0=1$ for a perfect classifier.
+
+**The absolute amplification** [new hypothesis, 2026-10-20]. With $K=2$ the vectors that sum to zero form a single direction, so $C$ acts on them as one number, $\mathrm{TPR}-\mathrm{FPR}$, and $\kappa_0=1$ for every binary classifier, however poor: a ratio of the largest to the smallest stretching is uninformative when there is only one stretching. The binary example above uses instead the factor $1/(\mathrm{TPR}-\mathrm{FPR})$, which multiplies absolute errors. Its general form is $1/\sigma_{\min}$, with $\sigma_{\min}$ the smallest singular value of $C$ on the vectors that sum to zero: by the first inequality above, an error $\delta q$ in the predicted proportions becomes an error of up to $\lVert\delta q\rVert/\sigma_{\min}$ in $\hat\pi$. E2.2 reports both: $1/\sigma_{\min}$ compares pairs of any $K$, including binary ones, while $\kappa_0$ tells, for $K>2$, whether the amplification concerns only some directions.
 
 **Limits of the measure.**
 
@@ -275,7 +333,7 @@ covering both chance errors in the counts and systematic errors in $C$, such as 
 - $\hat C$ is estimated on $V$: a column of a rare class rests on few instances, so its $\kappa_0$ is noisy; $n^s_j$ is reported next to it.
 - It tends to grow with $K$, because there are more directions in which two columns can be close; comparing the classifiers within a dataset avoids mixing it with $K$, which also drives cause 1.
 
-**The prior and the conditioning** [new hypothesis]. The imaginary counts pull every column towards the flat column $(1/K,\dots,1/K)$, which makes the columns more alike and amplifies errors more. $\kappa_0$ cannot measure this: when all classes have the same $n^s_j$, the prior multiplies every singular value on the vectors that sum to zero by the same factor $n^s_j/(n^s_j+K)$, so their ratio does not change. E2.2 does not measure this effect.
+**The prior and the conditioning** [new hypothesis]. The imaginary counts pull every column towards the flat column $(1/K,\dots,1/K)$, which makes the columns more alike and amplifies errors more. $\kappa_0$ cannot measure this. When all classes have the same $n^s_j=n$, the posterior-mean column is $\frac{f_{\cdot j}+\mathbf 1}{n+K}=\frac{n}{n+K}\hat C_{:j}+\frac{1}{n+K}\mathbf 1$, so the posterior-mean matrix is $\frac{n}{n+K}\hat C+\frac1{n+K}\mathbf 1\mathbf 1^\top$. On a vector $v$ that sums to zero, $\mathbf 1\mathbf 1^\top v=\mathbf 1(\mathbf 1^\top v)=\mathbf 0$, so the matrix acts as $\frac{n}{n+K}\hat C$: the prior multiplies every singular value on these vectors by the same factor $n/(n+K)$, and their ratio does not change. E2.2 does not measure this effect.
 
 ## T.8 Difficulty of the problem on i.i.d. data (cause 3)
 
@@ -335,7 +393,7 @@ $$
 \mathbb E[\tilde r_j]-r_j=\frac{\nu}{n_j+\nu}\,(m-r_j).
 $$
 
-**The uniform prior is the case $m=1/K$, $\nu=K$.** BayCAP puts $\operatorname{Dir}(\mathbf 1)$ on the whole column $C_{:j}$. A Dirichlet vector can be built as $p_i=G_i/\sum_lG_l$ from independent $G_i\sim\operatorname{Gamma}(\alpha_i,1)$; the sum of the other entries, $G_{-j}=\sum_{i\ne j}G_i$, is $\operatorname{Gamma}(\sum_{i\ne j}\alpha_i,1)$, and $G_j/(G_j+G_{-j})$ is Beta-distributed. So one entry of a $\operatorname{Dir}(\alpha)$ vector is $\operatorname{Beta}(\alpha_j,\sum_{i\ne j}\alpha_i)$, and under $\operatorname{Dir}(\mathbf 1)$ the recall is $\operatorname{Beta}(1,K-1)$: $m=1/K$ and $\nu=K$, chosen without looking at the data. The formulas above then give $\tilde r_j=\frac{f_j+1}{n_j+K}$ and the bias $\frac{K(1/K-r_j)}{n_j+K}$ of §T.5. As a check against the stored results, `isolet` LR ($K=26$, $n_j\approx105$, recall on $V$ $0.95$) gives $26(0.038-0.95)/131\approx-0.181$, the $R_0$ that E2.2 reports.
+**The uniform prior is the case $m=1/K$, $\nu=K$.** BayCAP puts $\operatorname{Dir}(\mathbf 1)$ on the whole column $C_{:j}$. A Dirichlet vector can be built as $p_i=G_i/\sum_lG_l$ from independent $G_i\sim\operatorname{Gamma}(\alpha_i,1)$; the sum of the other entries, $G_{-j}=\sum_{i\ne j}G_i$, is $\operatorname{Gamma}(\sum_{i\ne j}\alpha_i,1)$, and $G_j/(G_j+G_{-j})$ is Beta-distributed. The same construction gives the *aggregation property*: a sum of independent $\operatorname{Gamma}(\alpha_i,1)$ variables is $\operatorname{Gamma}(\sum_i\alpha_i,1)$, so if the entries of a $\operatorname{Dir}(\alpha)$ vector are summed in groups, the group sums form a Dirichlet vector whose parameters are the sums of the $\alpha_i$ in each group. Its mean follows as well: $\mathbb E[p_i]=\alpha_i/\sum_l\alpha_l$, the mean $a/(a+b)$ of the $\operatorname{Beta}(\alpha_i,\sum_{l\ne i}\alpha_l)$ below. So one entry of a $\operatorname{Dir}(\alpha)$ vector is $\operatorname{Beta}(\alpha_j,\sum_{i\ne j}\alpha_i)$, and under $\operatorname{Dir}(\mathbf 1)$ the recall is $\operatorname{Beta}(1,K-1)$: $m=1/K$ and $\nu=K$, chosen without looking at the data. The formulas above then give $\tilde r_j=\frac{f_j+1}{n_j+K}$ and the bias $\frac{K(1/K-r_j)}{n_j+K}$ of §T.5. As a check against the stored results, `isolet` LR ($K=26$, $n_j\approx105$, recall on $V$ $0.95$) gives $26(0.038-0.95)/131\approx-0.181$, the $R_0$ that E2.2 reports.
 
 **Choosing $m$ and $\nu$ from the data.** Empirical Bayes assumes that the $K$ recalls of one classifier are themselves draws from a common Beta, as if the classes were coins from the same factory:
 
@@ -386,7 +444,7 @@ $$
 \operatorname{Var}(r_j\mid V)=\underbrace{\mathbb E\big[\operatorname{Var}(r_j\mid V,m,\nu)\mid V\big]}_{\text{kept by empirical Bayes}}+\underbrace{\operatorname{Var}\big(\mathbb E[r_j\mid V,m,\nu]\mid V\big)}_{\text{left out}},
 $$
 
-where the left-out term is about $(1-w_j)^2\operatorname{Var}(\hat m)$ if the uncertainty on $\nu$ is ignored. The error of $\hat m$ is shared by all the classes, so on accuracy it does not average out: the left-out standard deviation of the accuracy is about $\sum_j\pi_j(1-w_j)\operatorname{sd}(\hat m)$. $\operatorname{sd}(\hat m)$ is estimated from the curvature of $\ell$ at its maximum (the inverse of the observed information, in the coordinates $(\operatorname{logit}m,\ln\nu)$, with $\operatorname{sd}(\hat m)=\hat m(1-\hat m)\operatorname{sd}(\operatorname{logit}\hat m)$). In an illustrative case like `isolet` ($K=26$, $n_j=104$, $\hat\nu=41$, spread of the recalls $0.04$) it is about $0.002$, against about $0.0036$ for the standard deviation that the uncertainty on $C$ gives the accuracy, so the $C$ part of the width would be about $13\%$ too small; the uncertainty on $\pi^Q$ makes the effect on the whole interval smaller. Because $V$ is drawn once, the error of $\hat m$ is the same in every bag of a pair: if it matters, it appears as a small displacement, not as random width. A second, smaller effect: each class enters $\hat m$, so the centre it is pulled towards has been moved slightly towards itself, and the pull is a little too weak; the effect is of order $1/K$. E2.4 reports the left-out standard deviation per pair. The fully Bayesian version, which samples $(m,\nu)$ with NUTS, would change the model of BayesianCC and is not pursued.
+where the left-out term is about $(1-w_j)^2\operatorname{Var}(\hat m)$ if the uncertainty on $\nu$ is ignored. The error of $\hat m$ is shared by all the classes, so on accuracy it does not average out: the left-out standard deviation of the accuracy is about $\sum_j\pi_j(1-w_j)\operatorname{sd}(\hat m)$. $\operatorname{sd}(\hat m)$ is estimated from the curvature of $\ell$ at its maximum. For one parameter $\theta$, the log-likelihood near its maximum is close to a parabola, $\ell(\theta)\approx\ell(\hat\theta)+\frac12\ell''(\hat\theta)(\theta-\hat\theta)^2$, which is the logarithm of a normal density with variance $-1/\ell''(\hat\theta)$: a sharply peaked likelihood (large $-\ell''$) means a small uncertainty, and $\operatorname{sd}(\hat\theta)\approx1/\sqrt{-\ell''(\hat\theta)}$. With two parameters, $-\ell''$ becomes the matrix of second derivatives (the *observed information*) and the variances are the diagonal of its inverse; E2.4 computes it in the coordinates $(\operatorname{logit}m,\ln\nu)$. The standard deviation of $\hat m$ then follows by the delta method: if $\hat m=g(\hat\theta)$ with $\hat\theta$ close to the truth, a first-order expansion $g(\hat\theta)\approx g(\theta)+g'(\theta)(\hat\theta-\theta)$ gives $\operatorname{sd}(\hat m)\approx\lvert g'(\hat\theta)\rvert\operatorname{sd}(\hat\theta)$; for $m=1/(1+e^{-\theta})$, the inverse of the logit, $g'(\theta)=m(1-m)$, so $\operatorname{sd}(\hat m)=\hat m(1-\hat m)\operatorname{sd}(\operatorname{logit}\hat m)$. In an illustrative case like `isolet` ($K=26$, $n_j=104$, $\hat\nu=41$, spread of the recalls $0.04$) it is about $0.002$, against about $0.0036$ for the standard deviation that the uncertainty on $C$ gives the accuracy, so the $C$ part of the width would be about $13\%$ too small; the uncertainty on $\pi^Q$ makes the effect on the whole interval smaller. Because $V$ is drawn once, the error of $\hat m$ is the same in every bag of a pair: if it matters, it appears as a small displacement, not as random width. A second, smaller effect: each class enters $\hat m$, so the centre it is pulled towards has been moved slightly towards itself, and the pull is a little too weak; the effect is of order $1/K$. E2.4 reports the left-out standard deviation per pair. The fully Bayesian version, which samples $(m,\nu)$ with NUTS, would change the model of BayesianCC and is not pursued.
 
 **What the check can and cannot predict.** The check of E2.4 computes $\tilde r_j$ from $V$ alone and compares it with the realised recalls of each bag. It predicts the recall term of the shift, not the coverage (it has no interval), and it leaves out the step in which the target bag updates $C$, the effect of the mistakes on $\hat\pi$ (the prevalence term), and the left-out variance. The variant measures all of these, and the comparison of the two tells which of them matter.
 
