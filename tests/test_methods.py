@@ -11,6 +11,7 @@ from uncawe.experiments.methods import (
     get_method_names,
 )
 from uncawe.methods.baycap import BayCAP
+from uncawe.plots.amplitude_vs_coverage import PLOT_METHODS as AVC_METHODS
 from uncawe.plots.common import DEFAULT_METHODS, METHOD_COLORS, METHOD_PLOT_LABELS
 from uncawe.tables import main as main_tables
 from uncawe.tables import rank
@@ -59,6 +60,12 @@ class BayCAPFactoryTest(unittest.TestCase):
                     self.assertNotIn(name, main_tables.table_method_names())
                     self.assertNotIn(name, rank._methods())
                 self.assertNotIn(name, DEFAULT_METHODS)
+
+    def test_coverage_vs_amplitude_plot_shows_every_baycap_method(self):
+        self.assertEqual(AVC_METHODS[: len(DEFAULT_METHODS)], DEFAULT_METHODS)
+        for name in BAYCAP_METHODS:
+            with self.subTest(method=name):
+                self.assertIn(name, AVC_METHODS)
 
     def test_every_baycap_method_has_labels_and_a_colour(self):
         for name in BAYCAP_METHODS:
