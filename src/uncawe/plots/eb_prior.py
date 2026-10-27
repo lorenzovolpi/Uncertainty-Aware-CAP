@@ -74,14 +74,14 @@ def plot_check(table: pd.DataFrame):
         (
             "predicted_recall_change",
             "observed_recall_change",
-            "predicted change of $R$ (check: EB $-$ $\\operatorname{Dir}(\\mathbf 1)$)",
+            "predicted change of $R$ (check: EB $-$ $\\operatorname{Dir}(\\mathbf{1})$)",
             "observed change of $R$ (BayCAP-EB $-$ BayCAP)",
             "effect of the prior",
         ),
         (
             "check_uniform_mean",
             "BayesCAP_recall_term",
-            "$\\operatorname{Dir}(\\mathbf 1)$ check, mean $\\Delta$",
+            "$\\operatorname{Dir}(\\mathbf{1})$ check, mean $\\Delta$",
             "recall term $R$ of BayCAP",
             "validation of the check",
         ),

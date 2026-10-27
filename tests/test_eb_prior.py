@@ -189,6 +189,8 @@ class PairTableTest(unittest.TestCase):
             with self.subTest(figure=name):
                 fig = plotter(self.table)
                 self.assertEqual(len(fig.axes), 3)  # two panels and the colour bar of K
+                # drawing parses the mathtext of every label, as savefig does
+                fig.canvas.draw()
                 plt.close(fig)
 
 
