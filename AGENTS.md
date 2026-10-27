@@ -60,7 +60,7 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
   ```
 - Experiments are named `E<extension>.<n>`, with `<n>` a progressive number within the extension (e.g. E2.1, E2.2); each experiment gets its own number, also when several experiments serve one goal. Candidate experiments are named `E<extension>.c<n>` (e.g. E2.c1); when the user moves one into the main section, it is renamed with the next free `E<extension>.<n>`, and every reference to it is updated. Numbers are never reused.
 - Tackle one experiment at a time.
-- Explain statistics at a first-year-undergraduate level, so that the documents are broadly comprehensible.
+- Explain statistics at a first-year-undergraduate level, so that the documents are broadly comprehensible. In Theory sections, be explicit about every statistical argument and do not skip steps: state the model, define each quantity, state each property used before using it (e.g. linearity of the expectation, the variance of a sum, the law of total variance, the aggregation property of the Dirichlet), derive each formula step by step, and pair the derivation with its intuition.
 - Extension documents contain no paper material (contributions, paper outline, figure plan) for now; the paper will be addressed later.
 - Only `docs/ext2_baycap.md` follows this structure so far; the other extension documents keep their old structure until the user reviews them.
 
@@ -97,3 +97,4 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 ## Conversation conventions
 
 - A user message that starts with "[guideline]" states a general guideline: add it to this file, in the section where it belongs.
+- When the user asks about something or opens a discussion, answer only: do not edit the repository (documents, code, work plan) until the user explicitly says to proceed. Propose changes in prose. Decisions taken during a discussion are not an instruction to write them; wait for that instruction.
