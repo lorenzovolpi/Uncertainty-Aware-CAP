@@ -49,14 +49,15 @@ class BayCAPFactoryTest(unittest.TestCase):
         self.assertEqual(list(self.methods), get_method_names())
 
     def test_main_tables_ranks_and_plots_exclude_the_e2_methods(self):
-        self.assertIn("BayesCAP", main_tables.table_method_names())
-        self.assertIn("BayesCAP-EB-real", main_tables.table_method_names())
+        for name in ("BayesCAP", "BayesCAP-EB-real"):
+            self.assertIn(name, main_tables.table_method_names())
+            self.assertIn(name, rank._methods())
         self.assertNotIn("L-CBPE", rank._methods())
         for name in E2_METHODS:
             with self.subTest(method=name):
                 if name != "BayesCAP-EB-real":
                     self.assertNotIn(name, main_tables.table_method_names())
-                self.assertNotIn(name, rank._methods())
+                    self.assertNotIn(name, rank._methods())
                 self.assertNotIn(name, DEFAULT_METHODS)
 
     def test_every_baycap_method_has_labels_and_a_colour(self):
