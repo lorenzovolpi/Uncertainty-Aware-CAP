@@ -46,7 +46,7 @@ This is one of the most ambitious and potentially consequential directions,
 because it changes the problem from estimation under an ideal assumption to
 monitoring the reliability of that assumption.
 
-The marginal stress test previously listed among the secondary analyses of Extension 3 (error caused by model misspecification or violations of PPS) is set aside here; the [[ext3_uncertainty_budget|uncertainty budget]] assumes strict PPS.
+The marginal stress test previously listed among the secondary analyses of the uncertainty budget (now Extension 4; error caused by model misspecification or violations of PPS) is set aside here; the [[ext4_uncertainty_budget|uncertainty budget]] assumes strict PPS.
 
 ## 3. [[aitchison_sqs|Aitchison-SQS: propagating quantifier uncertainty]]
 
@@ -133,11 +133,11 @@ The full formulation, caveats, and baselines are described in
 
 ## 4. Full informative-prior study for BayCAP
 
-Revived in [[ext10_baycap_priors_tempering|Extension 10]] (2026-10-15), as the full grid of experiment E10.4.
+Revived in [[ext5_baycap_priors_tempering|Extension 5]] (then numbered 10, 2026-10-15), as the full grid of experiment E5.4.
 
 ## 5. Label-free temperature selection for BayCAP
 
-Revived in [[ext10_baycap_priors_tempering|Extension 10]] (2026-10-15), as experiment E10.5, still run only if oracle-best tempering clearly beats the realised-table predictive (hypothesis H5 refuted).
+Revived in [[ext5_baycap_priors_tempering|Extension 5]] (then numbered 10, 2026-10-15), as experiment E5.5, still run only if oracle-best tempering clearly beats the realised-table predictive (hypothesis H5 refuted).
 
 ## 6. A pass/fail gate for the realised-table predictive of BayCAP
 
@@ -147,3 +147,29 @@ Set aside from [[ext2_baycap|Extension 2]] on 2026-10-21: E2.1 and E2.3 are trea
 - *Fail* if $\hat\sigma_g/\hat\sigma_p<0.3$ on almost every pair (the coverage then changes by about one percentage point or less), or if BayCAP over-covers and the predictive worsens the Winkler score everywhere.
 
 All pairs count, including those whose interval is displaced (coverage near $0$ for both pushforwards), which no pushforward can repair (decision of 2026-10-20).
+
+## 7. Multiclass scalability and new domains
+
+Set aside from [[extensions]] on 2026-10-27, where it was Extension 5. The text below is the former summary.
+
+The evaluation could be extended to text and image data, pretrained models, and problems with many classes. In addition to predictive quality, the analysis should measure:
+
+- time and memory as functions of $K$, $|V|$, $|U|$, and the number of samples;
+- the cost of BayCAP and NUTS sampling;
+- behaviour with rare or absent classes;
+- stability when the confusion matrix is ill-conditioned.
+
+New domains would make the empirical evidence more convincing, but should not constitute the central contribution on their own.
+
+## 8. Material set aside from SQS-B and BayCAP-KDEy
+
+On 2026-10-27 the former Extensions 8 (SQS-B, `docs/sqs_b.md`) and 9 (BayCAP-KDEy, `docs/baycap_kdey.md`) were merged into [[ext3_posterior_propagation|Extension 3]], which keeps the two methods, their comparison on the protocol of `main`, and the candidate experiments decided in the discussion. The full former documents are in commit `391220c`. The rest is set aside here:
+
+- **Time and memory.** Training and inference time of the posterior-propagation methods, in particular of the NUTS runs of BayesKDEy; optional, to be added back if time allows (user's decision of 2026-10-27).
+- **Interpretation of SQS-B.** Its interval combines a Bayesian posterior over $\pi^Q$ with empirical validation sampling, so it is a "posterior-propagated empirical interval" rather than a Bayesian credible interval; when the quantifier and the bags both use $V$, the dependence this creates is not modelled, and data splitting or cross-fitting were proposed as sensitivity analyses.
+- **Ablations of the former SQS-B document.** SQS-B with only the posterior mean, repeated through validation sampling (separates a better point estimate from the propagation of uncertainty); several bags per posterior draw (separates prevalence and bag randomness); an Oracle-SQS with the true $\pi^Q$, as a reference.
+- **Ablations of the former BayCAP-KDEy document.** An "Oracle-C" reference with the true prevalence and a fixed $\hat C$, isolating the propagation from the posterior; a full factorial of posterior (BayesKDEy, BayesianCC) by bridge (fixed $C$, validation bags, random $C$), of which Extension 3 keeps the cells it needs as E3.1 and candidates.
+- **Sensitivity analyses of both documents.** Informative and misspecified priors on $\pi^Q$; a temperature grid $\tau\in\{0.5,1,2,5\}$ (tempering now belongs to [[ext5_baycap_priors_tempering|Extension 5]]); the shrinkage grid of KDE-Bayes; split versus reused validation data; controlled violations of PPS (§2); rare or absent target classes.
+- **Further measures.** Nominal levels $50\%$, $80\%$, $90\%$, $95\%$, $99\%$, reliability plots and CRPS (§1); calibration and sharpness of the prevalence posterior itself; results conditioned on shift magnitude, target size, number of classes and quantifier informativeness.
+- **Relation to Aitchison-SQS.** Aitchison-SQS (§3) constructs a distribution around a non-Bayesian point estimate, while SQS-B and BayCAP-KDEy take the posterior from the quantifier; Aitchison-SQS remains applicable to non-Bayesian quantifiers.
+- **Fallback framing.** If BayCAP-KDEy does not beat the other methods, it could still be presented as an interpretable baseline with closed-form moments for accuracy.

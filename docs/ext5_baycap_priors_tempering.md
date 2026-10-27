@@ -1,4 +1,4 @@
-# Extension 10: Informative priors and posterior tempering for BayCAP
+# Extension 5: Informative priors and posterior tempering for BayCAP
 
 ## 0. Summary
 
@@ -21,10 +21,10 @@
 | `quapy` `model_bayesianCC(..., temperature, alpha)`: BayesianCC with both log-likelihood terms divided by $\tau$ | [implemented, external] |
 | `quapy` `calibrate_temperature`: selects $\tau$ on **prevalence** regions, not on performance intervals | [implemented, external] |
 | `uncawe` `binform` experiment: uniform vs one informative prior on $\pi^Q$, `connect-4` only, $\tau=1$ | [implemented] |
-| Toy simulation of §2.3 (`scripts/toys/ext10_prior_calibration.py`) | [implemented] |
+| Toy simulation of §2.3 (`scripts/toys/ext5_prior_calibration.py`) | [implemented] |
 | Toy simulation of the prior on $C$ (§2.4) | [proposal] |
 | `temperature` and `c_prior` arguments of `BayCAP`, prior registry | [proposal] |
-| E10.1–E10.5 | [proposal] |
+| E5.1–E5.5 | [proposal] |
 | All hypotheses (H1, H4, H5, H7, H8) | [new hypothesis] |
 
 Hypothesis IDs continue those of the former joint note (H0, H2, H6 are in [[ext2_baycap|Extension 2]]); IDs are not reused.
@@ -90,7 +90,7 @@ In every experiment, bag prevalences are produced by a known mechanism: $\pi^Q_i
 
 If the prior equals $G$ and the likelihood is the true sampling model, a $95\%$ credible interval contains the true value for exactly $95\%$ of the bags. The reason is Bayes' theorem: the posterior is then the actual conditional distribution of the true $\pi^Q$ among all bags that produce the same observed data. The guarantee is an **average over bags drawn from $G$**, not a per-bag property. A vague wrong prior usually keeps coverage and loses sharpness; a confident wrong prior can lose coverage. The standard check is *simulation-based calibration*: the rank of the true value among the posterior draws should be uniform across bags.
 
-Toy example (`scripts/toys/ext10_prior_calibration.py`): binary, perfect known classifier, $n\sim\operatorname{Bin}(20,\pi_1)$, Beta priors, $200{,}000$ bags, $95\%$ equal-tailed intervals.
+Toy example (`scripts/toys/ext5_prior_calibration.py`): binary, perfect known classifier, $n\sim\operatorname{Bin}(20,\pi_1)$, Beta priors, $200{,}000$ bags, $95\%$ equal-tailed intervals.
 
 | $G$ | prior | coverage | mean width | coverage for $\pi_1\in[0.4,0.6)$ |
 |---|---|---|---|---|
@@ -146,7 +146,7 @@ $$
 \frac{\text{bias}}{\text{sd}}\approx w\sqrt{\frac{K\,r}{n\,(1-r)}},
 $$
 
-so a prior is harmless for coverage only if $w\ll\sqrt{n(1-r)/(Kr)}$. Perks' prior reduces the bias by a factor of about $K$ with respect to $\operatorname{Dir}(\mathbf 1)$, but on datasets with large $K$ and very accurate classifiers it may still leave a visible bias; this is why E10.3 varies $w$ rather than testing one prior.
+so a prior is harmless for coverage only if $w\ll\sqrt{n(1-r)/(Kr)}$. Perks' prior reduces the bias by a factor of about $K$ with respect to $\operatorname{Dir}(\mathbf 1)$, but on datasets with large $K$ and very accurate classifiers it may still leave a visible bias; this is why E5.3 varies $w$ rather than testing one prior.
 
 **Limits.**
 
@@ -171,26 +171,26 @@ All formulas of this section are derivations; the numbers that illustrate them i
 
 Primary:
 
-- **H5 (the predictive needs no tuning).** The realised-table predictive reaches near-nominal coverage without tempering, and at matched coverage its intervals are no wider than those of tempering at the oracle-best $\tau$. *Confirmed if* in E10.2 its coverage is within tolerance of $0.95$ across datasets and its Winkler score is close to or better than that of oracle-best tempering. *Refuted if* oracle-best tempering is clearly better; then label-free selection of $\tau$ (E10.5) becomes worth its cost. Tested only if H0 of [[ext2_baycap|Extension 2]] is confirmed.
-- **H7 (a $K$-independent prior on $C$ removes the bias).** On datasets with large $K$ and few validation instances per class, replacing $\operatorname{Dir}(\mathbf 1)$ with a prior of total weight $w\le2$ ($\operatorname{Dir}(1/K)$, diagonal-aware) reduces the bias of BayCAP by about the factor $K/w$ predicted in §2.4 and restores most of the coverage, without changing the results on binary datasets. *Confirmed if* in E10.3 the bias follows $w\,(1/K-r_j)/(n^s_j+w)$ across $w$ and coverage rises towards nominal on `isolet` and `letter`. *Refuted if* the bias does not change with $w$; then source (iv) of [[ext2_baycap|Extension 2]] is not the cause.
+- **H5 (the predictive needs no tuning).** The realised-table predictive reaches near-nominal coverage without tempering, and at matched coverage its intervals are no wider than those of tempering at the oracle-best $\tau$. *Confirmed if* in E5.2 its coverage is within tolerance of $0.95$ across datasets and its Winkler score is close to or better than that of oracle-best tempering. *Refuted if* oracle-best tempering is clearly better; then label-free selection of $\tau$ (E5.5) becomes worth its cost. Tested only if H0 of [[ext2_baycap|Extension 2]] is confirmed.
+- **H7 (a $K$-independent prior on $C$ removes the bias).** On datasets with large $K$ and few validation instances per class, replacing $\operatorname{Dir}(\mathbf 1)$ with a prior of total weight $w\le2$ ($\operatorname{Dir}(1/K)$, diagonal-aware) reduces the bias of BayCAP by about the factor $K/w$ predicted in §2.4 and restores most of the coverage, without changing the results on binary datasets. *Confirmed if* in E5.3 the bias follows $w\,(1/K-r_j)/(n^s_j+w)$ across $w$ and coverage rises towards nominal on `isolet` and `letter`. *Refuted if* the bias does not change with $w$; then source (iv) of [[ext2_baycap|Extension 2]] is not the cause.
 
 Secondary:
 
-- **H1 (prior on $\pi^Q$ matters only when data are weak).** The prior's effect grows with $w=c/(c+N^Q/\tau)$ and with the ill-conditioning of $C$. *Confirmed if* in E10.4 the well-specified prior narrows intervals at $\lvert U\rvert=100$ and not at $\lvert U\rvert=1000$.
-- **H8 (tempering amplifies the bias of the prior on $C$).** With $\operatorname{Dir}(\mathbf 1)$ on $C$, the bias on large-$K$ datasets grows with $\tau$ as $w\,(1/K-r_j)/(n^s_j/\tau+w)$. *Confirmed if* in E10.1 the bias at $\tau\in\{2,4\}$ is larger than at $\tau=1$ on these datasets, by about the predicted amount. *Refuted if* the bias does not depend on $\tau$.
-- **H4 (prior $\times$ temperature).** If $\tau>1$ is selected, a misspecified prior on $\pi^Q$ gains weight and robustness degrades. *Confirmed if* in E10.5 a confidently wrong prior loses more coverage at the selected $\tau$ than at $\tau=1$. Tested only if E10.5 runs.
+- **H1 (prior on $\pi^Q$ matters only when data are weak).** The prior's effect grows with $w=c/(c+N^Q/\tau)$ and with the ill-conditioning of $C$. *Confirmed if* in E5.4 the well-specified prior narrows intervals at $\lvert U\rvert=100$ and not at $\lvert U\rvert=1000$.
+- **H8 (tempering amplifies the bias of the prior on $C$).** With $\operatorname{Dir}(\mathbf 1)$ on $C$, the bias on large-$K$ datasets grows with $\tau$ as $w\,(1/K-r_j)/(n^s_j/\tau+w)$. *Confirmed if* in E5.1 the bias at $\tau\in\{2,4\}$ is larger than at $\tau=1$ on these datasets, by about the predicted amount. *Refuted if* the bias does not depend on $\tau$.
+- **H4 (prior $\times$ temperature).** If $\tau>1$ is selected, a misspecified prior on $\pi^Q$ gains weight and robustness degrades. *Confirmed if* in E5.5 a confidently wrong prior loses more coverage at the selected $\tau$ than at $\tau=1$. Tested only if E5.5 runs.
 
 ## 5. Paper outline
 
 | Paper location | Content | Claim | Evidence |
 |---|---|---|---|
-| §5 (BayCAP), subsection "Calibrated BayCAP" of [[ext2_baycap|Extension 2]], second half | tempering as a diagnostic | The realised-table predictive calibrates BayCAP at least as well as the best temperature. | E10.1; E10.2 |
-| §5, paragraph "Prior on $C$" of [[ext2_baycap|Extension 2]], second half | prior weight $w=K\beta$; Perks and diagonal-aware priors | A prior on $C$ whose weight does not grow with $K$ removes BayCAP's bias on large-$K$ datasets. | §2.4; E10.3 |
-| §5, short paragraph "Prior on $\pi^Q$" | well-specified prior under APP; prior weight | Under the paper's protocol the uniform prior is the correct one, and informative priors matter only when data are weak. | §2.2–2.3; E10.4 |
+| §5 (BayCAP), subsection "Calibrated BayCAP" of [[ext2_baycap|Extension 2]], second half | tempering as a diagnostic | The realised-table predictive calibrates BayCAP at least as well as the best temperature. | E5.1; E5.2 |
+| §5, paragraph "Prior on $C$" of [[ext2_baycap|Extension 2]], second half | prior weight $w=K\beta$; Perks and diagonal-aware priors | A prior on $C$ whose weight does not grow with $K$ removes BayCAP's bias on large-$K$ datasets. | §2.4; E5.3 |
+| §5, short paragraph "Prior on $\pi^Q$" | well-specified prior under APP; prior weight | Under the paper's protocol the uniform prior is the correct one, and informative priors matter only when data are weak. | §2.2–2.3; E5.4 |
 | §6 (experiments), subsection "Calibration of BayCAP", shared with [[ext2_baycap|Extension 2]] | F2, T2, T3, T5 (see §5.1) | as above | Part III |
-| §7 (conclusions) | one paragraph | Calibrated BayCAP closes (or narrows) the gap with SQS-H in interval quality. | E10.2 (T2), against SQS-H |
+| §7 (conclusions) | one paragraph | Calibrated BayCAP closes (or narrows) the gap with SQS-H in interval quality. | E5.2 (T2), against SQS-H |
 
-Wording if results are mixed: if H5 is refuted, the predictive is presented as a correction of the estimand, and label-free tempering (E10.5) as a calibration step on top of it; if H7 is refuted, the "Prior on $C$" paragraph reports the bias without a remedy; if H1 is refuted at $\lvert U\rvert=100$, priors on $\pi^Q$ get one sentence in the conclusions.
+Wording if results are mixed: if H5 is refuted, the predictive is presented as a correction of the estimand, and label-free tempering (E5.5) as a calibration step on top of it; if H7 is refuted, the "Prior on $C$" paragraph reports the bias without a remedy; if H1 is refuted at $\lvert U\rvert=100$, priors on $\pi^Q$ get one sentence in the conclusions.
 
 ### 5.1 Figures and tables
 
@@ -198,31 +198,31 @@ All use Acc; macro-F1 and macro-K versions go to the appendix. Conventions follo
 
 | Item | Experiment | Content | What it must show |
 |---|---|---|---|
-| F2 | E10.1, E10.2 | coverage–amplitude trajectories over $\tau$, one path per dataset through its $\tau$ values; solid joint tempering, dashed $\mathcal L_U$-only; separate marker for the predictive at $\tau=1$ | where tempering reaches $0.95$ and at what width, compared with the predictive (H5) |
-| T2 | E10.2 | mean ranks per measure with Wilcoxon markers (`tables/rank.py`) for BayCAP at $\tau=1$, predictive at $\tau=1$, and SQS-H from `main`; oracle-best variants as greyed reference columns, not ranked; one block per $\lvert U\rvert$ (SQS-H only at $1000$) | whether Calibrated BayCAP closes the gap with SQS-H |
-| T3 | E10.4 | rows prior on $\pi^Q$ (uniform, well-specified, confidently wrong) $\times$ $\lvert U\rvert$; columns coverage, amplitude, width relative to the uniform prior, for both pushforwards; mean $\pm$ std with min/max colouring (`tables/binform.py` style) | that informative priors matter only at small $\lvert U\rvert$ (H1) |
-| T5 | E10.3 | rows dataset $\times$ prior on $C$ (ordered by $w$); columns bias, coverage, amplitude, Winkler, for both pushforwards; $K$ and median $n^s_j$ as index columns | that the bias falls with $w$ as predicted and coverage recovers (H7) |
+| F2 | E5.1, E5.2 | coverage–amplitude trajectories over $\tau$, one path per dataset through its $\tau$ values; solid joint tempering, dashed $\mathcal L_U$-only; separate marker for the predictive at $\tau=1$ | where tempering reaches $0.95$ and at what width, compared with the predictive (H5) |
+| T2 | E5.2 | mean ranks per measure with Wilcoxon markers (`tables/rank.py`) for BayCAP at $\tau=1$, predictive at $\tau=1$, and SQS-H from `main`; oracle-best variants as greyed reference columns, not ranked; one block per $\lvert U\rvert$ (SQS-H only at $1000$) | whether Calibrated BayCAP closes the gap with SQS-H |
+| T3 | E5.4 | rows prior on $\pi^Q$ (uniform, well-specified, confidently wrong) $\times$ $\lvert U\rvert$; columns coverage, amplitude, width relative to the uniform prior, for both pushforwards; mean $\pm$ std with min/max colouring (`tables/binform.py` style) | that informative priors matter only at small $\lvert U\rvert$ (H1) |
+| T5 | E5.3 | rows dataset $\times$ prior on $C$ (ordered by $w$); columns bias, coverage, amplitude, Winkler, for both pushforwards; $K$ and median $n^s_j$ as index columns | that the bias falls with $w$ as predicted and coverage recovers (H7) |
 
-Appendix and internal material: coverage vs $\tau$ per dataset (diagnostic used to read off the oracle-best $\tau$); bias vs $\tau$ on large-$K$ datasets (H8); `plots/amplitude_vs_coverage.py` with the E10.2 variants; `plots/binform_simplex.py` to illustrate $G$ and the E10.4 priors on the simplex; robustness curves of the full prior study.
+Appendix and internal material: coverage vs $\tau$ per dataset (diagnostic used to read off the oracle-best $\tau$); bias vs $\tau$ on large-$K$ datasets (H8); `plots/amplitude_vs_coverage.py` with the E5.2 variants; `plots/binform_simplex.py` to illustrate $G$ and the E5.4 priors on the simplex; robustness curves of the full prior study.
 
 # Part III: For the implementation
 
 ## 6. Experiments
 
-Common to all: same bags and seeds across conditions, $100$ bags per configuration as in the paper, measures as in the paper (AE, coverage, amplitude, Winkler at $\alpha=0.05$) on the metrics of [[ext1_metrics]], always scored against the realised table of each bag; both pushforwards of [[ext2_baycap|Extension 2]] (population and realised-table predictive) unless stated. Dataset subset: the one of [[ext2_baycap|Extension 2]] (binary and multiclass, small and large $\lvert V\rvert$ per class, well- and ill-conditioned $C$, at least one large-$K$ dataset); `connect-4` for E10.4. All five classifiers unless stated. Order and gates: E10.1 → E10.2 (needs H0 of [[ext2_baycap|Extension 2]] for the predictive; otherwise it compares tempering with BayCAP at $\tau=1$ only); E10.3 is independent; E10.4 runs its minimal check first and the full grid only if H1 is confirmed; E10.5 runs only if H5 is refuted.
+Common to all: same bags and seeds across conditions, $100$ bags per configuration as in the paper, measures as in the paper (AE, coverage, amplitude, Winkler at $\alpha=0.05$) on the metrics of [[ext1_metrics]], always scored against the realised table of each bag; both pushforwards of [[ext2_baycap|Extension 2]] (population and realised-table predictive) unless stated. Dataset subset: the one of [[ext2_baycap|Extension 2]] (binary and multiclass, small and large $\lvert V\rvert$ per class, well- and ill-conditioned $C$, at least one large-$K$ dataset); `connect-4` for E5.4. All five classifiers unless stated. Order and gates: E5.1 → E5.2 (needs H0 of [[ext2_baycap|Extension 2]] for the predictive; otherwise it compares tempering with BayCAP at $\tau=1$ only); E5.3 is independent; E5.4 runs its minimal check first and the full grid only if H1 is confirmed; E5.5 runs only if H5 is refuted.
 
-### E10.1: temperature sweep
+### E5.1: temperature sweep
 
 - **Goal / hypothesis:** what tempering could achieve, with target labels used only to evaluate it; input to H5; H8.
 - **Inputs:** BayCAP rerun on the APP bags of the subset (the same bags as [[ext2_baycap|Extension 2]] Q2, whose $\tau=1$ draws are reused).
 - **Varied:** $\tau\in\{0.25,0.5,1,2,4\}$; tempering variant: joint ($\mathcal L_V$ and $\mathcal L_U$), $\mathcal L_U$ only, and, as an ablation, $\mathcal L_V$ only (uncertainty on $C$).
-- **Outputs:** table draws (sidecar `.npz`) for every $\tau$ and variant, so that E10.2 can apply the predictive to them; metric samples; the oracle-best $\tau$ per (dataset, classifier) and pushforward; the bias split of [[ext2_baycap|Extension 2]] Q5 at every $\tau$.
+- **Outputs:** table draws (sidecar `.npz`) for every $\tau$ and variant, so that E5.2 can apply the predictive to them; metric samples; the oracle-best $\tau$ per (dataset, classifier) and pushforward; the bias split of [[ext2_baycap|Extension 2]] Q5 at every $\tau$.
 - **Measures:** the paper's measures; bias and its recall term on large-$K$ datasets.
 - **Interpretation:** the direction in which $\tau$ must move to reach nominal coverage ($\tau>1$ on large-$V$ datasets if the estimand gap dominates); how wide the intervals become there, compared with the predictive at the same coverage; whether loosening $\mathcal L_U$ alone gives the extra width. The $\tau$ closest to nominal coverage is the *oracle-best $\tau$*, a reference, not a method. A recall term growing with $\tau$ on large-$K$ datasets supports H8.
 - **Visualization:** F2; coverage vs $\tau$ per dataset; bias vs $\tau$ (appendix).
 - **Cost:** five runs per bag and per tempering variant.
 
-### E10.2: Calibrated BayCAP vs tempering
+### E5.2: Calibrated BayCAP vs tempering
 
 - **Goal / hypothesis:** is the realised-table predictive as good as the best tempering? H5.
 - **Inputs:** subset datasets, $\lvert U\rvert\in\{100,1000\}$.
@@ -231,10 +231,10 @@ Common to all: same bags and seeds across conditions, $100$ bags per configurati
 - **Measures:** the paper's measures; width at matched coverage; comparison with SQS-H from `main` at $\lvert U\rvert=1000$.
 - **Interpretation:** H5 holds if the predictive at $\tau=1$ is within tolerance of nominal coverage and its Winkler score is close to that of oracle-best tempering; the predictive at the oracle-best $\tau$ shows whether any residual tempering helps.
 - **Comparability:** all variants are fitted on all of $V$ and are directly comparable with `main`. The oracle-best variants use target labels to choose $\tau$ and are references, not methods.
-- **Visualization:** T2; F2 (shared with E10.1); `amplitude_vs_coverage` with the four variants in the appendix.
-- **Cost:** at $\lvert U\rvert=1000$ none beyond E10.1, since all four variants reuse its draws; $\lvert U\rvert=100$ needs one $\tau$ sweep.
+- **Visualization:** T2; F2 (shared with E5.1); `amplitude_vs_coverage` with the four variants in the appendix.
+- **Cost:** at $\lvert U\rvert=1000$ none beyond E5.1, since all four variants reuse its draws; $\lvert U\rvert=100$ needs one $\tau$ sweep.
 
-### E10.3: prior on $C$
+### E5.3: prior on $C$
 
 - **Goal / hypothesis:** does a prior on $C$ with total weight independent of $K$ remove BayCAP's bias on large-$K$ datasets? H7.
 - **Inputs:** `isolet`, `letter` ($K=26$), `hand_digits` ($K=10$), `chess` ($K=15$), and one binary control (`spambase`); the $100$ `main` bags with the same seeds; LR in the pilot, all five classifiers in the full run.
@@ -245,7 +245,7 @@ Common to all: same bags and seeds across conditions, $100$ bags per configurati
 - **Visualization:** T5.
 - **Cost:** four priors × five datasets × $100$ bags NUTS runs per classifier; the population and realised pushforwards share each run.
 
-### E10.4: priors on $\pi^Q$
+### E5.4: priors on $\pi^Q$
 
 - **Goal / hypothesis:** answer the paper's future work on priors; H1. A minimal check first; the full study only if H1 is confirmed.
 - **Inputs:** non-uniform $G=\operatorname{Dir}(c^\star\mu^\star)$ with the `binform` construction $\mu^\star_k=(1-\pi^V_k)/(K-1)$, $c^\star=10$ (frequent validation classes become rare targets; e.g. $\pi^V\approx(0.66,0.25,0.10)$ gives $\mu^\star\approx(0.17,0.38,0.45)$); `connect-4` plus one binary and one ill-conditioned multiclass dataset.
@@ -271,7 +271,7 @@ Conditions of the full study:
 
 $\mu^\dagger$ is a fixed wrong mean, e.g. $\pi^V$ or the point of the simplex opposite $\mu^\star$, and misspecification is reported as the $L_1$ or Aitchison distance between $\mu_\delta$ and $\mu^\star$.
 
-### E10.5: label-free temperature selection (gated)
+### E5.5: label-free temperature selection (gated)
 
 - **Goal / hypothesis:** select $\tau$ without target labels, if oracle-best tempering clearly beats the predictive (H5 refuted); H4.
 - **Inputs:** subset datasets; $V$ split into $V_{\mathrm{fit}}$ and $V_{\mathrm{cal}}$ with stratification.
@@ -305,8 +305,8 @@ Components (all [proposal]):
 
 - **`temperature` argument of `methods/baycap.py:BayCAP`**: both likelihood terms divided by $\tau$, with a flag for $\mathcal L_U$-only and $\mathcal L_V$-only tempering; default $\tau=1$. The alternative, a wrapper of `quapy`'s `model_bayesianCC` (private API; record the commit), is kept only if extending `BayCAP` proves harder.
 - **`c_prior` argument of `BayCAP`**: the prior on the columns of $C$: `"uniform"` (default, $\beta_{ij}=1$, as now), a positive scalar $\beta$ repeated in every cell, `"perks"` ($\beta=1/K$), `"diagonal"` (the diagonal-aware prior of §2.4), or a $K\times K$ array in the paper layout (stored transposed in the model, as `p_c_cond_y`).
-- **Prior registry**: the E10.4 priors on $\pi^Q$, computed from $\pi^V$ and $G$; `binform` stays unchanged.
-- **Label-free $\tau$ selection** (E10.5 only): calibration bags from $V_{\mathrm{cal}}$ and the selection rule of E10.5.
+- **Prior registry**: the E5.4 priors on $\pi^Q$, computed from $\pi^V$ and $G$; `binform` stays unchanged.
+- **Label-free $\tau$ selection** (E5.5 only): calibration bags from $V_{\mathrm{cal}}$ and the selection rule of E5.5.
 
 Tests:
 
@@ -319,26 +319,26 @@ Reproducibility and comparability:
 
 - all runs go to the `calibration` experiment of [[ext2_baycap|Extension 2]], under `cap.env["OUT_DIR"]/uncawe/calibration`; `main` and `binform` and their output paths are unchanged;
 - every row records $G$, prior on $\pi^Q$, prior on $C$, $\tau$ and tempering variant, seeds, pushforward, and bag protocol;
-- every configuration of E10.1–E10.4 is fitted on all of $V$, so all rows are directly comparable with `main`; E10.5 is not (see its notes);
-- a pilot on two datasets estimates the NUTS cost before the full grid; E10.3 reports NUTS diagnostics for every prior.
+- every configuration of E5.1–E5.4 is fitted on all of $V$, so all rows are directly comparable with `main`; E5.5 is not (see its notes);
+- a pilot on two datasets estimates the NUTS cost before the full grid; E5.3 reports NUTS diagnostics for every prior.
 
 # Appendix
 
 ## A. Toy simulations
 
-- `uv run python scripts/toys/ext10_prior_calibration.py` (§2.3; defaults: $200{,}000$ bags, seed $0$) is seeded and prints the table of §2.3.
-- [proposal] a toy for §2.4: simulate validation confusion columns for chosen $K$, $n^s_j$ and $r$, compute the conjugate posterior of $C$ for each prior on $C$ (no NUTS), and print the predicted and simulated bias, the ratio bias/sd, and the coverage of the accuracy interval. It checks the formulas of §2.4 before E10.3 and provides the worked numbers for the paper.
+- `uv run python scripts/toys/ext5_prior_calibration.py` (§2.3; defaults: $200{,}000$ bags, seed $0$) is seeded and prints the table of §2.3.
+- [proposal] a toy for §2.4: simulate validation confusion columns for chosen $K$, $n^s_j$ and $r$, compute the conjugate posterior of $C$ for each prior on $C$ (no NUTS), and print the predicted and simulated bias, the ratio bias/sd, and the coverage of the accuracy interval. It checks the formulas of §2.4 before E5.3 and provides the worked numbers for the paper.
 
 ## B. Relation to other extensions
 
-- **[[ext2_baycap|Extension 2]]**: supplies BayCAP, the two pushforwards, the sources of miscalibration (source (iv) motivates E10.3), the dataset subset, the `calibration` experiment and the $\tau=1$ draws; H0 there gates the comparison of E10.2.
-- **[[ext3_uncertainty_budget|Extension 3]]**: supplies the $\lvert U\rvert$ axis used by E10.2 and E10.4.
-- **[[baycap_kdey|BayCAP-KDEy]]**: `BayesianKDEy` also has a temperature. Out of scope here.
-- **[[optional_extensions]]**: §1 covers post-hoc interval rescaling, a different estimator from in-model tempering. Its former §4 (full informative-prior study) and §5 (label-free temperature selection) were revived here on 2026-10-15, as E10.4 and E10.5.
+- **[[ext2_baycap|Extension 2]]**: supplies BayCAP, the two pushforwards, the sources of miscalibration (source (iv) motivates E5.3), the dataset subset, the `calibration` experiment and the $\tau=1$ draws; H0 there gates the comparison of E5.2.
+- **[[ext4_uncertainty_budget|Extension 4]]**: supplies the $\lvert U\rvert$ axis used by E5.2 and E5.4.
+- **[[ext3_posterior_propagation|Extension 3]]** (BayCAP-KDEy, SQS-B): `BayesianKDEy` also has a temperature; Extension 3 keeps $\tau=1$, and tempering BayesKDEy belongs to this extension (user's decision of 2026-10-27), with no experiment designed yet.
+- **[[optional_extensions]]**: §1 covers post-hoc interval rescaling, a different estimator from in-model tempering. Its former §4 (full informative-prior study) and §5 (label-free temperature selection) were revived here on 2026-10-15, as E5.4 and E5.5.
 
 ## C. Out of scope
 
 - hierarchical or empirical-Bayes priors learned from a stream of target sets;
-- informative priors on $C$ built from external knowledge (e.g. from other classifiers on the same dataset); E10.3 studies only weak default priors;
+- informative priors on $C$ built from external knowledge (e.g. from other classifiers on the same dataset); E5.3 studies only weak default priors;
 - post-hoc interval recalibration;
 - violations of PPS.

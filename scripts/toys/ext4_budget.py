@@ -1,4 +1,4 @@
-"""Toy simulation for Extension 3: the uncertainty budget of CAP intervals as a function of |U| and |V|.
+"""Toy simulation for Extension 4: the uncertainty budget of CAP intervals as a function of |U| and |V|.
 
 Binary problem in the paper's notation, $C_{ij}=P(\\hat Y=\\omega_i\\mid Y=\\omega_j)$. The target
 classifier $h$ has rates $d=\\operatorname{diag}(C)$; the surrogate classifier $s$ used by the
@@ -25,9 +25,9 @@ It also splits the error of the SQS-H point estimate, $\\hat A-A(h,U)=e_1+e_2+e_
 Next to the oracle-$\\pi$ coverage it prints the closed-form prediction $2\\Phi(1.96/\\sqrt{1+r})-1$,
 with $r=\\operatorname{Var}(e_2)/\\operatorname{Var}(e_3)$ computed from $d$, $\\pi^Q$, $n$ and $n_s$.
 
-Reproduces the tables in ``docs/ext3_uncertainty_budget.md`` (Appendix A).
+Reproduces the tables in ``docs/ext4_uncertainty_budget.md`` (Appendix A).
 
-Usage: ``uv run python scripts/toys/ext3_budget.py [--vseeds 40] [--bags 50] [--seed 0]``
+Usage: ``uv run python scripts/toys/ext4_budget.py [--vseeds 40] [--bags 50] [--seed 0]``
 """
 
 import argparse

@@ -1,6 +1,6 @@
 """BayCAP-KDEy with a fixed classifier rate matrix.
 
-This module implements the proposal documented in ``docs/baycap_kdey.md``.
+This module implements the proposal documented in ``docs/ext3_posterior_propagation.md`` (Extension 3).
 The method follows the ``cap-ml`` contingency-table API while delegating the
 Bayesian prevalence posterior to an internally configured QuaPy
 ``BayesianKDEy`` quantifier.

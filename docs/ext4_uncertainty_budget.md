@@ -1,4 +1,4 @@
-# Extension 3: The uncertainty budget of CAP under PPS
+# Extension 4: The uncertainty budget of CAP under PPS
 
 ## 0. Summary
 
@@ -12,7 +12,7 @@ $$
 
 (the second form when all classes have equal $d_j(1-d_j)$ and $\lvert V_j\rvert$), which depends only on $\lvert U\rvert$, $\lvert V\rvert$ and $\pi^Q$ and is used as the axis of the experiments. The paper's comparison at $\lvert U\rvert=1000$ is one point on this map.
 
-**Role in the extended paper.** This extension is the common frame for the method extensions: the realised-table predictive of [[ext2_baycap|Extension 2]] adds the finite-$U$ term to BayCAP, [[sqs_b|SQS-B]] (Extension 8) replaces the prevalence term of SQS-H with a posterior, and [[baycap_kdey|BayCAP-KDEy]] (Extension 9) keeps the prevalence term only. It absorbs proposal A of [[extensions_to_evaluate]] (variance decomposition), which is promoted here.
+**Role in the extended paper.** This extension is the common frame for the method extensions: the realised-table predictive of [[ext2_baycap|Extension 2]] adds the finite-$U$ term to BayCAP, the methods of [[ext3_posterior_propagation|Extension 3]] propagate a Bayesian prevalence posterior: SQS-B replaces the prevalence term of SQS-H with a posterior, and BayCAP-KDEy keeps the prevalence term only, plus the finite-$U$ term in its realised version. It absorbs proposal A of [[extensions_to_evaluate]] (variance decomposition), which is promoted here.
 
 **Candidate methods.** None is required for the main claim; the budget classifies existing and proposed methods. One candidate arises from it: **SQS-H with $U$ and $V$ resampling**, a non-Bayesian completion of SQS-H that resamples both the target sample (for $\hat\pi$) and the validation set (for the quantifier and for $C$) in every draw (§3.6).
 
@@ -23,9 +23,9 @@ $$
 | SQS-H, SQS-S, BayCAP at $\lvert U\rvert=1000$; coverage scored against the realised accuracy $A(h,U_i)$ | [paper] |
 | `RQBS` (SQS-H with a bootstrap of $\hat\pi$, the variant run by `main`), `PrediQuant` (SQS-S), `ACC_BayesCAP` (BayCAP) | [implemented] (`cap-ml`) |
 | `BayCAPKDEy` | [proposal, implemented], not evaluated |
-| Realised-table BayCAP ([[ext2_baycap]]), SQS-B ([[sqs_b]]) | [proposal] |
+| Realised-table BayCAP ([[ext2_baycap]]), SQS-B ([[ext3_posterior_propagation]]) | [proposal] |
 | Error split, budget terms, coverage rule and ratios $\eta$, $r$, oracle ladder, SQS-H with $U$ and $V$ resampling | [new] |
-| Toy simulation behind the numbers in this note (`scripts/toys/ext3_budget.py`) | [implemented] |
+| Toy simulation behind the numbers in this note (`scripts/toys/ext4_budget.py`) | [implemented] |
 | `target_size` study | [proposal] |
 | All hypotheses (H1–H4) | [new hypothesis] |
 
@@ -155,10 +155,11 @@ where $b_q$ is the quantifier's systematic bias propagated to accuracy (containe
 | SQS-H as in the paper (§4.1) | [paper] | bags of size $n$ at the counts $n\hat\pi_j$, drawn from $V$ | yes | no | no | no |
 | `RQBS` (SQS-H as run by `main`) | [implemented] | bootstrap of $\hat\pi$ on $U$, one bag per draw | yes | yes | no | no |
 | SQS-S (§4.2) | [paper] | bags whose true prevalences lie near $\hat\pi$ in estimated-prevalence space | yes | partly (hypothesis) | no | no |
-| SQS-B | [proposal] | posterior of $\pi^Q$, one bag per draw | yes | yes | if the posterior models the quantifier's rates (BayesianCC does) | no |
+| SQS-B | [proposal] ([[ext3_posterior_propagation]]) | posterior of $\pi^Q$, one bag per draw | yes | yes | if the posterior models the quantifier's rates (BayesianCC does); not with BayesKDEy, whose kernel densities are fixed | no |
 | BayCAP (§5) | [paper] | joint posterior of $(\pi^Q,C)$, population pushforward | no | yes | yes | yes |
 | Realised-table BayCAP | [proposal] ([[ext2_baycap]]) | as BayCAP, plus a sampled realised table | yes | yes | yes | yes |
-| BayCAP-KDEy | [proposal, implemented] | posterior of $\pi^Q$, fixed $C^h$ | no | yes | through the posterior | no |
+| BayCAP-KDEy | [proposal, implemented] ([[ext3_posterior_propagation]]) | posterior of $\pi^Q$ (BayesKDEy), fixed $\hat C$ | no | yes | no (kernel densities fixed) | no |
+| BayCAP-KDEy, realised pushforward | [proposal] ([[ext3_posterior_propagation]] E3.1) | as BayCAP-KDEy, plus a sampled realised table | yes | yes | no | no |
 | SQS-H with $U$ and $V$ resampling | [new] | bootstrap of $U$ and of $V$, one bag per draw | yes | yes | yes | yes |
 
 Why SQS-H represents $e_3$: its bags have the same class counts as the target bag and draw class-$\omega_j$ instances from $V_j$, so the number of correct predictions in class $\omega_j$ is $\operatorname{Bin}(n_j,\tilde d_j)$, the same mechanism that generates the target bag with $d_j$ replaced by $\tilde d_j$. SQS-H is a simulator of the bag's luck, with $V$ as a stand-in for the class-conditional distributions. Why it does not represent $e_2$: every bag uses the same $\tilde d$, so $e_2$ is an offset shared by all draws. BayCAP's posterior describes the uncertainty on $(\pi^Q,C)$, but each draw is a population accuracy $d^{(r)\top}\pi^{(r)}$ with no binomial luck of the bag, so it has no $e_3$ ([[ext2_baycap]] §3). BayCAP estimates $\pi^Q$ from the predictions of $h$, not of a surrogate, so its $e_1$ differs in size from that of the SQS family.
@@ -201,7 +202,7 @@ which reduces to $n\sum_j(\pi^Q_j)^2/\lvert V_j\rvert$ when $d_j(1-d_j)$ and $\l
 | BayCAP (population) | $e_1^U$, $e_1^V$, $e_2$ | $e_3$ | $\sigma_3^2/(\sigma_{1U}^2+\sigma_{1V}^2+\sigma_2^2)$ |
 | Realised-table BayCAP; SQS-H with $U$ and $V$ resampling | all | none | $0$ |
 
-$\eta$ equals $r$ only for the reference; for the other methods, the quantifier's terms enter as well. All $\sigma_k$ can be estimated in an experiment with labels (E3.1), so each method's $\eta$ is measurable and the coverage rule is testable (H3).
+$\eta$ equals $r$ only for the reference; for the other methods, the quantifier's terms enter as well. All $\sigma_k$ can be estimated in an experiment with labels (E4.1), so each method's $\eta$ is measurable and the coverage rule is testable (H3).
 
 ### 3.6 The regime hypothesis
 
@@ -239,22 +240,22 @@ The toy simulation (Appendix A) supports all four points in a binary setting.
 
 Primary:
 
-- **H1 (SQS-type intervals degrade with $n$).** At fixed $V$, the coverage of SQS-H and RQBS decreases as $\lvert U\rvert$ grows, faster when $\lvert V_j\rvert$ is small. *Confirmed if* in E3.2 the coverage of RQBS decreases monotonically with $\lvert U\rvert$ on most (dataset, classifier) pairs and the decrease is larger at the smaller $\lvert V\rvert$ level. *Refuted if* coverage is flat in $\lvert U\rvert$; then $e_2$ and $e_1^{V}$ are negligible on real data and the budget adds little to Extension 2.
-- **H2 (BayCAP under-covers at small $n$ and large $V$).** The coverage of BayCAP with the population pushforward increases with $\lvert U\rvert$ at fixed $V$ and is below nominal where its $\eta=\sigma_3^2/(\sigma_{1U}^2+\sigma_{1V}^2+\sigma_2^2)$ is large (§3.6). *Confirmed if* in E3.2 coverage increases with $\lvert U\rvert$ at fixed $V$ and decreases with $\lvert V\rvert$ at fixed $\lvert U\rvert$. *Refuted if* BayCAP over-covers at every $r$; then the fixed-count likelihood (source (i) of [[ext2_baycap]] §3) or prior effects dominate, and the budget does not explain BayCAP.
-- **H3 (the budget accounts for the error).** In E3.1, $\operatorname{RMSE}(e_3)$ scales as $n^{-1/2}$, $\operatorname{RMSE}(e_2)$ is constant in $n$ and scales as $\lvert V\rvert^{-1/2}$, and $e_1$ is the sum of a part shrinking with $n$ and a part fixed given $V$. *Confirmed if* the fitted slopes on log–log axes are within $\pm0.15$ of the predicted ones and, for every method, the coverage plotted against its $\eta$ (computed from the variances of the parts estimated in E3.1) lies within $\pm0.05$ of $2\Phi(1.96/\sqrt{1+\eta})-1$ on most (dataset, classifier) pairs. *Refuted if* coverage does not follow $\eta$; then non-normality, the within-group correlations of §3.2 or quantifier bias $b_q$ matter, and the budget must be refined.
+- **H1 (SQS-type intervals degrade with $n$).** At fixed $V$, the coverage of SQS-H and RQBS decreases as $\lvert U\rvert$ grows, faster when $\lvert V_j\rvert$ is small. *Confirmed if* in E4.2 the coverage of RQBS decreases monotonically with $\lvert U\rvert$ on most (dataset, classifier) pairs and the decrease is larger at the smaller $\lvert V\rvert$ level. *Refuted if* coverage is flat in $\lvert U\rvert$; then $e_2$ and $e_1^{V}$ are negligible on real data and the budget adds little to Extension 2.
+- **H2 (BayCAP under-covers at small $n$ and large $V$).** The coverage of BayCAP with the population pushforward increases with $\lvert U\rvert$ at fixed $V$ and is below nominal where its $\eta=\sigma_3^2/(\sigma_{1U}^2+\sigma_{1V}^2+\sigma_2^2)$ is large (§3.6). *Confirmed if* in E4.2 coverage increases with $\lvert U\rvert$ at fixed $V$ and decreases with $\lvert V\rvert$ at fixed $\lvert U\rvert$. *Refuted if* BayCAP over-covers at every $r$; then the fixed-count likelihood (source (i) of [[ext2_baycap]] §3) or prior effects dominate, and the budget does not explain BayCAP.
+- **H3 (the budget accounts for the error).** In E4.1, $\operatorname{RMSE}(e_3)$ scales as $n^{-1/2}$, $\operatorname{RMSE}(e_2)$ is constant in $n$ and scales as $\lvert V\rvert^{-1/2}$, and $e_1$ is the sum of a part shrinking with $n$ and a part fixed given $V$. *Confirmed if* the fitted slopes on log–log axes are within $\pm0.15$ of the predicted ones and, for every method, the coverage plotted against its $\eta$ (computed from the variances of the parts estimated in E4.1) lies within $\pm0.05$ of $2\Phi(1.96/\sqrt{1+\eta})-1$ on most (dataset, classifier) pairs. *Refuted if* coverage does not follow $\eta$; then non-normality, the within-group correlations of §3.2 or quantifier bias $b_q$ matter, and the budget must be refined.
 
 Secondary:
 
-- **H4 (completing the budget restores coverage).** Methods that represent all terms are within $\pm0.03$ of nominal coverage across the grid, while each partial method fails where its missing term dominates. *Confirmed if* in E3.2 the realised-table BayCAP and SQS-H with $U$ and $V$ resampling meet this tolerance at every $(\lvert U\rvert,\lvert V\rvert)$ level. *Refuted if* they fail at large $n$ as well; then quantifier bias $b_q$ is the dominant fixed term and no variance-based correction suffices.
+- **H4 (completing the budget restores coverage).** Methods that represent all terms are within $\pm0.03$ of nominal coverage across the grid, while each partial method fails where its missing term dominates. *Confirmed if* in E4.2 the realised-table BayCAP and SQS-H with $U$ and $V$ resampling meet this tolerance at every $(\lvert U\rvert,\lvert V\rvert)$ level. *Refuted if* they fail at large $n$ as well; then quantifier bias $b_q$ is the dominant fixed term and no variance-based correction suffices.
 
 ## 6. Paper outline
 
 | Paper location | Content | Claim | Evidence |
 |---|---|---|---|
-| §3 (problem), new subsection "Target estimand and uncertainty budget" | §1–§3.3 of this note | The CAP error splits into prevalence, rate-matrix and finite-$U$ parts with different scaling. | derivation; F0 (toy); E3.1 |
-| §4–§5 (methods), one table and the coverage rule | §3.4–§3.5 | Each method represents only some parts; its coverage follows from the ratio $\eta$ of missing to represented variance. | tables of §3.4–§3.5; E3.1 (H3) |
-| §5, new subsections from Extensions 2 and 8 | completed methods | Adding the missing term restores calibration. | E3.2 (H4); [[ext10_baycap_priors_tempering]] E10.2 |
-| §6 (experiments), new subsection "Target and validation size" | E3.1, E3.2 | The paper's ranking at $\lvert U\rvert=1000$ is regime-dependent. | F1, F2, T1 |
+| §3 (problem), new subsection "Target estimand and uncertainty budget" | §1–§3.3 of this note | The CAP error splits into prevalence, rate-matrix and finite-$U$ parts with different scaling. | derivation; F0 (toy); E4.1 |
+| §4–§5 (methods), one table and the coverage rule | §3.4–§3.5 | Each method represents only some parts; its coverage follows from the ratio $\eta$ of missing to represented variance. | tables of §3.4–§3.5; E4.1 (H3) |
+| §5, new subsections from Extensions 2 and 3 | completed methods | Adding the missing term restores calibration. | E4.2 (H4); [[ext5_baycap_priors_tempering]] E5.2 |
+| §6 (experiments), new subsection "Target and validation size" | E4.1, E4.2 | The paper's ranking at $\lvert U\rvert=1000$ is regime-dependent. | F1, F2, T1 |
 | §7 (conclusions) | one paragraph | Practical guidance: which method to use given $\lvert U\rvert$ and $\lvert V\rvert$. | F2 |
 
 Wording if results are mixed: if H1 is refuted, the budget becomes a short section explaining the estimand gap, and Extension 2 carries the main claim; if H3 is refuted but H1 and H2 hold, the regime map is presented empirically without the closed-form ratio.
@@ -264,10 +265,10 @@ Wording if results are mixed: if H1 is refuted, the budget becomes a short secti
 | Item | Question | Content | What it must show |
 |---|---|---|---|
 | F0 (optional) | toy | coverage vs $r$ for each method of Appendix A | the predicted shape of F2 |
-| F1 | E3.1 | RMSE of $e_1$, $e_2$, $e_3$ vs $\lvert U\rvert$ (log–log), one panel per $\lvert V\rvert$ level, one line per dataset (LR) | the scaling of H3 |
-| F2 | E3.2 | (a) coverage vs $r$ (log), one panel per method, one point per (dataset, classifier, $\lvert U\rvert$, $\lvert V\rvert$), dashed line at $0.95$; (b) coverage vs each method's $\eta$ (log), all methods in one panel, with the curve $2\Phi(1.96/\sqrt{1+\eta})-1$ | (a) the regime map, H1, H2, H4; (b) the coverage rule, H3 |
-| T1 | E3.2 | mean Winkler rank per method, one column block per $\lvert U\rvert$ at full $V$; oracle references as unranked columns (`tables/rank.py`) | whether the ranking changes with $\lvert U\rvert$ |
-| T2 (appendix) | E3.1 | per-dataset bias and standard deviation of $\hat\pi$ (L1) and $\hat A$ vs $\lvert U\rvert$ | quantifier bias $b_q$, needed to interpret H4 |
+| F1 | E4.1 | RMSE of $e_1$, $e_2$, $e_3$ vs $\lvert U\rvert$ (log–log), one panel per $\lvert V\rvert$ level, one line per dataset (LR) | the scaling of H3 |
+| F2 | E4.2 | (a) coverage vs $r$ (log), one panel per method, one point per (dataset, classifier, $\lvert U\rvert$, $\lvert V\rvert$), dashed line at $0.95$; (b) coverage vs each method's $\eta$ (log), all methods in one panel, with the curve $2\Phi(1.96/\sqrt{1+\eta})-1$ | (a) the regime map, H1, H2, H4; (b) the coverage rule, H3 |
+| T1 | E4.2 | mean Winkler rank per method, one column block per $\lvert U\rvert$ at full $V$; oracle references as unranked columns (`tables/rank.py`) | whether the ranking changes with $\lvert U\rvert$ |
+| T2 (appendix) | E4.1 | per-dataset bias and standard deviation of $\hat\pi$ (L1) and $\hat A$ vs $\lvert U\rvert$ | quantifier bias $b_q$, needed to interpret H4 |
 
 Macro-F1 and macro-K versions of F2 go to the appendix.
 
@@ -281,9 +282,9 @@ Common to all: APP bags drawn with replacement from the test pool, as in `main`;
 - $\lvert V\rvert$ levels: the full $V$ and a stratified subsample of $1/4$ (and $1/16$ on the largest datasets), nested ($V_{1/16}\subset V_{1/4}\subset V$) and seeded; the split $L/V$, the classifier $h$, and the allocation $\rho$ used inside SQS-S are unchanged, so Extension 6 stays separate;
 - $S_V=5$ outer seeds for each subsampled $V$ level (for the full $V$, the seed changes the $L/V$ split; $h$ is retrained per seed).
 
-Order and gates: pilot → E3.1 → E3.2 → E3.3.
+Order and gates: pilot → E4.1 → E4.2 → E4.3.
 
-### E3.1: budget validation
+### E4.1: budget validation
 
 - **Goal / hypothesis:** measure $e_1$, $e_2$, $e_3$ on real data and their scaling; H3.
 - **Inputs:** subset datasets; quantifier PACC as in the paper; methods RQBS and SQS-H (point $\hat\pi$), which are cheap.
@@ -291,26 +292,26 @@ Order and gates: pilot → E3.1 → E3.2 → E3.3.
 - **Oracle ladder (references, never methods):** (a) true $\pi^Q$: SQS bags at the true counts, removing $e_1$; (b) $d^{\text{pool}}$ from the labelled pool, removing $e_2$; (c) scoring against $d^{\text{pool}\top}\pi^Q$, isolating $e_3$.
 - **Outputs:** per bag: $\hat\pi$, $\hat A$, $e_1^U$, $e_1^V$, $e_2$, $e_3$, interval bounds; prevalence sidecars. $\pi^\infty(V)$ is approximated, once per ($V$ seed, prevalence), by the estimate of the quantifier fitted on that $V$ on one very large bag (e.g. $10^5$ instances drawn with replacement from the pool at $\pi^Q$); then $e_1^V$ follows from its definition in §3.1 and $e_1^U=e_1-e_1^V$.
 - **Measures:** RMSE and mean of each $e_k$; bias and standard deviation of $\hat\pi$ and $\hat A$; log–log slopes vs $\lvert U\rvert$ and $\lvert V\rvert$.
-- **Interpretation:** H3; the estimated variances of $e_1^U$, $e_1^V$, $e_2$, $e_3$ give each method's $\eta$ for E3.2, and the mean of $e_1$ over $V$ seeds estimates the quantifier bias $b_q$.
+- **Interpretation:** H3; the estimated variances of $e_1^U$, $e_1^V$, $e_2$, $e_3$ give each method's $\eta$ for E4.2, and the mean of $e_1$ over $V$ seeds estimates the quantifier bias $b_q$.
 - **Visualization:** F1, T2.
 - **Cost:** no NUTS; dominated by bag sampling, of order $m\cdot n$ per bag.
 
-### E3.2: regime map
+### E4.2: regime map
 
 - **Goal / hypothesis:** coverage of every method across $(\lvert U\rvert,\lvert V\rvert)$; H1, H2, H4.
 - **Inputs:** subset datasets; APP prevalences ($100$ uniformly drawn prevalence vectors per cell, as in the paper, with fixed seeds shared by all methods and cells).
-- **Methods:** SQS-H (point $\hat\pi$), RQBS, SQS-S (`PrediQuant`, after the fix of [[work_plan]] FIX-1), BayCAP (population pushforward), realised-table BayCAP (same draws, no extra NUTS run), SQS-B, BayCAP-KDEy, SQS-H with $U$ and $V$ resampling; oracle references from E3.1.
+- **Methods:** SQS-H (point $\hat\pi$), RQBS, SQS-S (`PrediQuant`, after the fix of [[work_plan]] FIX-1), BayCAP (population pushforward), realised-table BayCAP (same draws, no extra NUTS run), SQS-B, BayCAP-KDEy (both pushforwards, with the implementations of [[ext3_posterior_propagation]] E3.1), SQS-H with $U$ and $V$ resampling; oracle references from E4.1.
 - **Varied:** $\lvert U\rvert$; $\lvert V\rvert$ level; $V$ seed.
-- **Outputs:** metric samples per bag and method; $r$ per cell; $\eta$ per method and cell, from the variances of the parts estimated in E3.1 for the same cell.
+- **Outputs:** metric samples per bag and method; $r$ per cell; $\eta$ per method and cell, from the variances of the parts estimated in E4.1 for the same cell.
 - **Measures:** coverage (clustered standard error), amplitude, Winkler, AE.
 - **Interpretation:** H1 from the SQS family, H2 from BayCAP, H4 from the completed methods; the cell $\lvert U\rvert=1000$, full $V$ reproduces the paper's setting (comparability check with `main`).
 - **Visualization:** F2, T1.
 - **Cost:** NUTS dominates: one BayCAP run per bag, shared by both pushforwards; BayesianKDEy and SQS-B add their own posterior runs. The pilot (two datasets, LR, $20$ bags) estimates the cost; if needed, the BayCAP family runs on $S_V=3$ seeds.
 
-### E3.3: robustness
+### E4.3: robustness
 
 - **Goal / hypothesis:** whether the regime map depends on the prevalence, on $K$, or on the metric.
-- **Inputs:** E3.1 and E3.2 outputs; no new runs except macro-F1 and macro-K computed from stored tables.
+- **Inputs:** E4.1 and E4.2 outputs; no new runs except macro-F1 and macro-K computed from stored tables.
 - **Varied:** prevalence type (uniform, skewed, near-vertex); binary vs multiclass; metric.
 - **Measures:** coverage vs $r$ per stratum.
 - **Interpretation:** macro-K should show small $e_1$ ([[ext1_metrics]]); near-vertex prevalences raise $\sum_j(\pi^Q_j)^2$ and therefore $r$ at the same $\lvert U\rvert$.
@@ -348,7 +349,7 @@ Reproducibility and comparability:
 
 ## A. Toy simulation
 
-`uv run python scripts/toys/ext3_budget.py` (defaults: $40$ validation sets, $50$ bags per validation set, $m=1000$ samples per interval, seed $0$; about $3$ minutes). Binary, toy only: $\pi^Q_1=0.5$ with fixed counts, $n_s$ validation instances per class, quantifier ACC on a surrogate classifier with rates $P(\hat Y_s=\omega_1\mid Y=\omega_0)=0.25$, $P(\hat Y_s=\omega_1\mid Y=\omega_1)=0.75$, conditionally independent of $h$ given $Y$ (a simplification). Two target classifiers: "flat", $d=(0.90,0.70)$, as in [[ext2_baycap]], and "steep", $d=(0.95,0.55)$, for which the prevalence term is larger. BayCAP is computed exactly on a grid, as in `ext2_estimand_gap.py`. "Oracle $\pi$" uses the true counts and is a reference. Coverage of the $95\%$ interval against the realised accuracy, $2000$ bags per row; "closed form" is $2\Phi(1.96/\sqrt{1+r})-1$ (§3.5), the prediction for the oracle-$\pi$ column, with $r=\operatorname{Var}(e_2)/\operatorname{Var}(e_3)$ computed from $d$, $\pi^Q$, $n$, $n_s$ (here $r=0.5\,n/n_s$ for both classifiers); the Monte Carlo error is about $\pm0.01$ for methods whose coverage does not depend on the validation set, and larger for the SQS family in the rows with large $r$, where its coverage varies strongly between validation sets (the script prints the 10th–90th percentile).
+`uv run python scripts/toys/ext4_budget.py` (defaults: $40$ validation sets, $50$ bags per validation set, $m=1000$ samples per interval, seed $0$; about $3$ minutes). Binary, toy only: $\pi^Q_1=0.5$ with fixed counts, $n_s$ validation instances per class, quantifier ACC on a surrogate classifier with rates $P(\hat Y_s=\omega_1\mid Y=\omega_0)=0.25$, $P(\hat Y_s=\omega_1\mid Y=\omega_1)=0.75$, conditionally independent of $h$ given $Y$ (a simplification). Two target classifiers: "flat", $d=(0.90,0.70)$, as in [[ext2_baycap]], and "steep", $d=(0.95,0.55)$, for which the prevalence term is larger. BayCAP is computed exactly on a grid, as in `ext2_estimand_gap.py`. "Oracle $\pi$" uses the true counts and is a reference. Coverage of the $95\%$ interval against the realised accuracy, $2000$ bags per row; "closed form" is $2\Phi(1.96/\sqrt{1+r})-1$ (§3.5), the prediction for the oracle-$\pi$ column, with $r=\operatorname{Var}(e_2)/\operatorname{Var}(e_3)$ computed from $d$, $\pi^Q$, $n$, $n_s$ (here $r=0.5\,n/n_s$ for both classifiers); the Monte Carlo error is about $\pm0.01$ for methods whose coverage does not depend on the validation set, and larger for the SQS family in the rows with large $r$, where its coverage varies strongly between validation sets (the script prints the 10th–90th percentile).
 
 Flat $d=(0.90,0.70)$:
 
@@ -395,19 +396,19 @@ What the toy shows:
 - the realised-table BayCAP and SQS-H with $U$ and $V$ resampling stay between $0.88$ and $0.98$ in every row (H4); the realised-table BayCAP dips to $0.88$–$0.92$ at $n_s=100$ and large $n$ with flat $d$, a residual not investigated here;
 - the paper's SQS-H runs at $n=1000$; in the toy, the regime of $r$ where SQS-H covers well ($r\lesssim0.2$) needs about five validation instances per class for every target instance of that class.
 
-What is not known: whether real quantifiers (PACC with a cross-validated surrogate), multiclass problems and real validation sizes reproduce these trends, and how large the quantifier bias $b_q$ is. The paper's datasets have $\lvert V\rvert$ equal to $35\%$ of the dataset, so $r$ at $\lvert U\rvert=1000$ varies widely across them; E3.2 measures where each dataset falls.
+What is not known: whether real quantifiers (PACC with a cross-validated surrogate), multiclass problems and real validation sizes reproduce these trends, and how large the quantifier bias $b_q$ is. The paper's datasets have $\lvert V\rvert$ equal to $35\%$ of the dataset, so $r$ at $\lvert U\rvert=1000$ varies widely across them; E4.2 measures where each dataset falls.
 
 ## B. Relation to other extensions
 
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics; macro-K is a sharp test of the budget (small $e_1$).
-- **[[ext2_baycap|Extension 2]]**: its estimand gap is the term $e_3$; its hypothesis H2 is tested within datasets by E3.2; its realised-table predictive is one of the completed methods. Both studies share the dataset subset and the BayCAP draws.
-- **Extension 6**: varies the allocation $\rho$ at fixed $\lvert V\rvert$; here $\lvert V\rvert$ is subsampled at fixed allocation. A factorial $\rho\times\lvert V\rvert$ is out of scope.
-- **[[sqs_b|Extension 8]]** and **[[baycap_kdey|Extension 9]]**: their methods are placed in the table of §3.4 and enter E3.2; a posterior-propagation study comparing them can reuse the grid of E3.2.
+- **[[ext2_baycap|Extension 2]]**: its estimand gap is the term $e_3$; its hypothesis H2 is tested within datasets by E4.2; its realised-table predictive is one of the completed methods. Both studies share the dataset subset and the BayCAP draws.
+- **Extension 6** ([[extensions]] §6): varies the allocation $\rho$ at fixed $\lvert V\rvert$; here $\lvert V\rvert$ is subsampled at fixed allocation. A factorial $\rho\times\lvert V\rvert$ is out of scope.
+- **[[ext3_posterior_propagation|Extension 3]]**: its methods (SQS-B, BayCAP-KDEy in both pushforwards) are placed in the table of §3.4 and enter E4.2 with the same implementations; Extension 3 itself evaluates them only on the protocol of `main`.
 - **[[extensions_to_evaluate]] A**: promoted into this note (§2–§3).
 
 ## C. Out of scope
 
 - violations of PPS (moved to [[optional_extensions]] §2);
-- calibration of the method-specific representation of $\pi^Q$ as such (Extension 8);
+- calibration of the method-specific representation of $\pi^Q$ as such (Extension 3);
 - the validation allocation $\rho$ (Extension 6);
 - natural sampling of the target bags beyond the remark of §3.7 ([[ext2_baycap]] Q2(b) covers it for BayCAP).

@@ -84,7 +84,7 @@ Everything in this part is **[code-only]**.
 
 ## II.4 The `BayCAPKDEy` method
 
-`methods/baycap_kdey.py:BayCAPKDEy` implements the BayCAP-KDEy proposal of [[baycap_kdey]]. It pushes joint `BayesianKDEy` prevalence draws $\pi^{(r)}$ (internal MLP surrogate, kernel in $\{$Gaussian, Aitchison, ILR$\}$) through the fixed rate matrix $C^h$ measured on $V$, giving $T^{(r)}=C^h\operatorname{diag}(\pi^{(r)})$. Its estimand is the population table; uncertainty on $C^h$ and finite-$U$ fluctuation are not represented. It has unit tests (`tests/test_baycap_kdey.py`) and has not been evaluated in any experiment.
+`methods/baycap_kdey.py:BayCAPKDEy` implements the BayCAP-KDEy proposal of [[ext3_posterior_propagation]] (Extension 3). It pushes joint `BayesianKDEy` prevalence draws $\pi^{(r)}$ (internal MLP surrogate, kernel in $\{$Gaussian, Aitchison, ILR$\}$) through the fixed rate matrix $C^h$ measured on $V$, giving $T^{(r)}=C^h\operatorname{diag}(\pi^{(r)})$. Its estimand is the population table; uncertainty on $C^h$ and finite-$U$ fluctuation are not represented. It has unit tests (`tests/test_baycap_kdey.py`) and has not been evaluated in any experiment.
 
 ## II.5 The `BayCAP` method with population or realised-table estimand
 
@@ -105,7 +105,7 @@ The CBPE variants `B-CBPE` and `BE-CBPE` were run in earlier versions. Only `plo
 
 ## II.8 Toy simulations
 
-`scripts/toys/ext2_estimand_gap.py`, `scripts/toys/ext10_prior_calibration.py` and `scripts/toys/ext3_budget.py` are seeded toy simulations that support [[ext2_baycap]], [[ext10_baycap_priors_tempering]] and [[ext3_uncertainty_budget]]. Their numbers are toy results, not experiment results.
+`scripts/toys/ext2_estimand_gap.py`, `scripts/toys/ext5_prior_calibration.py` and `scripts/toys/ext4_budget.py` are seeded toy simulations that support [[ext2_baycap]], [[ext5_baycap_priors_tempering]] and [[ext4_uncertainty_budget]]. Their numbers are toy results, not experiment results.
 
 ## II.9 Shared infrastructure and tests
 

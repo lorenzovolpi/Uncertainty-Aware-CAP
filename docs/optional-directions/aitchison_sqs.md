@@ -298,6 +298,5 @@ This formulation links target bootstrapping to out-of-sample calibration, has a 
 - [Uncertainty-Aware Classifier Accuracy Prediction under Prior Probability Shift](papers/02__Uncertainty_Aware_Classifier_Accuracy_Prediction______QCDS_2026_.pdf)
 - [Geometry-Aware Bayesian Quantification via Compositional Data Analysis (KDE-Bayes)](papers/kde_bayes.pdf)
 - [Aitchison. *The statistical analysis of compositional data*. JRSS-B 1982.](https://academic.oup.com/jrsssc/article/34/2/129/6985271)
-- [SQS-B proposal](sqs_b.md)
-- [BayCAP-KDEy proposal](baycap_kdey.md)
+- [SQS-B and BayCAP-KDEy (Extension 3)](../ext3_posterior_propagation.md)
 - [Possible extensions overview](extensions.md)

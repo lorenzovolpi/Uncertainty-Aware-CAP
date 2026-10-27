@@ -18,7 +18,7 @@ Labels used throughout:
 
 ## A. Estimand clarification and variance decomposition [promoted]
 
-Promoted into [[ext3_uncertainty_budget|Extension 3]], which now contains the estimand clarification, the exact error split, the variance budget (terms (1)–(3) of the former proposal, plus the parts of the prevalence error that are fixed given $V$), the table of terms represented by each method, and the caveats. The illustrative numbers of the former proposal were replaced by the seeded toy `scripts/toys/ext3_budget.py`.
+Promoted into [[ext4_uncertainty_budget|Extension 4]], which now contains the estimand clarification, the exact error split, the variance budget (terms (1)–(3) of the former proposal, plus the parts of the prevalence error that are fixed given $V$), the table of terms represented by each method, and the caveats. The illustrative numbers of the former proposal were replaced by the seeded toy `scripts/toys/ext4_budget.py`.
 
 ## B. Transductive BayCAP and the link to CBPE [new]
 
@@ -45,10 +45,10 @@ A crisp-prediction variant uses only $\hat y_x$. In that case each instance is
 correct with probability equal to the *precision*,
 $P(Y=\hat y\mid\hat Y=\hat y)=C_{\hat y\hat y}\pi_{\hat y}/(C\pi)_{\hat y}$,
 rather than the recall $d_j$. This changes the finite-$U$ term of the budget of
-[[ext3_uncertainty_budget|Extension 3]], because it conditions on observed
+[[ext4_uncertainty_budget|Extension 4]], because it conditions on observed
 predictions instead of true class counts.
 
-*Note:* the crisp-prediction variant (realised-table posterior predictive) is now part of [[ext2_baycap|Extension 2]], where it is studied as a correction of the estimand; its comparison with tempering is in [[ext10_baycap_priors_tempering|Extension 10]]. This proposal retains the soft-posterior variant and its link to CBPE.
+*Note:* the crisp-prediction variant (realised-table posterior predictive) is now part of [[ext2_baycap|Extension 2]], where it is studied as a correction of the estimand; its comparison with tempering is in [[ext5_baycap_priors_tempering|Extension 5]]. This proposal retains the soft-posterior variant and its link to CBPE.
 
 ### What needs evaluation
 
@@ -71,7 +71,7 @@ SQS-S [paper] is structurally a rejection ABC sampler, with these pieces:
 - **summary statistic:** $q(\sigma)$;
 - **tolerance:** set by $\gamma$.
 
-This interpretation, already mentioned in Extension 4 of [[extensions]],
+This interpretation, already mentioned in Extension 6 of [[extensions]],
 suggests concrete methodological changes rather than a comparison of distances:
 
 - **Regression adjustment** (in the style of Beaumont et al., 2002). Fit
@@ -130,11 +130,11 @@ variant that weights bags by proximity in $q$-space would connect to proposal C.
 ## Possible combination
 
 If these hypotheses survive evaluation, they would attach to the uncertainty
-budget of [[ext3_uncertainty_budget|Extension 3]] (the former proposal A),
+budget of [[ext4_uncertainty_budget|Extension 4]] (the former proposal A),
 which is now the conceptual core:
 
 - evaluate on Extension 1 (metrics) and on the $(\lvert U\rvert,\lvert V\rvert)$
-  grid of Extension 3 of [[extensions]];
+  grid of Extension 4 of [[extensions]];
 - include one calibration method, C or D.
 
 ## References
@@ -142,4 +142,4 @@ which is now the conceptual core:
 - [Uncertainty-Aware Classifier Accuracy Prediction under Prior Probability Shift](papers/02__Uncertainty_Aware_Classifier_Accuracy_Prediction______QCDS_2026_.pdf)
 - Beaumont, Zhang, Balding. Approximate Bayesian computation in population genetics. *Genetics*, 2002.
 - Podkopaev, Ramdas. Distribution-free uncertainty quantification for classification under label shift. *UAI*, 2021.
-- [[extensions]] · [[sqs_b]] · [[baycap_kdey]] · [[aitchison_sqs]]
+- [[extensions]] · [[ext3_posterior_propagation]] · [[aitchison_sqs]]

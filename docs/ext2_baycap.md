@@ -244,7 +244,7 @@ which is negative whenever the classifier beats guessing ($r_j>1/K$): every reca
 
 **Why the interval is displaced and not just wide.** The posterior standard deviation of a recall is about $\sqrt{\tilde r_j(1-\tilde r_j)/(n^s_j+K+1)}$, the usual standard error of a proportion with the imaginary counts included. The shift shrinks like $K/n^s_j$, the standard deviation only like $1/\sqrt{n^s_j}$, so with large $K$ the shift is several standard deviations. Averaging into accuracy makes it worse: the random errors of the $K$ recalls partly cancel, so the standard deviation of the accuracy is smaller than that of each recall, while the prior pushes every recall in the same direction, so the shifts add up. The result is a narrow interval in the wrong place, and the predictive, which only adds spread around the same centre, cannot repair it.
 
-Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$ (one imaginary count per column instead of $K$), are studied in [[ext10_baycap_priors_tempering|Extension 10]]. E2.4 tests instead a prior whose centre and weight are estimated from $V$ (§T.9): $\operatorname{Dir}(1/K)$ puts most of its mass near the edges of the simplex, which is hard to justify as a description of the classifier, while a prior estimated from the data says what $V$ says.
+Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$ (one imaginary count per column instead of $K$), are studied in [[ext5_baycap_priors_tempering|Extension 5]]. E2.4 tests instead a prior whose centre and weight are estimated from $V$ (§T.9): $\operatorname{Dir}(1/K)$ puts most of its mass near the edges of the simplex, which is hard to justify as a description of the classifier, while a prior estimated from the data says what $V$ says.
 
 **The prior on $\pi^Q$ is not a cause.** `main` draws the target prevalences uniformly over all possible prevalence vectors (quapy's `UPP`), which is exactly BayCAP's default prior $\operatorname{Dir}(\mathbf 1)$ on $\pi^Q$. When the prior matches how the bags are generated, the interval for $\pi^Q$ covers at the nominal rate on average over the bags, so this prior alone cannot explain the under-coverage.
 
@@ -437,16 +437,16 @@ Reproducibility and comparability:
 
 ## B. Relation to other extensions
 
-- **[[ext10_baycap_priors_tempering|Extension 10]]**: priors (on $\pi^Q$ and on $C$) and tempering of BayCAP (temperature $\tau$); it compares tempering with the realised-table predictive and studies priors on $C$ that avoid the shift of §T.5, such as $\operatorname{Dir}(1/K)$; the empirical-Bayes prior of E2.4 is tested here, because it is the fix suggested by E2.2.
+- **[[ext5_baycap_priors_tempering|Extension 5]]**: priors (on $\pi^Q$ and on $C$) and tempering of BayCAP (temperature $\tau$); it compares tempering with the realised-table predictive and studies priors on $C$ that avoid the shift of §T.5, such as $\operatorname{Dir}(1/K)$; the empirical-Bayes prior of E2.4 is tested here, because it is the fix suggested by E2.2.
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics.
-- **[[ext3_uncertainty_budget|Extension 3]]**: the estimand gap is its finite-$U$ term; its regime map varies $\lvert U\rvert$ and $\lvert V\rvert$.
+- **[[ext4_uncertainty_budget|Extension 4]]**: the estimand gap is its finite-$U$ term; its regime map varies $\lvert U\rvert$ and $\lvert V\rvert$.
 - **[[extensions_to_evaluate#B. Transductive BayCAP and the link to CBPE [new]|Proposal B]]**: keeps the soft-posterior (CBPE mixture) variant of the realised-table predictive.
-- **[[baycap_kdey|BayCAP-KDEy]]**: also targets a population table, so the estimand gap applies to it. Out of scope here.
+- **[[ext3_posterior_propagation|Extension 3]]**: BayCAP-KDEy also targets a population table, so the estimand gap applies to it; Extension 3 applies the realised-table predictive of §T.3 to it (E3.1).
 - **[[optional_extensions]]**: §1 covers post-hoc interval rescaling.
 
 ## C. Out of scope
 
-- tempering, informative priors, and priors on $C$ other than the empirical-Bayes prior of E2.4 ([[ext10_baycap_priors_tempering|Extension 10]]); the fully hierarchical version of that prior, which would change the model of BayesianCC;
+- tempering, informative priors, and priors on $C$ other than the empirical-Bayes prior of E2.4 ([[ext5_baycap_priors_tempering|Extension 5]]); the fully hierarchical version of that prior, which would change the model of BayesianCC;
 - the soft-posterior variant of the realised-table predictive (Proposal B);
 - post-hoc interval recalibration;
 - violations of PPS.
