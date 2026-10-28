@@ -10,7 +10,7 @@ A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, no
 |---|---|
 | `methods/baycap_kdey.py:BayCAPKDEy`: BayesKDEy on an MLP, fixed $\hat C$, population pushforward (work plan §II.4) | [implemented], not evaluated |
 | BayesianMAPLS as quantifier, $h$ as input classifier, realised pushforward | [proposal], needed by E3.1 |
-| E3.1, BayCAP with a fixed $\hat C$: quantifier × input classifier × pushforward, on the `main` protocol | [proposal], not scheduled (no card) |
+| E3.1, BayCAP with a fixed $\hat C$: quantifier × input classifier × pushforward, on the `main` protocol | [proposal], scheduled (card WP-8 of [[work_plan]]), not run |
 | SQS-B | [proposal], not implemented |
 | BayCAP with a fixed $\hat C$ and the posterior of BayesianCC | [proposal], not implemented |
 | A random rate matrix for BayesKDEy (options 1–3 of Appendix B); BayesianMAPLS with a uniform prior or a random calibration map (Appendix E) | [new hypothesis] |
