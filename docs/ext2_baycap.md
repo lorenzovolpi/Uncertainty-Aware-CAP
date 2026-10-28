@@ -438,33 +438,75 @@ $$
 
 **The uniform prior is the case $m=1/K$, $\nu=K$.** BayCAP puts $\operatorname{Dir}(\mathbf 1)$ on the whole column $C_{:j}$. A Dirichlet vector can be built as $p_i=G_i/\sum_lG_l$ from independent $G_i\sim\operatorname{Gamma}(\alpha_i,1)$; the sum of the other entries, $G_{-j}=\sum_{i\ne j}G_i$, is $\operatorname{Gamma}(\sum_{i\ne j}\alpha_i,1)$, and $G_j/(G_j+G_{-j})$ is Beta-distributed. The same construction gives the *aggregation property*: a sum of independent $\operatorname{Gamma}(\alpha_i,1)$ variables is $\operatorname{Gamma}(\sum_i\alpha_i,1)$, so if the entries of a $\operatorname{Dir}(\alpha)$ vector are summed in groups, the group sums form a Dirichlet vector whose parameters are the sums of the $\alpha_i$ in each group. Its mean follows as well: $\mathbb E[p_i]=\alpha_i/\sum_l\alpha_l$, the mean $a/(a+b)$ of the $\operatorname{Beta}(\alpha_i,\sum_{l\ne i}\alpha_l)$ below. So one entry of a $\operatorname{Dir}(\alpha)$ vector is $\operatorname{Beta}(\alpha_j,\sum_{i\ne j}\alpha_i)$, and under $\operatorname{Dir}(\mathbf 1)$ the recall is $\operatorname{Beta}(1,K-1)$: $m=1/K$ and $\nu=K$, chosen without looking at the data. The formulas above then give $\tilde r_j=\frac{f_j+1}{n_j+K}$ and the bias $\frac{K(1/K-r_j)}{n_j+K}$ of §T.5. As a check against the stored results, `isolet` LR ($K=26$, $n_j\approx105$, recall on $V$ $0.95$) gives $26(0.038-0.95)/131\approx-0.181$, the $R_0$ that E2.2 reports.
 
-**Choosing $m$ and $\nu$ from the data.** Empirical Bayes assumes that the $K$ recalls of one classifier are themselves draws from a common Beta, as if the classes were coins from the same factory:
+**Choosing $m$ and $\nu$ from the data.** Empirical Bayes assumes that the $K$ recalls of one classifier are themselves draws from a common Beta, as if the classes were coins from the same factory. The model has two levels, for each class $j$ of one classifier:
 
 $$
-r_j\sim\operatorname{Beta}\big(\nu m,\nu(1-m)\big)\ \text{independently},\qquad f_j\mid r_j\sim\operatorname{Binomial}(n_j,r_j),\qquad j=1,\dots,K.
+\underbrace{r_j\sim\operatorname{Beta}\big(\nu m,\nu(1-m)\big)}_{\text{level 1: the recall of class }j}\ \text{independently},\qquad\underbrace{f_j\mid r_j\sim\operatorname{Binomial}(n_j,r_j)}_{\text{level 2: the count on }V},\qquad j=1,\dots,K.
 $$
 
-The assumption is that the classes are exchangeable: before looking at $V$, there is no reason to expect a particular class to be harder than another. The recalls are not observed, but the counts are, and the probability of a count under $(m,\nu)$ averages the binomial over all possible recalls (with $a=\nu m$, $b=\nu(1-m)$):
+- *Level 2* is the data mechanism above: each of the $n_j$ validation instances of class $\omega_j$ is a toss that $h$ gets right with probability $r_j$.
+- *Level 1* is the assumption that the recalls of the $K$ classes come from a common Beta distribution: $m$ is the typical recall, and $\nu$ says how alike the recalls are. The assumption is that the classes are exchangeable: before looking at $V$, there is no reason to expect a particular class to be harder than another.
+
+**The recalls are not observed, so they are integrated out.** We want the likelihood of $(m,\nu)$, i.e. the probability of the observed counts as a function of $(m,\nu)$. But $(m,\nu)$ do not produce $f_j$ directly: they produce $r_j$, which produces $f_j$, and $r_j$ is not observed. By the law of total probability, we average the binomial probability over all the values $r_j$ could take, each weighted by its Beta density (with $a=\nu m$, $b=\nu(1-m)$):
 
 $$
-P(f_j\mid m,\nu)=\int_0^1\binom{n_j}{f_j}r^{f_j}(1-r)^{n_j-f_j}\frac{r^{a-1}(1-r)^{b-1}}{B(a,b)}\,dr=\binom{n_j}{f_j}\frac{B(f_j+a,\,n_j-f_j+b)}{B(a,b)},
+P(f_j\mid m,\nu)=\int_0^1\underbrace{\binom{n_j}{f_j}r^{f_j}(1-r)^{n_j-f_j}}_{P(f_j\mid r)}\;\underbrace{\frac{r^{a-1}(1-r)^{b-1}}{B(a,b)}}_{p(r\mid m,\nu)}\,dr .
 $$
 
-the beta-binomial distribution: the integral is the definition of $B$ with the exponents $f_j+a$ and $n_j-f_j+b$. The classes are independent, so, dropping the binomial coefficients, the log-likelihood of $(m,\nu)$ is
+This is called the *marginal likelihood*: the recall is "marginalised", integrated out. In words: the probability that a class with $n_j$ instances gets $f_j$ of them right, if its recall was drawn at random from this Beta. Integrating $r_j$ out is also what makes $\nu$ estimable. If we maximised the joint probability over $r_1,\dots,r_K$ as well as over $(m,\nu)$, each $r_j$ would go to $\hat r_j$, the best "factory" would be a Beta concentrated on those exact values, and the fit would degenerate. Integrating $r_j$ out asks instead how much spread the factory must have for counts like these to be likely, given that each count also has binomial noise.
+
+**Why the beta-binomial.** The procedure does not require a particular distribution; the beta-binomial is what comes out of two choices, and both are forced:
+
+1. *The binomial is forced by the data.* Counting the correct instances out of $n_j$ independent tosses gives a binomial (above). We look only at "correct or not", merging all the wrong classes into one face, because the prior we want to learn is a prior on the recall.
+2. *The Beta is forced by BayCAP.* BayCAP puts a Dirichlet prior on each column of $C$, and by the aggregation property (above) the diagonal entry of a Dirichlet column is Beta-distributed. If we want to change only the concentration parameters of BayesianCC's Dirichlet, the prior on the recall must be a Beta; learning, say, a logit-normal prior would not fit back into a Dirichlet.
+3. *Together, the integral has a closed form.* The binomial and the Beta have the same functional form in $r$, powers of $r$ and of $1-r$, so their product is $r^{f_j+a-1}(1-r)^{n_j-f_j+b-1}$, and its integral over $[0,1]$ is, by the definition of the Beta function, $B(f_j+a,\,n_j-f_j+b)$. Hence
 
 $$
-\ell(m,\nu)=\sum_{j=1}^K\Big[\ln B\big(f_j+\nu m,\,n_j-f_j+\nu(1-m)\big)-\ln B\big(\nu m,\,\nu(1-m)\big)\Big],
+P(f_j\mid m,\nu)=\binom{n_j}{f_j}\frac{B(f_j+a,\,n_j-f_j+b)}{B(a,b)},
 $$
 
-and $(\hat m,\hat\nu)$ is its maximum. There is no closed form: the maximum is found numerically over $(\operatorname{logit}m,\ln\nu)$, which can take any real value, with $\ln B$ computed from log-Gamma functions. The cost is negligible.
+the beta-binomial distribution. This is conjugacy at work: each term of the likelihood is a few log-Gamma functions, cheap to evaluate and to differentiate. With another prior the procedure would be the same (integrate the recall out, sum over the classes, maximise), but the integral would have to be computed numerically, and the result would not fit into BayesianCC.
 
-**Why rare classes count less.** Under the model, the plain recalls have mean and variance (laws of total expectation and total variance, with $\mathbb E[r_j(1-r_j)]=m(1-m)-\operatorname{Var}(r_j)=m(1-m)\frac{\nu}{\nu+1}$)
+**The likelihood and its maximum.** The classes are independent, so the probabilities multiply and the logarithms add; dropping the binomial coefficients, which do not depend on $(m,\nu)$, the log-likelihood of $(m,\nu)$ is
+
+$$
+\ell(m,\nu)=\sum_{j=1}^K\ln P(f_j\mid m,\nu)=\sum_{j=1}^K\Big[\ln B\big(f_j+\nu m,\,n_j-f_j+\nu(1-m)\big)-\ln B\big(\nu m,\,\nu(1-m)\big)\Big],
+$$
+
+and $(\hat m,\hat\nu)$ is its maximum, the pair that makes the observed counts most probable. This is maximum likelihood one level up, sometimes called *type-II* maximum likelihood. There is no closed form; `fit_beta_binomial` in `methods/baycap.py` finds the maximum numerically:
+
+1. it changes variables to $\theta=(\operatorname{logit}m,\ln\nu)$, which can take any real value, while $m\in(0,1)$ and $\nu>0$ cannot;
+2. it minimises $-\ell(\theta)$, which is the same as maximising $\ell$, with L-BFGS-B, a quasi-Newton method that walks downhill using the gradient, computed analytically with digamma functions (the derivatives of $\ln\Gamma$);
+3. it keeps the search within the bounds $m\in[10^{-3},1-10^{-3}]$ and $\nu\le10^4$ (see the limit cases below);
+4. it starts from the pooled recall $\sum_jf_j/\sum_jn_j$ and three starting values of $\ln\nu$, and keeps the best of the three maxima.
+
+The cost is negligible.
+
+**The law of total variance.** For two random variables $X$ and $Y$,
+
+$$
+\operatorname{Var}(X)=\mathbb E\big[\operatorname{Var}(X\mid Y)\big]+\operatorname{Var}\big(\mathbb E[X\mid Y]\big).
+$$
+
+It follows from three facts: $\operatorname{Var}(X)=\mathbb E[X^2]-\mathbb E[X]^2$; the tower property $\mathbb E[g(X)]=\mathbb E\big[\mathbb E[g(X)\mid Y]\big]$ (average within each value of $Y$, then over $Y$); and the same variance identity conditionally, $\mathbb E[X^2\mid Y]=\operatorname{Var}(X\mid Y)+\mathbb E[X\mid Y]^2$. Then
+
+$$
+\begin{aligned}
+\operatorname{Var}(X)&=\mathbb E\big[\mathbb E[X^2\mid Y]\big]-\mathbb E\big[\mathbb E[X\mid Y]\big]^2\\
+&=\mathbb E\big[\operatorname{Var}(X\mid Y)\big]+\Big(\mathbb E\big[\mathbb E[X\mid Y]^2\big]-\mathbb E\big[\mathbb E[X\mid Y]\big]^2\Big)\\
+&=\mathbb E\big[\operatorname{Var}(X\mid Y)\big]+\operatorname{Var}\big(\mathbb E[X\mid Y]\big).
+\end{aligned}
+$$
+
+The variability of $X$ has two sources: how much $X$ varies when $Y$ is fixed, and how much the centre of $X$ moves when $Y$ changes. The same argument without the squares gives the law of total expectation, $\mathbb E[X]=\mathbb E\big[\mathbb E[X\mid Y]\big]$.
+
+**Why rare classes count less.** Take $X=\hat r_j$, the plain recall on $V$, and $Y=r_j$, the true recall. Given $r_j$, $\hat r_j$ is a binomial frequency, so $\mathbb E[\hat r_j\mid r_j]=r_j$ and $\operatorname{Var}(\hat r_j\mid r_j)=r_j(1-r_j)/n_j$. By the laws of total expectation and total variance, and with $\mathbb E[r_j(1-r_j)]=m(1-m)-\operatorname{Var}(r_j)=m(1-m)\frac{\nu}{\nu+1}$, the plain recalls have mean and variance
 
 $$
 \mathbb E[\hat r_j]=m,\qquad \operatorname{Var}(\hat r_j)=\underbrace{\mathbb E\Big[\tfrac{r_j(1-r_j)}{n_j}\Big]}_{\text{binomial noise}}+\underbrace{\operatorname{Var}(r_j)}_{\text{true spread}}=\frac{m(1-m)}{\nu+1}\cdot\frac{n_j+\nu}{n_j}.
 $$
 
-A class with few instances has a noisier $\hat r_j$. Approximating each $\hat r_j$ as normal with these moments, the log-likelihood becomes a sum of squares $-\frac12\sum_j(\hat r_j-m)^2/\operatorname{Var}(\hat r_j)$ plus terms in $\nu$, and its maximum in $m$ is a weighted mean, $\hat m\approx\sum_jw_j\hat r_j/\sum_jw_j$, with the weights $w_j=n_j/(n_j+\nu)$ of the posterior mean. The exact maximum does the same automatically. A simpler method of moments (the plain average of the $\hat r_j$ for $m$, and the spread across classes minus the average binomial noise for the variance) gives every class the same weight; in an illustrative example with $n_j=200,200,200,5$ and $f_j=190,192,188,3$, it puts $m$ at $0.86$, dragged down by the class with $5$ instances, while the weighted mean with a large $\nu$ is $573/605\approx0.947$. Since the pairs of `main` have very unequal $n^s_j$ (down to $3$ on `poker_hand`), E2.4 uses maximum likelihood.
+The observed recalls are scattered for two reasons: the true recalls differ (the true spread, which carries $\nu$), and each is measured with the counting noise of $n_j$ instances. A class with few instances has a noisier $\hat r_j$. Approximating each $\hat r_j$ as normal with these moments, the log-likelihood becomes a sum of squares $-\frac12\sum_j(\hat r_j-m)^2/\operatorname{Var}(\hat r_j)$ plus terms in $\nu$, and its maximum in $m$ is a weighted mean, $\hat m\approx\sum_jw_j\hat r_j/\sum_jw_j$, with the weights $w_j=n_j/(n_j+\nu)$ of the posterior mean. The exact maximum does the same automatically. A simpler method of moments (the plain average of the $\hat r_j$ for $m$, and the spread across classes minus the average binomial noise for the variance) gives every class the same weight; in an illustrative example with $n_j=200,200,200,5$ and $f_j=190,192,188,3$, it puts $m$ at $0.86$, dragged down by the class with $5$ instances, while the weighted mean with a large $\nu$ is $573/605\approx0.947$. Since the pairs of `main` have very unequal $n^s_j$ (down to $3$ on `poker_hand`), E2.4 uses maximum likelihood.
 
 **The limit cases.** If the counts vary no more than binomial noise alone explains, the likelihood keeps increasing with $\nu$: as $\nu\to\infty$ the prior collapses on $m$, the beta-binomial becomes $\operatorname{Binomial}(n_j,m)$, the maximum is the pooled recall $\hat m=\sum_jf_j/\sum_jn_j$, and every class gets it. If the classes truly differ a lot, $\hat\nu$ is small, $w_j\approx1$, and each class keeps its plain recall. With $K=2$ two counts determine two parameters, and $\hat\nu$ often lands on one of the two limits; at $K=2$ the uniform prior was already harmless (E2.2: $R_0$ between $-0.001$ and $-0.006$). If every recall on $V$ is $1$, $\hat m\to1$. The fit is therefore bounded, $\nu\le10^4$ and $m\in[10^{-3},1-10^{-3}]$, and E2.4 reports the pairs where it reaches a bound.
 
@@ -503,7 +545,7 @@ $$
 \operatorname{Var}(\hat r_j)=\underbrace{\mathbb E[\sigma_j^2]}_{\text{binomial noise}}+\underbrace{\tau^2}_{\text{true spread}},\qquad \tau^2=\operatorname{Var}(r_j)=\frac{m(1-m)}{\nu+1}.
 $$
 
-A large $\nu$ means a small true spread. $V$ shows only how far apart the $\hat r_j$ are, which contains both terms; the noise term is known from $n_j$ and $\hat r_j$, so the information on $\nu$ is the excess of the observed spread over the noise. To see it in the simplest case, take all $n_j$ equal, so that all $\sigma_j$ are equal to some $\sigma$, and measure the spread by the sample variance $s^2=\frac1{K-1}\sum_j(\hat r_j-\bar r)^2$, with $\bar r$ the mean of the $\hat r_j$. The sample variance of independent variables with a common variance is an unbiased estimate of that variance, so $\mathbb E[s^2]=\sigma^2+\tau^2$, and the method of moments estimates the spread by $\hat\tau^2=s^2-\hat\sigma^2$. When the recalls are no further apart than noise explains, $s^2\le\hat\sigma^2$, the estimated spread is zero or negative, and $\hat\nu=\infty$. Maximum likelihood behaves in the same way (§T.9, the limit cases): its $\hat\nu$ runs to the upper bound $10^4$.
+A large $\nu$ means a small true spread. The observed recalls are scattered for two reasons: the true recalls differ (this is $\tau^2$, which carries $\nu$), and each is measured with noise ($\sigma_j^2$). The fit has to tell the two apart. $V$ shows only how far apart the $\hat r_j$ are, which contains both terms; the noise term is known from $n_j$ and $\hat r_j$, so the information on $\nu$ is the excess of the observed spread over the noise. To see it in the simplest case, take all $n_j$ equal, so that all $\sigma_j$ are equal to some $\sigma$, and measure the spread by the sample variance $s^2=\frac1{K-1}\sum_j(\hat r_j-\bar r)^2$, with $\bar r$ the mean of the $\hat r_j$. The sample variance of independent variables with a common variance is an unbiased estimate of that variance, so $\mathbb E[s^2]=\sigma^2+\tau^2$, and the method of moments estimates the spread by $\hat\tau^2=s^2-\hat\sigma^2$. When the recalls are no further apart than noise explains, $s^2\le\hat\sigma^2$, the estimated spread is zero or negative, and $\hat\nu=\infty$. Maximum likelihood behaves in the same way (§T.9, the limit cases): its $\hat\nu$ runs to the upper bound $10^4$.
 
 **With two classes, one difference decides.** With $K=2$, $\bar r=(\hat r_1+\hat r_2)/2$, so $\hat r_1-\bar r=d/2$ and $\hat r_2-\bar r=-d/2$ with $d=\hat r_1-\hat r_2$, and
 
@@ -517,20 +559,48 @@ $$
 Z^2=\frac{d^2}{2(\sigma^2+\tau^2)}=\frac{s^2}{\sigma^2+\tau^2}<\frac{\sigma^2}{\sigma^2+\tau^2}=c,\qquad P(\hat\nu=\infty)=P\big(\lvert Z\rvert<\sqrt c\,\big).
 $$
 
+**Why $Z$, and the two "1"s.** $Z$ is simply $d$ measured in units of its own standard deviation. Standardising turns any normal variable into a *standard* normal, whose probabilities are known ($P(\lvert Z\rvert<1)\approx0.68$, the familiar "68% within one standard deviation"), so the event $s^2<\sigma^2$, rewritten as $Z^2<c$, can be read off the standard normal. $Z^2$, the square of one standard normal, has by definition the $\chi^2$ distribution with one degree of freedom, $\chi^2_1$, so $P(\hat\nu=\infty)=P(\chi^2_1<c)$. Two different "1"s appear below: the subscript of $\chi^2_1$ is the number of degrees of freedom, and the threshold $1$ in $P(\chi^2_1<1)$ is the value of $c$ when the two recalls are truly equal ($\tau=0$, so $c=\sigma^2/\sigma^2=1$); when they differ, $c<1$.
+
 - *Equal recalls* ($\tau=0$, $c=1$): $P(\lvert Z\rvert<1)\approx0.68$. Two times out of three the fit declares the recalls equal; here this is correct, and the problem is what the prior does next (below).
 - *Different recalls:* with $r_j\approx0.83$ and $n_j=141$, as on `mammographic`, $\sigma=\sqrt{0.83\cdot0.17/141}\approx0.032$; a true spread $\tau=0.03$ (recalls a few points apart) gives $c=0.032^2/(0.032^2+0.03^2)\approx0.53$ and $P(\lvert Z\rvert<0.73)\approx0.53$. Half the time the fit still declares the two recalls identical.
 
-With $K$ classes, $(K-1)s^2/(\sigma^2+\tau^2)$ is approximately $\chi^2_{K-1}$, the distribution of a sum of $K-1$ squared independent standard normals (the property of the sample variance of normal variables), and $P(\hat\nu=\infty)\approx P(\chi^2_{K-1}/(K-1)<c)$. $\chi^2_{K-1}/(K-1)$ is an average of $K-1$ squared standard normals, each with mean $1$, so by the law of large numbers it concentrates around $1$ as $K$ grows, and for $c<1$ the probability goes to $0$. With many classes the fit estimates the spread from many recalls; with two, from one difference. The quantity that decides is the gap statistic $z=d/\sqrt{\hat\sigma_1^2+\hat\sigma_2^2}$, which E2.5 records: the bound is reached when $\lvert z\rvert$ is below about $1$. The toy of Appendix A.2 finds the bound in $84\%$ of its fits with equal recalls and in $56\%$ with recalls $0.80$ and $0.86$: maximum likelihood reaches it somewhat more often than this approximation of the method of moments.
+**Why one degree of freedom, although the recalls are independent.** It is precisely because the two recalls are independent that we can count their independent pieces of information: there are two, but only one of them speaks about the spread. Rewrite the pair $(\hat r_1,\hat r_2)$ as its sum and its difference,
+
+$$
+u=\hat r_1+\hat r_2,\qquad d=\hat r_1-\hat r_2 .
+$$
+
+This is just a rotation of coordinates: knowing $(u,d)$ is the same as knowing $(\hat r_1,\hat r_2)$. With independent variables of equal variance $v$, $\operatorname{Cov}(u,d)=\operatorname{Var}(\hat r_1)-\operatorname{Var}(\hat r_2)=v-v=0$, and for jointly normal variables zero covariance means independence. The two independent measurements therefore become two independent pieces of information:
+
+- $u$ tells where the recalls are, i.e. about $m$; the fit spends it on estimating the centre, $\hat m\approx u/2$. It says nothing about how far apart the recalls are: shifting both recalls by the same amount changes $u$ and leaves $d$ unchanged.
+- $d$ tells how far apart they are, i.e. about $\tau^2$, hence about $\nu$; the spread $s^2=d^2/2$ is a function of $d$ alone.
+
+The whole estimate of $\nu$ rests on one normal variable, and its square is $\chi^2_1$. Degrees of freedom count the independent pieces of information left for the spread after estimating the centre; independence is what lets us count them, not something that removes them. If $m$ were known in advance, nothing would be spent on it, and the spread around $m$ would have $K$ degrees of freedom, $2$ for $K=2$; even then the bound would be reached with probability $P(\chi^2_2/2<1)=1-e^{-1}\approx0.63$ for equal recalls ($\chi^2_2$ is the exponential distribution with mean $2$). The bound is reached often because two classes give too little information about the spread, not only because one piece goes to $m$.
+
+**With $K$ classes.** The same rotation gives one direction for the mean, spent on $m$, and $K-1$ orthogonal directions of differences, spent on the spread, so $(K-1)s^2/(\sigma^2+\tau^2)$ is approximately $\chi^2_{K-1}$, the distribution of a sum of $K-1$ squared independent standard normals (the property of the sample variance of normal variables), and $P(\hat\nu=\infty)\approx P(\chi^2_{K-1}/(K-1)<c)$. $\chi^2_{K-1}/(K-1)$ is an average of $K-1$ squared standard normals, each with mean $1$, so by the law of large numbers it concentrates around $1$ as $K$ grows, and for $c<1$ the probability goes to $0$. With many classes the fit estimates the spread from many recalls; with two, from one difference. The quantity that decides is the gap statistic $z=d/\sqrt{\hat\sigma_1^2+\hat\sigma_2^2}$, which E2.5 records: the bound is reached when $\lvert z\rvert$ is below about $1$. The toy of Appendix A.2 finds the bound in $84\%$ of its fits with equal recalls and in $56\%$ with recalls $0.80$ and $0.86$: maximum likelihood reaches it somewhat more often than this approximation. The calculation is an approximation in several ways: it uses the moment estimate instead of maximum likelihood, assumes normality, and takes equal $n_j$ and similar recalls; it explains the order of magnitude, and the toy confirms the behaviour.
 
 **At the bound, the plug-in prior removes the uncertainty of the centre.** With $\hat\nu=10^4$ the prior on each recall has standard deviation $\sqrt{\hat m(1-\hat m)/(\hat\nu+1)}\approx\sqrt{0.14/10^4}\approx0.004$, and the weight of $V$ in the posterior mean is $w_j=141/(141+10^4)\approx0.014$: both recalls are fixed at $\hat m$. But $\hat m$ is itself an estimate: at the bound it is the pooled recall $\sum_jf_j/\sum_jn_j$, a frequency over about $282$ instances, with standard deviation about $\sqrt{0.14/282}\approx0.022$. The posterior states $\pm0.004$ where $V$ supports $\pm0.022$. This is the left-out term of §T.9 ("Using $V$ twice"), which at the bound is the whole uncertainty of the recalls, since $1-w_j\approx1$; it is why the left-out standard deviation of E2.4 flags the `mammographic` pairs ($0.020$–$0.023$, the largest of the $75$ pairs). The failure does not need the pooling to be wrong: in the toy, with two recalls that are truly equal, the realised coverage of the empirical-Bayes prior is $0.72$, against $0.95$ for the uniform prior (Appendix A.2). When the recalls are close to $1$, $\hat m(1-\hat m)$ is tiny and so is $\operatorname{sd}(\hat m)$: this is why `hand_digits` MLP and SVM reach the bound without harm.
 
-**A corrected strength.** The left-out variance can be put back into the prior. The plug-in prior has variance $\hat m(1-\hat m)/(\hat\nu+1)$; adding the variance of its centre gives $\hat m(1-\hat m)/(\hat\nu+1)+\operatorname{sd}(\hat m)^2$, and a Beta prior with centre $\hat m$ has this variance when its strength $\nu^*$ satisfies $\hat m(1-\hat m)/(\nu^*+1)=\hat m(1-\hat m)/(\hat\nu+1)+\operatorname{sd}(\hat m)^2$, that is
+**A corrected strength.** The left-out variance can be put back into the prior. This is not part of the optimisation of §T.9: it is a correction applied after the fit, in four steps (a new hypothesis, used only by the toy of Appendix A.2 as `EB-nu*`; `BayCAP` does not have it).
+
+1. *Fit:* obtain $(\hat m,\hat\nu)$ by maximising $\ell$ (§T.9).
+2. *Measure how uncertain $\hat m$ is:* near its maximum the log-likelihood is close to a parabola, and the sharper the parabola, the better determined the parameter, $\operatorname{sd}(\hat\theta)\approx1/\sqrt{-\ell''(\hat\theta)}$ (§T.9, "Using $V$ twice"). The code computes this in $\operatorname{logit}m$ (when $\hat\nu$ is at its bound, it treats $\nu$ as fixed and uses the curvature in $m$ alone) and converts it to $m$ by the delta method, $\operatorname{sd}(\hat m)=\hat m(1-\hat m)\operatorname{sd}(\operatorname{logit}\hat m)$; this is the `sd_m` of the fit, which E2.4 already uses for the left-out standard deviation.
+3. *The variance the prior should have:* the plug-in prior acts as if $m$ were known exactly, with variance $\operatorname{Var}(r\mid m)=m(1-m)/(\nu+1)$. If instead $m$ is treated as uncertain, with mean $\hat m$ and standard deviation $s=\operatorname{sd}(\hat m)$, the law of total variance (§T.9) gives the variance of a recall before seeing its own class:
 
 $$
-\frac1{\nu^*+1}=\frac1{\hat\nu+1}+\frac{\operatorname{sd}(\hat m)^2}{\hat m(1-\hat m)}.
+\operatorname{Var}(r)=\underbrace{\mathbb E\big[\operatorname{Var}(r\mid m)\big]}_{\approx\,\hat m(1-\hat m)/(\hat\nu+1)}+\underbrace{\operatorname{Var}\big(\mathbb E[r\mid m]\big)}_{=\operatorname{Var}(m)=s^2},
 $$
 
-With $\hat\nu=10^4$, $\hat m=0.83$ and $\operatorname{sd}(\hat m)=0.022$, the second term is $0.022^2/0.141\approx0.0034$ and dominates the first ($10^{-4}$), so $\nu^*\approx280$: the prior is worth about as many instances as the validation data from which $\hat m$ was estimated, which is the intuitive answer. This is a first-order approximation of the hierarchical model of §T.12, and it keeps the Dirichlet family. In the toy it raises the realised coverage at the bound from $0.72$ to $0.88$, with the Winkler score of the uniform prior ($0.130$ against $0.126$), but not lower (Appendix A.2).
+since $\mathbb E[r\mid m]=m$. The second term is exactly the one the plug-in drops.
+4. *A Beta with that variance:* the prior must remain a Beta to fit into the Dirichlet, so we keep its centre $\hat m$ and choose its strength $\nu^*$ so that its variance equals the total of step 3,
+
+$$
+\frac{\hat m(1-\hat m)}{\nu^*+1}=\frac{\hat m(1-\hat m)}{\hat\nu+1}+s^2\iff\frac1{\nu^*+1}=\frac1{\hat\nu+1}+\frac{s^2}{\hat m(1-\hat m)},
+$$
+
+and build the Dirichlet parameters with $\nu^*$ in place of $\hat\nu$: $\alpha_{jj}=\nu^*\hat m$ and $\alpha_{ij}=\nu^*(1-\hat m)/(K-1)$.
+
+Step 4 is *moment matching*: the distribution of a recall when $m$ is uncertain is a mixture of Betas over the values of $m$, which is not itself a Beta, and we replace it by the Beta with the same mean and variance. It also ignores the uncertainty on $\nu$. That is why it is only a first-order approximation of the hierarchical model of §T.12, which averages over both $m$ and $\nu$; it keeps the Dirichlet family. With $\hat\nu=10^4$, $\hat m=0.83$ and $\operatorname{sd}(\hat m)=0.022$, the second term is $0.022^2/0.141\approx0.0034$ and dominates the first ($10^{-4}$), so $\nu^*\approx280$: the prior is worth about as many instances as the validation data from which $\hat m$ was estimated (about $282$), instead of $10^4$ imaginary ones. In the toy it raises the realised coverage at the bound from $0.72$ to $0.88$, with the Winkler score of the uniform prior ($0.130$ against $0.126$), but not lower (Appendix A.2).
 
 **With a moderate $\hat\nu$, the two recalls are pulled together.** The empirical-Bayes model assumes that the recalls of the classes are exchangeable, draws from a common distribution with no reason to expect one class to be harder than another (§T.9). With many classes (letters, digits) this is a fair approximation. With two classes the recalls are the true-positive and the true-negative rates, and they differ for a structural reason: the decision threshold of $h$ trades one for the other, and the class balance of $L$ moves the threshold towards the majority class. When they differ clearly, $\hat\nu$ is finite and the prior pulls both towards their mean. The prior part of the recall term (§T.5) is
 
