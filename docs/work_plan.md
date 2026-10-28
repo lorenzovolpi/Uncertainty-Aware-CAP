@@ -109,7 +109,7 @@ The CBPE variants `B-CBPE` and `BE-CBPE` were run in earlier versions. Only `plo
 
 ## II.8 Toy simulations
 
-`scripts/toys/ext2_estimand_gap.py`, `scripts/toys/ext2_eb_binary.py`, `scripts/toys/ext2_test_pool.py`, `scripts/toys/ext5_prior_calibration.py` and `scripts/toys/ext4_budget.py` are seeded toy simulations that support [[ext2_baycap]] (Appendix A: the estimand gap, the empirical-Bayes prior with two classes, which imports `fit_beta_binomial` from `methods/baycap.py`, and a finite test pool), [[ext5_baycap_priors_tempering]] and [[ext4_uncertainty_budget]]. Their numbers are toy results, not experiment results.
+`scripts/toys/ext2_estimand_gap.py`, `scripts/toys/ext2_eb_binary.py`, `scripts/toys/ext2_test_pool.py`, `scripts/toys/ext2_hierarchical.py`, `scripts/toys/ext5_prior_calibration.py` and `scripts/toys/ext4_budget.py` are seeded toy simulations that support [[ext2_baycap]] (Appendix A: the estimand gap, the empirical-Bayes prior with two classes, which imports `fit_beta_binomial` from `methods/baycap.py`, a finite test pool, and the corrected strength against a hierarchical prior, which imports it as well), [[ext5_baycap_priors_tempering]] and [[ext4_uncertainty_budget]]. Their numbers are toy results, not experiment results.
 
 ## II.9 Shared infrastructure and tests
 
