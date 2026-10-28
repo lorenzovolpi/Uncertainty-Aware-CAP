@@ -160,8 +160,8 @@ class PairTableTest(unittest.TestCase):
         partial = dict(self.results)
         partial["BayesCAP-EB-real"] = self.results["BayesCAP-EB-real"].query("dataset == 'binary'")
         with (
-            patch.object(eb_prior, "load_results", side_effect=lambda method: partial[method]),
-            patch.object(eb_prior, "load_validation_counts", side_effect=lambda pairs: VAL_COUNTS) as counts,
+            patch.object(eb_prior, "load_results", side_effect=lambda method, **_: partial[method]),
+            patch.object(eb_prior, "load_validation_counts", side_effect=lambda pairs, **_: VAL_COUNTS) as counts,
         ):
             table = eb_prior.compute_pair_table()
         self.assertEqual(counts.call_args.args[0], [("binary", "LR")])
@@ -170,7 +170,7 @@ class PairTableTest(unittest.TestCase):
     def test_missing_method_is_reported(self):
         empty = dict(self.results, **{"BayesCAP-EB": pd.DataFrame()})
         with (
-            patch.object(eb_prior, "load_results", side_effect=lambda method: empty[method]),
+            patch.object(eb_prior, "load_results", side_effect=lambda method, **_: empty[method]),
             self.assertRaisesRegex(RuntimeError, "BayesCAP-EB"),
         ):
             eb_prior.compute_pair_table()

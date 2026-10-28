@@ -66,19 +66,21 @@ qp.environ["_R_SEED"] = 0
 EXP = ExperimentOutcome
 
 
-def _result_path(p: PretrainInfo, method_name: str, acc_name: str) -> str:
+# ``experiment`` names the results folder; experiments with the protocol of main (e.g. experiments/eb_binary.py) pass
+# their own
+def _result_path(p: PretrainInfo, method_name: str, acc_name: str, experiment: str = EXPERIMENT) -> str:
     return local_path(
         p.domain,
         p.d_info.name,
         p.h_info.full_name,
         method_name,
         acc_name,
-        experiment=EXPERIMENT,
+        experiment=experiment,
     )
 
 
-def _all_method_results_exist(p: PretrainInfo, method_name: str) -> bool:
-    return all(os.path.exists(_result_path(p, method_name, acc_name)) for acc_name in get_acc_names())
+def _all_method_results_exist(p: PretrainInfo, method_name: str, experiment: str = EXPERIMENT) -> bool:
+    return all(os.path.exists(_result_path(p, method_name, acc_name, experiment)) for acc_name in get_acc_names())
 
 
 def _prepare_evaluation(p: PretrainInfo, method: CAPWithConfidence):
@@ -115,6 +117,7 @@ def _evaluate_contingency_method(
     validation,
     validation_posteriors,
     context: EvaluationContext,
+    experiment: str = EXPERIMENT,
 ) -> list[ExperimentOutcome]:
     try:
         started = time()
@@ -139,7 +142,7 @@ def _evaluate_contingency_method(
 
     results = []
     for acc_name, acc_fn in gen_acc_measure(p.d_info.n_classes > 2):
-        if os.path.exists(_result_path(p, method_name, acc_name)):
+        if os.path.exists(_result_path(p, method_name, acc_name, experiment)):
             results.append(EXP.EXISTS(p, acc_name, method_name))
             continue
 
@@ -180,10 +183,11 @@ def _evaluate_direct_method(
     validation,
     validation_posteriors,
     context: EvaluationContext,
+    experiment: str = EXPERIMENT,
 ) -> list[ExperimentOutcome]:
     results = []
     for acc_name, acc_fn in gen_acc_measure(p.d_info.n_classes > 2):
-        if os.path.exists(_result_path(p, method_name, acc_name)):
+        if os.path.exists(_result_path(p, method_name, acc_name, experiment)):
             results.append(EXP.EXISTS(p, acc_name, method_name))
             continue
 
@@ -229,10 +233,10 @@ def _evaluate_direct_method(
     return results
 
 
-def exp_protocol(args: tuple[str, str, CAPWithConfidence]) -> list[ExperimentOutcome]:
+def exp_protocol(args: tuple[str, str, CAPWithConfidence], experiment: str = EXPERIMENT) -> list[ExperimentOutcome]:
     info_path, method_name, method = args
     p = PretrainInfo.load(info_path, fast=True)
-    if _all_method_results_exist(p, method_name):
+    if _all_method_results_exist(p, method_name, experiment):
         return [EXP.EXISTS(p, "all", method_name)]
 
     dataset, validation, validation_posteriors, context = _prepare_evaluation(p, method)
@@ -245,6 +249,7 @@ def exp_protocol(args: tuple[str, str, CAPWithConfidence]) -> list[ExperimentOut
             validation,
             validation_posteriors,
             context,
+            experiment,
         )
     if isinstance(method, CAPDirect):
         return _evaluate_direct_method(
@@ -255,6 +260,7 @@ def exp_protocol(args: tuple[str, str, CAPWithConfidence]) -> list[ExperimentOut
             validation,
             validation_posteriors,
             context,
+            experiment,
         )
     return []
 

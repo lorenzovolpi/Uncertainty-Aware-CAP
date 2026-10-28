@@ -123,15 +123,16 @@ def train_variants(
         LabelledCollection,
         LabelledCollection,
         Iterable[Tuple[BaseEstimator, ClassifierInfo]],
+        str,
     ],
 ) -> list[Tuple[PretrainInfo, Posteriors]]:
-    dataset_name, dataset_coll, L, V, U, h_batch = args
+    dataset_name, dataset_coll, L, V, U, h_batch, domain = args
     n_classes = L.n_classes
     d_info = DatasetInfo(dataset_name, dataset_coll, n_classes)
 
     results = []
     for h, h_info in h_batch:
-        p_info = PretrainInfo(DOMAIN, d_info, h_info)
+        p_info = PretrainInfo(domain, d_info, h_info)
 
         h.fit(*L.Xy)
         V_posteriors = h.predict_proba(V.X)
@@ -141,9 +142,12 @@ def train_variants(
     return results
 
 
-def pretrain(log: Logger):
+def pretrain(log: Logger, datasets: Iterable | None = None, domain: str = DOMAIN):
+    """Train the classifiers of ``gen_classifiers`` on ``datasets`` (default: ``gen_datasets()``, the datasets of
+    ``main``) and store them under the pretrain folder of ``domain``, skipping those already stored."""
+    datasets = gen_datasets() if datasets is None else datasets
     datasets_classifiers = []
-    for dataset in gen_datasets():
+    for dataset in datasets:
         dataset_name, dataset_coll, (L, V, U) = dataset
         n_classes = L.n_classes
         d_info = DatasetInfo(dataset_name, dataset_coll, n_classes)
@@ -151,14 +155,14 @@ def pretrain(log: Logger):
         clsf_batches = []
         for clsf in gen_classifiers():
             _, h_info = clsf
-            if PretrainInfo(DOMAIN, d_info, h_info).exists:
+            if PretrainInfo(domain, d_info, h_info).exists:
                 log.info(f"Already exists: {h_info.name} on {d_info.name}, skipping.")
                 continue
             if i % 8 == 0:
                 clsf_batches.append([])
             clsf_batches[-1].append(clsf)
         for batch in clsf_batches:
-            datasets_classifiers.append((dataset_name, dataset_coll, L, V, U, batch))
+            datasets_classifiers.append((dataset_name, dataset_coll, L, V, U, batch, domain))
 
     results_gen: Iterable[list[Tuple[PretrainInfo, Posteriors]]] = parallel(
         func=train_variants,

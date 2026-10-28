@@ -30,7 +30,7 @@ LOCAL_OUT  ?= ./output
 PULL_DIRS  ?= tables plots
 LOG_LINES  ?= 50
 FOLLOW     ?=
-RESULTS    ?= main binform predist
+RESULTS    ?= main binform predist eb_binary
 
 # Files and directories of OLD_DIR worth keeping in REMOTE_DIR (never overwritten if already present).
 OLD_FILES  ?= env.json sorted_sets.json output
@@ -46,9 +46,11 @@ LOCAL_DATA_ROOT ?= $(HOME)
 # Experiments: run-<name> runs `uv run <command> $(ARGS)`.
 # Table targets carry no mode flag: pass it in ARGS (--tables, --pdf or --all), e.g. `make run-tables-main ARGS=--tables`.
 EXP_pretrain-classic := python -m uncawe.pretrain.classic
+EXP_pretrain-classic-binary := python -m uncawe.pretrain.classic_binary
 EXP_main-classic     := python -m uncawe.main --classic
 EXP_binform          := python -m uncawe.binform
 EXP_predist          := python -m uncawe.predist
+EXP_eb-binary        := python -m uncawe.experiments.eb_binary
 EXP_tables-main      := python -m uncawe.tables.main --classic
 EXP_tables-rank      := python -m uncawe.tables.rank --classic
 EXP_tables-binform   := python -m uncawe.tables.binform
@@ -56,6 +58,7 @@ EXP_tables-estimand-gap := python -m uncawe.tables.estimand_gap
 EXP_tables-displacement := python -m uncawe.tables.displacement
 EXP_tables-pushforward := python -m uncawe.tables.pushforward
 EXP_tables-eb-prior  := python -m uncawe.tables.eb_prior
+EXP_tables-eb-binary := python -m uncawe.tables.eb_binary
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
@@ -63,6 +66,7 @@ EXP_plot-binform     := python -m uncawe.plots.binform_simplex
 EXP_plot-displacement := python -m uncawe.plots.displacement
 EXP_plot-pushforward := python -m uncawe.plots.pushforward
 EXP_plot-eb-prior    := python -m uncawe.plots.eb_prior
+EXP_plot-eb-binary   := python -m uncawe.plots.eb_binary
 EXP_test             := python -m unittest discover -s tests
 EXP_bench-bayes-jobs := python scripts/bench/bayes_n_jobs.py
 EXP_bench-xla-stored := python scripts/bench/xla_vs_stored.py
@@ -143,9 +147,9 @@ logs:
 	@$(ON) 'tail -n 50 $(DIR)/output/runs/$(EXP).latest'
 
 ## Tail the experiment log <OUT_DIR>/<EXP>.log written by the code (EXP is the experiment: main, binform, predist,
-## pretrain.classic), with OUT_DIR resolved as the code does (env.json entry of the host, else the cap.env default).
+## eb_binary, pretrain.classic, pretrain.classic_binary), with OUT_DIR resolved as the code does (env.json entry of the host, else the cap.env default).
 explog:
-	@test -n '$(EXP)' || { echo "usage: make explog EXP=<main|binform|predist|pretrain.classic> [FOLLOW=1] [LOG_LINES=n] [WHERE=local]"; exit 1; }
+	@test -n '$(EXP)' || { echo "usage: make explog EXP=<main|binform|predist|eb_binary|pretrain.classic|pretrain.classic_binary> [FOLLOW=1] [LOG_LINES=n] [WHERE=local]"; exit 1; }
 	@$(ON) 'cd $(DIR) && out=$$($(UV) run --locked python -c "import os, uncawe.env as e; print(os.path.dirname(e.root_dir))" 2>/dev/null | tail -n 1) && \
 	  echo "==> $$out/$(EXP).log" && tail -n $(LOG_LINES) $(if $(FOLLOW),-f) "$$out/$(EXP).log"'
 

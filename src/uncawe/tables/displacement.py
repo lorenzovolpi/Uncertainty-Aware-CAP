@@ -175,10 +175,11 @@ def validation_counts(info: PretrainInfo) -> np.ndarray:
     return confusion_matrix(val.y, np.argmax(val_posteriors, axis=-1), labels=val.classes)
 
 
-def load_validation_counts(pairs) -> dict:
-    """Return the validation confusion tables of the given (dataset, classifier) pairs of the ``classic`` domain."""
+def load_validation_counts(pairs, domain: str = DOMAIN) -> dict:
+    """Return the validation confusion tables of the given (dataset, classifier) pairs of ``domain`` (default
+    ``classic``)."""
     infos = {}
-    for path in load_info_paths(domain=DOMAIN):
+    for path in load_info_paths(domain=domain):
         p = PretrainInfo.load(path, fast=True)
         infos[(p.d_info.name, p.h_info.name)] = p
     missing = [pair for pair in pairs if pair not in infos]

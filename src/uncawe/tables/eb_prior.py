@@ -178,13 +178,16 @@ def common_pairs(results: dict[str, pd.DataFrame]) -> list[tuple[str, str]]:
     return [pair for pair in first if all(pair in set(other) for other in others)]
 
 
-def compute_pair_table() -> pd.DataFrame:
-    """Load the stored ``main`` results of the four methods and the validation counts, and return the ordered table."""
+def compute_pair_table(experiment: str = EXPERIMENT, domain: str = estimand_gap.DOMAIN) -> pd.DataFrame:
+    """Load the stored results of the four methods and the validation counts, and return the ordered table.
+
+    The default is ``main``; E2.5 (``tables/eb_binary.py``) passes its own experiment and pretrain domain.
+    """
     results = {}
     for method in METHODS:
-        df = load_results(method)
+        df = load_results(method, experiment=experiment, domain=domain)
         if df.empty:
-            raise RuntimeError(f"No {method} results found for {EXPERIMENT}. Check that experiment results exist.")
+            raise RuntimeError(f"No {method} results found for {experiment}. Check that experiment results exist.")
         results[method] = df
     pairs = common_pairs(results)
     if not pairs:
@@ -194,7 +197,7 @@ def compute_pair_table() -> pd.DataFrame:
         method: df.loc[pd.MultiIndex.from_frame(df[KEYS]).isin(index)].reset_index(drop=True)
         for method, df in results.items()
     }
-    return pair_table(results, load_validation_counts(pairs))
+    return pair_table(results, load_validation_counts(pairs, domain=domain))
 
 
 COMPARISON_CAPTION = (
