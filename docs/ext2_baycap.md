@@ -2,7 +2,7 @@
 
 ## Claim
 
-BayCAP's interval describes the accuracy that the classifier has *on average* over all target bags with a given prevalence (the population table $C\operatorname{diag}(\pi^Q)$). The paper scores that interval against the accuracy *of the bag at hand*, which is computed from its realised contingency table (`true_cts`). The two quantities differ, because on a finite bag the classifier is right on a random number of instances. We want to find out whether this mismatch makes BayCAP's intervals miscalibrated on the paper's datasets. If it does, we want to fix it with the *realised-table predictive*, which turns each posterior draw into a plausible table of the bag itself. The fix needs no target labels and no tuning. This matters because a CAP interval is useful only if it covers the quantity it is judged on, and BayCAP is the paper's Bayesian method. E2.1 showed that most of BayCAP's miscalibration is not a too-narrow interval but an interval centred on the wrong value, which the predictive cannot repair; the extension therefore also asks where this displacement comes from. E2.2 found that the largest displacements come from the uniform prior on the columns of $C$, which pulls every recall towards $1/K$; E2.4 tested a prior learned from the validation data instead, which pulls each recall towards the typical recall of the same classifier: it removes the large-$K$ displacement, but harms binary datasets and makes NUTS diverge when its concentrations fall below $1$.
+BayCAP's interval describes the accuracy that the classifier has *on average* over all target bags with a given prevalence (the population table $C\operatorname{diag}(\pi^Q)$). The paper scores that interval against the accuracy *of the bag at hand*, which is computed from its realised contingency table (`true_cts`). The two quantities differ, because on a finite bag the classifier is right on a random number of instances. We want to find out whether this mismatch makes BayCAP's intervals miscalibrated on the paper's datasets. If it does, we want to fix it with the *realised-table predictive*, which turns each posterior draw into a plausible table of the bag itself. The fix needs no target labels and no tuning. This matters because a CAP interval is useful only if it covers the quantity it is judged on, and BayCAP is the paper's Bayesian method. E2.1 showed that most of BayCAP's miscalibration is not a too-narrow interval but an interval centred on the wrong value, which the predictive cannot repair; the extension therefore also asks where this displacement comes from. E2.2 found that the largest displacements come from the uniform prior on the columns of $C$, which pulls every recall towards $1/K$; E2.4 tested a prior learned from the validation data instead, which pulls each recall towards the typical recall of the same classifier: it removes the large-$K$ displacement, but harms binary datasets and makes NUTS diverge when its concentrations fall below $1$. A toy simulation traces the binary failures to the fit itself: with two classes the strength of the prior is estimated from a single difference between two recalls, and the plug-in prior ignores the uncertainty of its centre (§T.10); E2.5 tests on all the binary datasets of `quapy` whether this failure is general for $K=2$.
 
 ## Status
 
@@ -15,9 +15,11 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 | E2.3, the exact realised-table predictive as the method `BayesCAP-real` of `main`, and the E2.2 analysis repeated on it (work-plan card WP-4; `tables/pushforward.py`, `plots/pushforward.py`) | [run], analysis below |
 | `BayCAP` with the hyperparameter `c_prior` $\in\{$uniform, empirical Bayes$\}$ for the prior on the columns of $C$ (work-plan card WP-5) | [implemented], evaluated by E2.4 as `BayesCAP-EB` and `BayesCAP-EB-real` |
 | E2.4, BayCAP with an empirical-Bayes prior on the recalls, with a zero-cost check of its effect and the NUTS diagnostics of all BayCAP methods (work-plan card WP-6; `tables/eb_prior.py`, `plots/eb_prior.py`) | [run], analysis below |
+| E2.5, the empirical-Bayes prior on all the binary datasets of `quapy`, in an experiment separate from `main` | [proposal], decided by the user on 2026-10-28, not implemented |
+| Toy simulations of the empirical-Bayes prior with $K=2$ and of cause 4 (`scripts/toys/ext2_eb_binary.py`, `scripts/toys/ext2_test_pool.py`) | [run], Appendix A |
 | Candidate experiments E2.c1, E2.c2 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis], examined by E2.2 |
-| Cause 4, a difference between $V$ and the test pool shared by all bags | [new hypothesis], not tested |
+| Cause 4, a difference between $V$ and the test pool shared by all bags | [new hypothesis], explained in §T.13 and reproduced by a toy (Appendix A.3), not tested on stored results |
 
 The paper-related material of earlier versions (contributions, hypotheses, paper outline, figure plan) has been removed for now; the last version that contains it is commit `62d3ca0`.
 
@@ -25,7 +27,7 @@ The paper-related material of earlier versions (contributions, hypotheses, paper
 
 All experiments score every interval against the realised table of each target bag, as `main` does. They use the measures of the paper (AE, coverage, amplitude, Winkler score at $\alpha=0.05$), the $100$ APP bags of size $1000$ of `main` with the same seeds, and target labels only for scoring.
 
-E2.1 estimates, without new runs, how the realised-table predictive would change BayCAP's intervals; E2.2 explains the displacement that E2.1 found; E2.3 runs the exact predictive in `main` and repeats both analyses on it; E2.4 replaces the prior on $C$ that E2.2 found responsible for the largest displacements, with both pushforwards.
+E2.1 estimates, without new runs, how the realised-table predictive would change BayCAP's intervals; E2.2 explains the displacement that E2.1 found; E2.3 runs the exact predictive in `main` and repeats both analyses on it; E2.4 replaces the prior on $C$ that E2.2 found responsible for the largest displacements, with both pushforwards; E2.5 repeats E2.4 on the binary datasets of `quapy` that `main` does not use, to test the explanation of its binary failures (§T.10).
 
 ## E2.1: approximate check on stored results
 
@@ -139,6 +141,37 @@ E2.1 estimates, without new runs, how the realised-table predictive would change
   - **Concentrations below $1$ break the sampler.** The share of bags with at least one divergent transition is $0.013$ on average for the uniform prior (at most $0.36$ for a pair) and $0.284$ for the EB prior. The smallest concentration of the EB prior, $\min\{\hat\nu\hat m,\hat\nu(1-\hat m)/(K-1)\}$, separates the two cases: the $16$ pairs where it is at least $1$ (all of `spambase`, `german` and `mammographic`, `hand_digits` MLP and SVM) have no divergence, and all $18$ pairs with divergences in more than half the bags have it below $0.17$ (all of `shuttle` and `isolet`, `poker_hand` LR, kNN, SVM, RF, `nursery` RF and LR, `chess` MLP, `letter` LR). For an accurate classifier with many classes the off-diagonal concentrations $\hat\nu(1-\hat m)/(K-1)$ are small (`isolet` SVM: $26\cdot0.046/25\approx0.05$), and a Dirichlet density with a parameter below $1$ grows without bound near the faces of the simplex (§T.9, "Small concentrations"); the sampler, which works in unconstrained coordinates, meets a region of high curvature there and its steps diverge. On `isolet` the chains do not mix: largest split-$\hat R$ $2.6$–$2.9$ and smallest effective sample size $3$ for SVM, MLP and RF, and NaN for LR and kNN, probably because some entries of $C$ stay at the same value in every draw (not checked). The uniform prior has its own weaker diagnostics, mostly on `poker_hand`, `shuttle` and `wine-quality` (largest split-$\hat R$ above $1.05$ on $7$ pairs, smallest effective sample size below $100$ on $18$), but no pair with divergences in most bags. The EB results of the $19$ pairs with divergences in more than half the bags or a split-$\hat R$ above $1.05$ or NaN (the $18$ above and `wine-quality` kNN) come from chains that may not represent the posterior, so their coverage is not evidence for the prior: this includes all of `isolet` and most of `poker_hand`. On the other $56$ pairs, the mean realised coverage is $0.71$ with the uniform prior and $0.80$ with the EB prior, and on their $31$ pairs with $K>2$ it is $0.60$ and $0.90$.
 
   What this shows: the uniform prior on $C$ is the cause of the large-$K$ displacement, and an empirical-Bayes prior fitted on $V$ removes it; the check computed from $V$ alone predicts the change of the recall term almost exactly, so the effect of a prior on $C$ on the centre of the interval can be predicted without running NUTS. With the EB prior the realised pushforward becomes necessary, because the uncertainty left on $C$ is smaller and the bag-level spread is a larger part of the error; together, `BayesCAP-EB-real` raises the pairs with coverage at least $0.90$ from $34$ to $52$ and lowers the mean Winkler score from $0.84$ to $0.32$. Two problems of the prior remain. With $K=2$ the fit has two counts to estimate a spread, and $\hat\nu$ can run to its upper bound and make the interval too narrow (`mammographic`), or add a pull the uniform prior did not have (`german`); the uniform prior was harmless there. With many classes and accurate classifiers the off-diagonal concentrations fall below $1$, NUTS diverges, and on `isolet` and `poker_hand` the gain cannot yet be trusted.
+
+  Why the two problems arise (explanation added on 2026-10-28; §T.10–§T.12, toy in Appendix A.2):
+
+  - *With two classes the strength $\hat\nu$ is decided by one number.* The fit separates the true spread of the recalls from the binomial noise of $V$ by comparing how far apart the plain recalls are with how far apart noise alone would put them; with $K=2$ this is the single difference $\hat r_1-\hat r_2$, and when it is no larger than about one standard deviation of noise the likelihood keeps increasing with $\nu$ and $\hat\nu$ runs to the bound. Under a normal approximation this happens with probability about $0.68$ when the two recalls are equal, and still about $0.5$ when they differ by about one standard deviation of noise (§T.10); the toy finds $84\%$ and $56\%$ of its fits at the bound in these two cases.
+  - *At the bound the plug-in prior removes the uncertainty of the centre.* $\hat\nu=10^4$ gives each recall a prior standard deviation of about $0.004$, while $\hat m$, estimated from the two classes of $V$, has a standard deviation of about $0.02$ on `mammographic` (the left-out standard deviation); the interval keeps the first and drops the second. In the toy this alone lowers the realised coverage from $0.95$ to $0.72$ even when the two recalls are truly equal, i.e. when pooling is correct; a prior with the strength $\nu^*$ that adds $\operatorname{sd}(\hat m)^2$ to its variance gives $0.88$, with the Winkler score of the uniform prior (§T.10).
+  - *With a moderate $\hat\nu$ the prior pulls the two recalls together.* With two classes the recalls are the true-positive and the true-negative rates, which differ for a structural reason (the decision threshold of $h$ and the class balance of $L$), not by chance as the exchangeability of the empirical-Bayes model assumes; pulling both towards their mean adds to accuracy a bias proportional to $(\pi_1-\pi_2)(\hat r_2-\hat r_1)$, which depends on the bag (§T.10). This is the pattern of `german`.
+  - *On `mammographic` the prior exposes a displacement it does not create.* The shift there is the residual recall error of E2.2, which §T.13 attributes to the finite test pool (cause 4); the uniform interval was wide enough to absorb part of it, the narrow EB interval is not. In the toy, a pool of the size of `mammographic` lowers the realised coverage of the uniform prior from $0.95$ to $0.85$, and of the EB prior from $0.72$ to $0.52$ (Appendix A.2).
+  - *With two classes there was little to gain.* The uniform prior adds only two imaginary instances per column, and in the toy with an infinite pool its realised coverage is $0.94$–$0.95$: the pull towards $1/K$ that the empirical-Bayes prior removes is negligible at $K=2$.
+  - *Concentrations below $1$ make the prior singular at the faces of the simplex.* A Dirichlet entry with parameter $\alpha<1$ has about $\varepsilon^\alpha$ of its mass below $\varepsilon$ (half below $10^{-6}$ for $\alpha=0.05$), so in the logarithmic coordinates in which NUTS moves it has a tail of length about $1/\alpha$ next to entries that $V$ fixes within a few hundredths; one step size cannot serve both, and the steps diverge (§T.11). Raising each concentration to $1$ would undo the prior, because by aggregation the recall would then get $\operatorname{Beta}(\hat\nu\hat m,K-1)$ and the pull towards a low value would return; a prior that keeps the Beta on the recall and puts a separate prior on how the mistakes are shared among the wrong classes avoids both (§T.11).
+
+## E2.5: the empirical-Bayes prior on all the binary datasets of `quapy`
+
+**Why.** E2.4 found that the empirical-Bayes prior harms binary datasets, through two mechanisms: $\hat\nu$ at its upper bound, which makes the interval too narrow (`mammographic`), and a moderate $\hat\nu$ that pulls the two recalls together (`german`, `tictactoe` kNN). §T.10 and the toy of Appendix A.2 explain both as properties of the fit with $K=2$: $\hat\nu$ is decided by a single difference of two recalls, the plug-in prior ignores the uncertainty of $\hat m$, and the two recalls of a binary problem are not exchangeable. E2.4 has only $5$ binary datasets ($25$ pairs), all chosen by size, and on `mammographic` the failure is mixed with cause 4. `quapy` offers $25$ more binary datasets; E2.5 runs the four BayCAP methods of E2.4 on them, to test whether the failure appears on every binary problem and whether the diagnostics that §T.10 derives from $V$ alone predict which pairs fail. Cause 4 is not studied (user's decision of 2026-10-28).
+
+- **Design.**
+  - **Inputs:** the binary datasets of `quapy` (`UCI_BINARY_DATASETS`) not used by `main`: the native ones `transfusion`, `breast-cancer`, `wdbc`, `ionosphere`, `haberman`, `spectf`, `sonar`, and the one-vs-rest binarisations of multiclass datasets `balance.1`, `balance.3`, `cmc.1`, `cmc.2`, `cmc.3`, `ctg.1`, `ctg.2`, `ctg.3`, `iris.1`, `iris.2`, `iris.3`, `wine.1`, `wine.2`, `wine.3`, `wine-q-red`, `wine-q-white`, `yeast`, `pageblocks.5`; the $5$ classifiers of `main`, trained with its pretraining protocol ($L$, $V$ and $U$ as returned by `cap-ml`'s `fetch_UCIBinaryDataset`); $100$ UPP bags of size $1000$ per pair, drawn from $U$ as in `main` and with its seeds. The $25$ binary pairs of E2.4 are shown next to the new ones, read from the stored results of `main`. Results are stored apart from `main`, so its grids, tables and ranks are unchanged.
+  - **Varied:** as in E2.4, the prior on the columns of $C$ (uniform or empirical Bayes) and the pushforward (population or realised), with the methods `BayesCAP`, `BayesCAP-real`, `BayesCAP-EB` and `BayesCAP-EB-real`, their priors on $\pi^Q$, NUTS settings and seeds. Data, bags, sampler and seeds are held fixed within a pair, so the four methods are compared on the same bags.
+  - **Measures:** vanilla accuracy only, per pair.
+    - *Fit diagnostics (from $V$ alone):* $n^s_1$, $n^s_2$, the plain recalls $\hat r_1$, $\hat r_2$; the gap statistic $z=(\hat r_1-\hat r_2)/\sqrt{\hat r_1(1-\hat r_1)/n^s_1+\hat r_2(1-\hat r_2)/n^s_2}$ (§T.10); $\hat m$, $\hat\nu$, whether the fit reached a bound, $\operatorname{sd}(\hat m)$ and the left-out standard deviation of E2.4.
+    - *Check (no runs):* the check of E2.4, with the predicted and observed change of the recall term from the uniform to the empirical-Bayes prior; the predicted pull of §T.10, $\sum_j\pi_j(1-w_j)(\hat m-\hat r_j)$, averaged over the bags.
+    - *Variant:* for the four methods, the scores, error terms and Winkler tests of E2.4 (coverage, amplitude, Winkler score, $\mathcal C_s$, shift, $R$, $R_0$, $P$; paired bootstrap of the mean Winkler difference, empirical Bayes minus uniform within each pushforward, Holm-adjusted over the pairs of E2.5); the NUTS diagnostics of E2.4.
+  - **Estimand:** as in E2.4: population table for `BayesCAP` and `BayesCAP-EB`, realised table for `BayesCAP-real` and `BayesCAP-EB-real`, all scored against the realised table of each bag. The fit diagnostics use only the labels of $V$; the check and the error terms use the true class proportions and recalls of the bags, so they are an analysis, not a method.
+  - **Cost:** pretraining of $5$ classifiers on $25$ small datasets; four runs of the new experiment on `bcuda` with `JAX=cpu`, one per method, each $125\times100=12\,500$ NUTS runs, about $1.7$ times a run of E2.4. In E2.4 the binary pairs had no divergent transitions with either prior.
+- **How the results are read.** §T.10 makes four predictions, each checked on the pairs of E2.5 and of E2.4 together: (1) $\hat\nu$ reaches the bound mostly on pairs with $\lvert z\rvert$ below about $1$, and stays finite on pairs with $\lvert z\rvert$ well above $1$; (2) among the pairs at the bound, the loss of realised coverage and the increase of the Winkler score grow with the left-out standard deviation, and pairs with a small one (recalls close to $1$) do not lose; (3) with a finite $\hat\nu$, the change of the recall term follows the predicted pull, and grows with $\lvert\hat r_1-\hat r_2\rvert$; (4) where the empirical-Bayes prior lowers the Winkler score of a binary pair, it does so only slightly, because the uniform prior part $R_0$ that it removes is small at $K=2$. If (1)–(3) hold, the binary failures of E2.4 are a property of the empirical-Bayes fit with $K=2$ and not of the five datasets of `main`; if the empirical-Bayes prior also harms pairs where (1)–(3) predict no harm, another cause is at work.
+- **Representation.**
+  - **Comparison table:** as in E2.4, one row per pair, grouped by dataset, the datasets of E2.4 marked: coverage, amplitude and Winkler score of the four methods, and the Winkler tests.
+  - **Fit table:** one row per pair, same order: $n^s_1$, $n^s_2$, $\hat r_1$, $\hat r_2$, $z$, $\hat m$, $\hat\nu$ (marked at a bound), $\operatorname{sd}(\hat m)$, the left-out standard deviation, $R_0$ under both priors, the predicted pull, the predicted and observed change of $R$, the share of bags with divergences.
+  - **Scatter, fit:** $\lvert z\rvert$ on the horizontal axis, $\hat\nu$ on a log scale on the vertical axis, pairs at the bound marked, a vertical line at $\lvert z\rvert=1$.
+  - **Scatter, collapse:** the left-out standard deviation on a log scale on the horizontal axis, the change of realised coverage (empirical Bayes minus uniform) on the vertical axis, coloured by whether $\hat\nu$ is at the bound.
+  - **Scatter, pull:** the predicted change of the recall term on the horizontal axis, the observed one on the vertical axis, coloured by $\lvert\hat r_1-\hat r_2\rvert$, with the line $y=x$.
+- **Analysis.** Not run.
 
 # Candidate experiments
 
@@ -458,6 +491,131 @@ where the left-out term is about $(1-w_j)^2\operatorname{Var}(\hat m)$ if the un
 
 **What the check can and cannot predict.** The check of E2.4 computes $\tilde r_j$ from $V$ alone and compares it with the realised recalls of each bag. It predicts the recall term of the shift, not the coverage (it has no interval), and it leaves out the step in which the target bag updates $C$, the effect of the mistakes on $\hat\pi$ (the prevalence term), and the left-out variance. The variant measures all of these, and the comparison of the two tells which of them matter.
 
+## T.10 Why the empirical-Bayes prior fails with two classes (E2.4, E2.5)
+
+*Intuition:* to learn how much the recalls of a classifier differ from class to class, one needs several classes. With two classes there is a single difference between two recalls, and on validation sets of a few hundred instances it is mostly noise; the fit then either declares the two recalls identical, and fixes both at their common value, or pulls two recalls that differ for a good reason towards each other.
+
+The numerical examples of this section are illustrative, computed by hand, not results; the toy results are in Appendix A.2. We use the notation of §T.9 ($n_j=n^s_j$, $f_j=f_{jj}$, $r_j=C_{jj}$, $\hat r_j=f_j/n_j$), and write $\sigma_j^2=r_j(1-r_j)/n_j$ for the binomial noise of $\hat r_j$. With $K=2$ a column of $C$ is $(r_j,1-r_j)$, the Dirichlet prior on it is a Beta prior on $r_j$, and the two recalls are the true-positive rate (for $\omega_1$, say) and the true-negative rate.
+
+**What the fit has to separate.** By the law of total variance (§T.9), each plain recall varies around $m$ with
+
+$$
+\operatorname{Var}(\hat r_j)=\underbrace{\mathbb E[\sigma_j^2]}_{\text{binomial noise}}+\underbrace{\tau^2}_{\text{true spread}},\qquad \tau^2=\operatorname{Var}(r_j)=\frac{m(1-m)}{\nu+1}.
+$$
+
+A large $\nu$ means a small true spread. $V$ shows only how far apart the $\hat r_j$ are, which contains both terms; the noise term is known from $n_j$ and $\hat r_j$, so the information on $\nu$ is the excess of the observed spread over the noise. To see it in the simplest case, take all $n_j$ equal, so that all $\sigma_j$ are equal to some $\sigma$, and measure the spread by the sample variance $s^2=\frac1{K-1}\sum_j(\hat r_j-\bar r)^2$, with $\bar r$ the mean of the $\hat r_j$. The sample variance of independent variables with a common variance is an unbiased estimate of that variance, so $\mathbb E[s^2]=\sigma^2+\tau^2$, and the method of moments estimates the spread by $\hat\tau^2=s^2-\hat\sigma^2$. When the recalls are no further apart than noise explains, $s^2\le\hat\sigma^2$, the estimated spread is zero or negative, and $\hat\nu=\infty$. Maximum likelihood behaves in the same way (§T.9, the limit cases): its $\hat\nu$ runs to the upper bound $10^4$.
+
+**With two classes, one difference decides.** With $K=2$, $\bar r=(\hat r_1+\hat r_2)/2$, so $\hat r_1-\bar r=d/2$ and $\hat r_2-\bar r=-d/2$ with $d=\hat r_1-\hat r_2$, and
+
+$$
+s^2=\frac{(d/2)^2+(d/2)^2}{2-1}=\frac{d^2}{2}.
+$$
+
+Approximate each $\hat r_j$ as normal, $\hat r_j\approx\mathcal N(m,\sigma^2+\tau^2)$, independently across the two classes. The difference of two independent normal variables is normal, with the difference of the means and the sum of the variances, so $d\approx\mathcal N(0,2(\sigma^2+\tau^2))$, and $Z=d/\sqrt{2(\sigma^2+\tau^2)}$ is a standard normal variable. The fit reaches the bound when $s^2<\sigma^2$, that is when
+
+$$
+Z^2=\frac{d^2}{2(\sigma^2+\tau^2)}=\frac{s^2}{\sigma^2+\tau^2}<\frac{\sigma^2}{\sigma^2+\tau^2}=c,\qquad P(\hat\nu=\infty)=P\big(\lvert Z\rvert<\sqrt c\,\big).
+$$
+
+- *Equal recalls* ($\tau=0$, $c=1$): $P(\lvert Z\rvert<1)\approx0.68$. Two times out of three the fit declares the recalls equal; here this is correct, and the problem is what the prior does next (below).
+- *Different recalls:* with $r_j\approx0.83$ and $n_j=141$, as on `mammographic`, $\sigma=\sqrt{0.83\cdot0.17/141}\approx0.032$; a true spread $\tau=0.03$ (recalls a few points apart) gives $c=0.032^2/(0.032^2+0.03^2)\approx0.53$ and $P(\lvert Z\rvert<0.73)\approx0.53$. Half the time the fit still declares the two recalls identical.
+
+With $K$ classes, $(K-1)s^2/(\sigma^2+\tau^2)$ is approximately $\chi^2_{K-1}$, the distribution of a sum of $K-1$ squared independent standard normals (the property of the sample variance of normal variables), and $P(\hat\nu=\infty)\approx P(\chi^2_{K-1}/(K-1)<c)$. $\chi^2_{K-1}/(K-1)$ is an average of $K-1$ squared standard normals, each with mean $1$, so by the law of large numbers it concentrates around $1$ as $K$ grows, and for $c<1$ the probability goes to $0$. With many classes the fit estimates the spread from many recalls; with two, from one difference. The quantity that decides is the gap statistic $z=d/\sqrt{\hat\sigma_1^2+\hat\sigma_2^2}$, which E2.5 records: the bound is reached when $\lvert z\rvert$ is below about $1$. The toy of Appendix A.2 finds the bound in $84\%$ of its fits with equal recalls and in $56\%$ with recalls $0.80$ and $0.86$: maximum likelihood reaches it somewhat more often than this approximation of the method of moments.
+
+**At the bound, the plug-in prior removes the uncertainty of the centre.** With $\hat\nu=10^4$ the prior on each recall has standard deviation $\sqrt{\hat m(1-\hat m)/(\hat\nu+1)}\approx\sqrt{0.14/10^4}\approx0.004$, and the weight of $V$ in the posterior mean is $w_j=141/(141+10^4)\approx0.014$: both recalls are fixed at $\hat m$. But $\hat m$ is itself an estimate: at the bound it is the pooled recall $\sum_jf_j/\sum_jn_j$, a frequency over about $282$ instances, with standard deviation about $\sqrt{0.14/282}\approx0.022$. The posterior states $\pm0.004$ where $V$ supports $\pm0.022$. This is the left-out term of §T.9 ("Using $V$ twice"), which at the bound is the whole uncertainty of the recalls, since $1-w_j\approx1$; it is why the left-out standard deviation of E2.4 flags the `mammographic` pairs ($0.020$–$0.023$, the largest of the $75$ pairs). The failure does not need the pooling to be wrong: in the toy, with two recalls that are truly equal, the realised coverage of the empirical-Bayes prior is $0.72$, against $0.95$ for the uniform prior (Appendix A.2). When the recalls are close to $1$, $\hat m(1-\hat m)$ is tiny and so is $\operatorname{sd}(\hat m)$: this is why `hand_digits` MLP and SVM reach the bound without harm.
+
+**A corrected strength.** The left-out variance can be put back into the prior. The plug-in prior has variance $\hat m(1-\hat m)/(\hat\nu+1)$; adding the variance of its centre gives $\hat m(1-\hat m)/(\hat\nu+1)+\operatorname{sd}(\hat m)^2$, and a Beta prior with centre $\hat m$ has this variance when its strength $\nu^*$ satisfies $\hat m(1-\hat m)/(\nu^*+1)=\hat m(1-\hat m)/(\hat\nu+1)+\operatorname{sd}(\hat m)^2$, that is
+
+$$
+\frac1{\nu^*+1}=\frac1{\hat\nu+1}+\frac{\operatorname{sd}(\hat m)^2}{\hat m(1-\hat m)}.
+$$
+
+With $\hat\nu=10^4$, $\hat m=0.83$ and $\operatorname{sd}(\hat m)=0.022$, the second term is $0.022^2/0.141\approx0.0034$ and dominates the first ($10^{-4}$), so $\nu^*\approx280$: the prior is worth about as many instances as the validation data from which $\hat m$ was estimated, which is the intuitive answer. This is a first-order approximation of the hierarchical model of §T.12, and it keeps the Dirichlet family. In the toy it raises the realised coverage at the bound from $0.72$ to $0.88$, with the Winkler score of the uniform prior ($0.130$ against $0.126$), but not lower (Appendix A.2).
+
+**With a moderate $\hat\nu$, the two recalls are pulled together.** The empirical-Bayes model assumes that the recalls of the classes are exchangeable, draws from a common distribution with no reason to expect one class to be harder than another (§T.9). With many classes (letters, digits) this is a fair approximation. With two classes the recalls are the true-positive and the true-negative rates, and they differ for a structural reason: the decision threshold of $h$ trades one for the other, and the class balance of $L$ moves the threshold towards the majority class. When they differ clearly, $\hat\nu$ is finite and the prior pulls both towards their mean. The prior part of the recall term (§T.5) is
+
+$$
+R_0=\sum_j\pi_j(\tilde r_j-\hat r_j)=\sum_j\pi_j(1-w_j)(\hat m-\hat r_j),
+$$
+
+using $\tilde r_j=w_j\hat r_j+(1-w_j)\hat m$ (§T.9). With equal weights $w_j=w$ and $\hat m\approx(\hat r_1+\hat r_2)/2$, we have $\hat m-\hat r_1=(\hat r_2-\hat r_1)/2$ and $\hat m-\hat r_2=-(\hat r_2-\hat r_1)/2$, so
+
+$$
+R_0\approx(1-w)\,\frac{(\pi_1-\pi_2)(\hat r_2-\hat r_1)}{2}.
+$$
+
+The bias is zero at $\pi=(1/2,1/2)$ and largest at extreme prevalences, which UPP draws often; it grows with the gap between the two recalls; and it is not noise that $V$ corrects, since pooling treats a real gap as noise. Illustrative: $n_j=141$, $\hat\nu=10$ ($1-w=10/151\approx0.066$) and recalls $0.70$ and $0.90$ give $\lvert R_0\rvert$ up to $0.066\cdot0.2/2\approx0.007$ for the most extreme bags. The uniform prior also pulls, but towards $1/2$ and with $2$ imaginary instances: $R_0=\sum_j\pi_j\frac{2}{n_j+2}(\frac12-\hat r_j)$, about $-0.004$ here. In the toy, with recalls $0.70$ and $0.90$, the median $\hat\nu$ is $17$ and the realised coverage falls from $0.95$ to $0.91$ (Appendix A.2); on `german` the pull adds to a prevalence term of constant sign (E2.2) and the coverage loss is larger.
+
+**There was little to gain.** With $K=2$ the uniform prior is $\operatorname{Beta}(1,1)$, two imaginary instances per column, and its prior part is small (E2.2: $R_0$ between $-0.006$ and $-0.001$ on the binary pairs); in the toy with bags drawn from the population its realised coverage is $0.94$–$0.95$. The pull towards $1/K$ that the empirical-Bayes prior removes is a large-$K$ problem; at $K=2$ the empirical-Bayes prior can gain little and its failures cost coverage in full.
+
+**Possible remedies** (new hypotheses, not decided): (a) the corrected strength $\nu^*$, which repairs the collapse at the bound but not the pull; (b) the uniform prior when $K$ is small, at least for $K=2$, since pooling needs several exchangeable classes; the $\chi^2_{K-1}$ argument above suggests how the smallest $K$ for the empirical-Bayes prior could be chosen. Neither addresses cause 4 (§T.13).
+
+## T.11 Concentrations below 1 and the sampler (E2.4)
+
+*Intuition:* a Dirichlet parameter below $1$ says "this entry is probably almost exactly zero", with most of its mass squeezed against the edge of the simplex. NUTS has to explore that edge with the same steps it uses for the entries that $V$ fixes precisely, and it fails.
+
+**How much mass sits near zero.** By aggregation (§T.9), one entry of a $\operatorname{Dir}(\alpha)$ column is $\operatorname{Beta}(\alpha_{ij},\nu-\alpha_{ij})$, with density proportional to $x^{\alpha_{ij}-1}(1-x)^{\nu-\alpha_{ij}-1}$; for $\alpha_{ij}<1$ it grows without bound as $x\to0$. Near $0$, $(1-x)^{\nu-\alpha_{ij}-1}\approx1$, so with $a=\alpha_{ij}$ and $b=\nu-\alpha_{ij}$
+
+$$
+P(x<\varepsilon)\approx\frac1{B(a,b)}\int_0^\varepsilon x^{a-1}\,dx=\frac{\varepsilon^a}{a\,B(a,b)}.
+$$
+
+For a small $a$, $B(a,b)=\Gamma(a)\Gamma(b)/\Gamma(a+b)\approx1/a$, because $\Gamma(a)\approx1/a$ and $\Gamma(b)/\Gamma(a+b)\approx1$; hence $P(x<\varepsilon)\approx\varepsilon^a$. With $a=0.05$, $P(x<10^{-6})\approx10^{-0.3}\approx0.5$: half the prior mass of the entry is below one in a million. After $V$ the posterior of the column is $\operatorname{Dir}(f_{\cdot j}+\alpha_{\cdot j})$, so the cells that $V$ fills get parameters above $1$, and the cells it never fills keep $\alpha_{ij}<1$. For an accurate classifier with many classes, most of the off-diagonal cells are never filled (illustrative, as in §T.9: $5$ mistakes over $25$ wrong classes).
+
+**What the sampler sees.** NUTS moves in unconstrained coordinates; for a small entry they behave like its logarithm. If $x$ has density $p_x(x)\propto x^{a-1}$ near $0$, then $y=\ln x$ has density $p_y(y)=p_x(e^y)\,e^y\propto e^{(a-1)y}e^y=e^{ay}$ (change of variables, with $dx/dy=e^y$): an exponential tail towards $-\infty$ with scale $1/a$, $20$ log-units for $a=0.05$. The filled entries, meanwhile, are fixed by $V$ within a few hundredths. A step size that suits the filled entries crawls along the tail, and one that suits the tail overshoots where the tail meets the region constrained by the data, where the curvature changes abruptly; the simulated trajectory then loses energy conservation, which NUTS reports as a divergent transition. This agrees with E2.4: no pair whose smallest concentration is at least $1$ has a divergence, and every pair with divergences in most bags has it below $0.17$. Why `isolet` LR and kNN give a NaN split-$\hat R$ is not explained; a guess, not checked, is that some entries underflow (the smallest normal single-precision number is about $10^{-38}$) and stay constant across draws.
+
+**Raising the concentrations would undo the prior.** Raising every off-diagonal parameter to $1$ removes the singularity but, by aggregation, the wrong classes of the column then have total parameter $K-1$, and the recall gets $\operatorname{Beta}(\hat\nu\hat m,K-1)$ instead of $\operatorname{Beta}(\hat\nu\hat m,\hat\nu(1-\hat m))$. Illustrative, as in §T.9 for `isolet` ($\hat\nu=41$, $\hat m=0.95$, $K=26$): $\operatorname{Beta}(39,25)$, with mean $39/64\approx0.61$; the pull towards a low recall that the empirical-Bayes prior removed comes back.
+
+**Separating the recall from the share of the mistakes.** A Dirichlet column has the *neutrality* property: the recall $C_{jj}$ is independent of how the remaining mass $1-C_{jj}$ is shared among the wrong classes, $s_j=C_{-j,j}/(1-C_{jj})$, and $s_j\sim\operatorname{Dir}(\alpha_{ij},i\ne j)$ (it follows from the Gamma construction of §T.9: $s_j$ normalises the Gamma variables of the wrong classes among themselves, and the normalised vector is independent of their sum). The prior is therefore a Beta on the recall times a Dirichlet on the share of the mistakes, and the empirical-Bayes prior sets both from $(\hat m,\hat\nu)$. A prior that keeps $C_{jj}\sim\operatorname{Beta}(\hat\nu\hat m,\hat\nu(1-\hat m))$ and gives the share $s_j\sim\operatorname{Dir}(\mathbf 1_{K-1})$ would keep the pull towards $\hat m$ and have no parameter below $1$ off the diagonal. It is no longer a Dirichlet on the column (unless $\hat\nu(1-\hat m)=K-1$), so it changes the prior of BayesianCC, not its likelihoods. Separately, running NUTS in double precision and with several chains would show whether the NaN diagnostics are numerical; this is a diagnostic, not a fix. Both are new hypotheses, not decided. On `poker_hand` and `shuttle`, where $\hat\nu<1$, the diagonal parameter is below $1$ as well, and only a different prior on the recall would remove it.
+
+## T.12 A prior per class, and a hierarchical prior
+
+*Intuition:* the empirical-Bayes prior learns one typical recall from all the classes. Giving each class its own prior removes what the classes teach each other; treating the typical recall as unknown instead of fixed keeps it and adds the uncertainty that the plug-in prior drops.
+
+**A Beta prior per class, fitted on $V$.** If class $\omega_j$ has its own $(m_j,\nu_j)$, fitted to its own count, its marginal likelihood is the average of the binomial probability of $f_j$ over the prior, $P(f_j\mid m_j,\nu_j)=\int\binom{n_j}{f_j}r^{f_j}(1-r)^{n_j-f_j}p(r)\,dr$. An average cannot exceed the largest value it averages, and the binomial probability is largest at $r=\hat r_j$ (§T.9), so the marginal likelihood is at most $\binom{n_j}{f_j}\hat r_j^{f_j}(1-\hat r_j)^{n_j-f_j}$, reached when all the prior mass is at $\hat r_j$: $\hat m_j=\hat r_j$ and $\hat\nu_j\to\infty$. The fitted prior says that each recall is exactly its plain value, BayCAP then uses $V$ a second time on top of it, and the uncertainty on $C$ disappears: the collapse of §T.10 on every class, with no pooling. A prior per class is useful only if its centre comes from parameters shared by the classes and from a known property of each class, for example $\operatorname{logit}m_j=a+b\ln n^L_j$ with a common $\nu$; that might help a class whose recall differs from the others (`nursery` MLP in E2.4, if its hard class is also rare in $L$, a guess not checked), but not with $K=2$, where two counts cannot fix three parameters, nor with concentrations below $1$, which come from the share of the mistakes.
+
+**A hierarchical prior.** Here $(m,\nu)$ get a prior of their own and NUTS samples them with $C$ and $\pi^Q$. The posterior of a recall then averages over $(m,\nu)$, and the left-out term of §T.9 is included by construction; $\nu^*$ of §T.10 is its first-order approximation. With $K=2$ the result depends on the prior on $\nu$. As $\nu\to\infty$ the beta-binomial tends to $\operatorname{Binomial}(n_j,m)$, so the likelihood of $(m,\nu)$ levels off at the positive value $\prod_j\binom{n_j}{f_j}m^{f_j}(1-m)^{n_j-f_j}$ instead of falling to $0$, and for large $\nu$ the posterior of $\nu$ is proportional to its prior. With a flat prior on $\ln\nu$, the usual choice for a scale, the posterior cannot be normalised; a proper prior that decays is needed, such as a uniform prior on $(m,1/\sqrt\nu)$ (Gelman et al., *Bayesian Data Analysis*), which by the change of variables $u=\nu^{-1/2}$, $\lvert du/d\nu\rvert=\frac12\nu^{-3/2}$, is $p(m,\nu)\propto\nu^{-3/2}$. With two classes $V$ barely constrains $\nu$, so the width of the interval is decided mostly by this prior. It does not remove the pull of §T.10, since the model still treats the two recalls as exchangeable. And it makes the sampling harder: when $\nu$ is large every recall must be close to $m$, when it is small they can spread, so $(\ln\nu,r_1,\dots,r_K)$ form a narrow neck opening into a wide region (Neal's funnel), the textbook source of divergences in hierarchical models; the standard cure, $\operatorname{logit}r_j=\mu+\sigma z_j$ with $z_j\sim\mathcal N(0,1)$ sampled instead of $r_j$, leaves the Dirichlet family. Both change the model of BayesianCC, and the hierarchical version was set aside by the user on 2026-10-26 (Appendix C).
+
+## T.13 A finite test pool (cause 4)
+
+*Intuition:* the $100$ bags of a pair are not $100$ fresh samples of the target distribution: they are re-drawn from the same few hundred test instances. Whatever is peculiar about those instances is repeated in every bag, and BayCAP, which knows nothing about the pool, cannot allow for it.
+
+**How `main` builds the bags.** `quapy`'s `fetch_UCIBinaryDataset` sets aside $30\%$ of a dataset as the test pool $U$ (`test_split=0.3`), and `cap-ml` splits the rest in half into $L$ and $V$. Each bag draws its prevalence with UPP and takes $\operatorname{round}(N^Q\pi_j)$ instances of class $\omega_j$ from $U$, with replacement (`LabelledCollection.sampling_index`). On `mammographic` $U$ has $249$ instances, so a bag of $1000$ uses each about four times, and all bags are made of the same $249$ instances.
+
+**What the bags measure.** Let $P_j$ be the number of instances of class $\omega_j$ in $U$ and $g_j$ the share of them that $h$ classifies correctly, the recall of $h$ on the pool. Drawing with replacement, each instance of class $\omega_j$ in a bag is a correct one with probability $g_j$, independently of the others, so a bag has $\operatorname{Binomial}(n^Q_j,g_j)$ correct instances of class $\omega_j$, not $\operatorname{Binomial}(n^Q_j,r_j)$. By linearity of the expectation, the accuracy of the bags varies around the accuracy of the pool,
+
+$$
+\mathbb E[A\mid U,\pi^Q]=\sum_j\pi_jg_j,
+$$
+
+and not around the population accuracy $\sum_j\pi_jr_j$ that the population table describes.
+
+**Two independent sampling errors.** Each class has three recalls: the population recall $r_j$, its estimate on $V$, $\hat r_j$, and the recall on the pool, $g_j$. $V$ and $U$ are disjoint random samples, so, approximating the binomial frequencies as normal,
+
+$$
+\hat r_j-r_j\approx\mathcal N\Big(0,\frac{r_j(1-r_j)}{n_j}\Big),\qquad g_j-r_j\approx\mathcal N\Big(0,\frac{r_j(1-r_j)}{P_j}\Big),\qquad\text{independently}.
+$$
+
+BayCAP's posterior on $r_j$ is centred near $\hat r_j$ with a standard deviation of about $\sqrt{r_j(1-r_j)/n_j}$, the uncertainty of $\hat r_j$ around $r_j$. The bags, however, are scored against recalls centred on $g_j$, and by the variance of a difference of independent variables
+
+$$
+\hat r_j-g_j=(\hat r_j-r_j)-(g_j-r_j),\qquad\operatorname{Var}(\hat r_j-g_j)=r_j(1-r_j)\Big(\frac1{n_j}+\frac1{P_j}\Big).
+$$
+
+The interval allows for the first term and not for the second, so for what it is scored against it is too narrow by the factor $\sqrt{1+n_j/P_j}$: about $\sqrt{2.1}\approx1.45$ on `mammographic` ($n_j\approx141$, $P_j\approx125$, illustrative). The realised pushforward does not help: it adds the spread of $\operatorname{Binomial}(n^Q_j,g_j)$ around $g_j$, not the error $g_j-r_j$. On accuracy the extra error is $S=\sum_j\pi_j(g_j-r_j)$, with
+
+$$
+\operatorname{sd}(S)=\sqrt{\sum_j\pi_j^2\,\frac{r_j(1-r_j)}{P_j}},
+$$
+
+illustrative $0.024$ at $\pi=(1/2,1/2)$ and $0.034$ at $\pi=(1,0)$ for $r_j=0.83$ and $P_j=125$; the whole gap between $V$ and the bags, $\sum_j\pi_j(\hat r_j-g_j)$, has standard deviation $0.033$ at $\pi=(1/2,1/2)$.
+
+**Why it displaces the interval.** $g_j$ is fixed once $U$ is drawn, so every bag of a pair inherits the same $g_j-r_j$: the $100$ bags do not average it out, and for this part of the error they amount to one test. The classifiers of a dataset share $U$ (and $V$), so if $U$ happens to contain more hard instances than $V$, all of them do worse on the bags than on $V$, and all get a shift of the same sign. On `mammographic` all five shifts are positive ($+0.034$ to $+0.071$), all in the recall term; a gap of $0.05$ is about $1.5$ standard deviations of $0.033$, unremarkable for one draw shared by correlated classifiers. Since $\operatorname{sd}(S)$ grows as $1/\sqrt{P_j}$, the effect matters only for small pools, which is where E2.2 found the residual recall error.
+
+**What the toy shows** (Appendix A.3). With the uniform prior, the realised coverage falls from $0.96$ for an infinite pool to $0.85$ for a pool of the size of `mammographic` and $0.62$ for $25$ instances per class; a reference interval that adds the pool's own sampling error, $g_j\sim\operatorname{Binomial}(P_j,r_j)/P_j$, which BayCAP cannot compute since it does not know $P_j$, restores $0.94$–$0.95$ at every pool size. The spread of the pair-level shift matches $\sqrt{\sum_j\frac14r_j(1-r_j)(1/n_j+1/P_j)}$, and the shift follows the gap $\overline{\sum_j\pi_j(\tilde r_j-g_j)}$ with correlation $0.98$–$0.99$. Shifts of the same sign on all the classifiers of a dataset are more frequent than for independent classifiers, but they appear also with an infinite pool, because $V$ is shared as well: they show that one shared sample is atypical, not which one.
+
+**Two readings.** If target bags are fresh samples, as in a deployment, cause 4 belongs to the evaluation protocol, which re-draws many large bags from a small pool, and is addressed there (repeated splits of $L$, $V$ and $U$, or pools at least as large as the bags). If the deployment really is many bags from one finite pool, the estimand would be the pool's own table, whose uncertainty given $C$ BayCAP cannot know without $P_j$. A further effect, a new hypothesis not checked: the target likelihood treats the $1000$ instances of a bag as independent, while they are repetitions of about $249$, so it overstates the information of the bag; E2.4 found that the target bag barely moves $C$, so the effect would be mostly on $\pi^Q$. A check on stored results would compare $\overline{R-R_0}$ with $\overline{\sum_j\pi_j(\hat r_j-g_j)}$ pair by pair, with $g_j$ from the predictions of $h$ on $U$ and its labels; it is not scheduled, and E2.5 does not study cause 4 (user's decision of 2026-10-28).
+
 # Implementation
 
 Components:
@@ -480,6 +638,10 @@ Components:
 - **`tables/displacement.py`** (for E2.4): the prior part $R_0$ uses the prior on $C$ of the method (`method_c_prior`, `smoothed_recalls`): $\frac{f_{jj}+1}{n^s_j+K}$ for `BayesCAP` and `BayesCAP-real`, as before, $\frac{f_{jj}+\hat\nu\hat m}{n^s_j+\hat\nu}$ for the empirical-Bayes methods; the E2.2 outputs of the two new methods go to `<OUT_DIR>/uncawe/tables/displacement/<method>/` and `<OUT_DIR>/uncawe/plots/main/displacement/<method>/`.
 - **`tables/eb_prior.py`** (E2.4): on the pairs where all four methods are stored (so it also works on the pilot), the check (`recall_estimates`, `recall_error`, `left_out_sd`, `check_table`), the E2.2 scores and terms of the four methods (`tables/displacement.py:pair_table`), the per-pair NUTS diagnostics (`diagnostics_table`: share of bags with divergences, largest split-$\hat R$, smallest effective sample size; NaN for results stored without them), the Winkler tests within each pushforward (`tables/pushforward.py:winkler_tests`, empirical Bayes minus $\operatorname{Dir}(\mathbf 1)$, Holm over the pairs), and the predicted and observed change of the recall term. One CSV and two tables (comparison; prior), each as LaTeX and a landscape PDF, under `<OUT_DIR>/uncawe/tables/eb_prior/`.
 - **`plots/eb_prior.py`** (E2.4): the two scatters of the Representation (`check`, `coverage`), coloured by $K$, under `<OUT_DIR>/uncawe/plots/main/eb_prior/`.
+- **E2.5** (planned, not implemented):
+  - *pretraining* of the $5$ classifiers of `pretrain/classic.py:gen_classifiers` on the $25$ binary datasets of E2.5, with the split of `cap-ml`'s `fetch_UCIBinaryDataset`, stored so that `main` does not see them: `pretrain/classic.py:gen_datasets` and `experiments/datasets.py:get_filtered_datasets`, which select the datasets of `main`, stay unchanged;
+  - *an experiment separate from `main`*, with the bag protocol of `main` (`main.py`: $100$ UPP bags of size $1000$ per pair, same seeds) and the four BayCAP methods of `experiments/methods.py:BAYCAP_VARIANTS`, storing results and NUTS diagnostics in the format of `main` under their own folder in `<OUT_DIR>/uncawe/`, with a `make run-<name>` target and `--datasets`, `--classifiers` and `--methods` filters as in `main`;
+  - *its tables and plots*, reusing `tables/eb_prior.py` (check, left-out standard deviation, diagnostics, Winkler tests) and `tables/displacement.py:pair_table`, reading the new results together with the binary pairs of `main`, and adding the gap statistic $z$ and the predicted pull of §T.10; the scatters of the Representation of E2.5.
 
 Tests:
 
@@ -498,13 +660,73 @@ Reproducibility and comparability:
 - `main` and `binform` and their output paths are unchanged; E2.1 and E2.2 only read stored results;
 - E2.3 adds the rows of `BayesCAP-real` to `main` and leaves the stored results of every other method untouched; with the same bags, seeds and NUTS settings, its posterior draws equal those of the stored `BayesCAP` on the same platform and JAX version, while bitwise agreement is not expected across JAX platforms, in which case the two pushforwards would be compared on different but equally distributed draws; a check on 5 pairs (`scripts/bench/xla_vs_stored.py`, 2026-10-22) found the stored `BayesCAP` results different from a CPU recomputation (coverage changes up to $0.05$, on `wine-quality`) and `BayesCAP-real` identical, so `BayesCAP` is recomputed on CPU before E2.3 and the old results are kept in `<OUT_DIR>/uncawe/main_22_10_26/`; E2.1 and E2.2 were computed on the old results;
 - E2.4 adds the rows of `BayesCAP-EB` and `BayesCAP-EB-real` and reruns `BayesCAP` and `BayesCAP-real` to store the NUTS diagnostics; before the stored results of `BayesCAP` are deleted, `scripts/bench/xla_vs_stored.py` must show that `BayCAP(estimand="population")` reproduces them, so that the rerun changes no stored measure and adds only the diagnostic columns; the paper's tables are then unaffected. The rerun of 2026-10-26 reproduces the scores used by E2.3 (identical coverage on every pair, Winkler scores within $2\cdot10^{-15}$). The diagnostics are computed outside the timed calls, so `t_test_ave` keeps its meaning; the E2.2 outputs of `BayesCAP` and `BayesCAP-real` are unchanged, since their prior part is the $\operatorname{Dir}(\mathbf 1)$ one as before;
-- every row records the prior, the seeds and the pushforward (population or predictive).
+- every row records the prior, the seeds and the pushforward (population or predictive);
+- E2.5 adds new pretrained classifiers and a new experiment folder and leaves the pretrained classifiers, results, tables and ranks of `main` unchanged; its bags follow the protocol of `main` on new datasets, so its pairs are comparable with the binary pairs of E2.4 but are not part of the grid of `main`.
 
 # Appendix
 
-## A. Toy simulation
+## A. Toy simulations
 
-`uv run python scripts/toys/ext2_estimand_gap.py` (defaults: $3000$ bags, seed $0$, about $90$ s) is seeded and prints the table of §T.3, including the bags with random class counts used in §T.6. It computes the exact BayCAP posterior for a binary problem by sampling $C$ from its validation posterior and weighting a grid over $\pi^Q_1$ by $\mathcal L_U$; it does not use NUTS or `cap-ml`.
+All three toys compute the exact BayCAP posterior for a binary problem by sampling $C$ from its validation posterior and weighting a grid over $\pi^Q_1$ by $\mathcal L_U$; they do not use NUTS or `cap-ml`. They are seeded, and their results are toy results, not results of `main`.
+
+### A.1 The estimand gap
+
+`uv run python scripts/toys/ext2_estimand_gap.py` (defaults: $3000$ bags, seed $0$, about $90$ s) prints the table of §T.3, including the bags with random class counts used in §T.6.
+
+### A.2 The empirical-Bayes prior with two classes
+
+`uv run python scripts/toys/ext2_eb_binary.py` (defaults: $200$ replications of $20$ bags, seed $0$; run on 2026-10-28) compares three priors on the recalls of a binary problem sized like `mammographic`: $n^s_j=141$ validation instances per class, bags of $N^Q=1000$ instances with UPP prevalences and $\operatorname{round}(N^Q\pi_j)$ instances per class. Each replication draws one validation set and $20$ bags, as one pair of `main` has one $V$ and many bags. The priors are the uniform one, $\operatorname{Beta}(1,1)$; the empirical-Bayes one, fitted with `fit_beta_binomial` of `methods/baycap.py` (§T.9); and the empirical-Bayes one with the corrected strength $\nu^*$ of §T.10 (`EB-nu*`). The bags are drawn either from the population (pool $\infty$) or with replacement from a test pool of $125$ and $124$ instances per class, drawn once per replication (pool $249$, the size of $U$ on `mammographic`, cause 4). Three scenarios of true recalls $(r_1,r_2)$: equal, close and far apart. "At bound" is the share of replications whose $\hat\nu$ reaches $10^4$; coverage, amplitude and Winkler score are those of the realised interval, scored against the realised accuracy of each bag.
+
+| $(r_1,r_2)$ | pool | at bound (median $\hat\nu$) | prior | coverage | amplitude | Winkler |
+|---|---|---|---|---|---|---|
+| $(0.83,0.83)$ | $\infty$ | $0.84$ ($10^4$) | uniform | $0.949$ | $0.104$ | $0.126$ |
+| | | | EB | $0.723$ | $0.050$ | $0.197$ |
+| | | | EB-$\nu^*$ | $0.876$ | $0.073$ | $0.130$ |
+| | $249$ | $0.84$ ($10^4$) | uniform | $0.847$ | $0.102$ | $0.198$ |
+| | | | EB | $0.523$ | $0.049$ | $0.470$ |
+| | | | EB-$\nu^*$ | $0.697$ | $0.072$ | $0.302$ |
+| $(0.80,0.86)$ | $\infty$ | $0.56$ ($10^4$) | uniform | $0.943$ | $0.104$ | $0.127$ |
+| | | | EB | $0.698$ | $0.060$ | $0.256$ |
+| | | | EB-$\nu^*$ | $0.859$ | $0.079$ | $0.156$ |
+| | $249$ | $0.56$ ($10^4$) | uniform | $0.845$ | $0.103$ | $0.200$ |
+| | | | EB | $0.588$ | $0.059$ | $0.466$ |
+| | | | EB-$\nu^*$ | $0.719$ | $0.078$ | $0.308$ |
+| $(0.70,0.90)$ | $\infty$ | $0.01$ ($16.8$) | uniform | $0.947$ | $0.117$ | $0.141$ |
+| | | | EB | $0.906$ | $0.109$ | $0.164$ |
+| | | | EB-$\nu^*$ | $0.927$ | $0.112$ | $0.152$ |
+| | $249$ | $0.00$ ($16.5$) | uniform | $0.869$ | $0.117$ | $0.209$ |
+| | | | EB | $0.836$ | $0.109$ | $0.240$ |
+| | | | EB-$\nu^*$ | $0.847$ | $0.112$ | $0.229$ |
+
+The population interval behaves in the same way, more strongly: with equal recalls and pool $\infty$ its amplitude falls from $0.096$ (uniform) to $0.019$ (EB) and its coverage from $0.92$ to $0.27$. What the table shows (§T.10):
+
+- the fit reaches the bound in most replications when the two recalls are equal or close, and almost never when they are far apart, as the gap statistic predicts;
+- at the bound the empirical-Bayes prior halves the realised amplitude and lowers the coverage from about $0.95$ to about $0.70$ even when the recalls are truly equal, i.e. when pooling is correct: the loss comes from treating $\hat m$ as known;
+- the corrected strength $\nu^*$ recovers most of the coverage ($0.86$–$0.88$) and the Winkler score of the uniform prior, without improving on it;
+- with recalls far apart $\hat\nu$ is moderate and the pull costs a little coverage ($0.95$ to $0.91$);
+- with bags drawn from the population the uniform prior covers $0.94$–$0.95$: at $K=2$ there is little for the empirical-Bayes prior to gain;
+- a pool of $249$ instances lowers the coverage of every prior by about $0.10$ (uniform) to $0.20$ (EB at the bound); the two effects add up. Each replication has its own pool, so the table averages over pools, while a dataset of `main` has a single one: the coverage of one dataset can be much lower than these averages (`mammographic`, §T.13).
+
+### A.3 A finite test pool
+
+`uv run python scripts/toys/ext2_test_pool.py` (defaults: $200$ replications of $20$ bags, $\rho=0.5$, seed $0$; run on 2026-10-28) isolates cause 4 (§T.13) with the uniform prior, on the same binary problem sized like `mammographic`. Each replication draws one $V$ and one test pool with $P_j$ instances per class, shared by $5$ classifiers with recalls between $0.76$ and $0.88$ and by $20$ bags drawn with replacement from the pool. Instances have a hidden difficulty shared by the classifiers: instance $i$ is classified correctly by classifier $k$ when $\sqrt\rho\,u_i+\sqrt{1-\rho}\,e_{ik}$ is below a threshold set by its recall, with $u_i$ and $e_{ik}$ independent standard normals, so the scores of two classifiers on the same instance have correlation $\rho$ and the classifiers tend to err on the same instances. The pool-aware interval is a reference: it replaces each draw of the recalls by a draw of the pool's recalls, $g_j\sim\operatorname{Binomial}(P_j,r_j)/P_j$, which needs $P_j$. "Low" is the share of (replication, classifier) pairs whose coverage over the bags is below $0.5$; "sd shift" is the standard deviation over pairs of the shift (posterior-mean accuracy minus realised accuracy, averaged over the bags), "predicted" its value from §T.13, $\sqrt{\sum_j\frac14\bar r_j(1-\bar r_j)(1/n^s_j+1/P_j)}$; "corr" and "slope" relate the shift to the gap $\overline{\sum_j\pi_j(\tilde r_j-g_j)}$; "corr. clf." is the mean correlation of the shifts of two classifiers across replications, "same sign" the share of replications in which all five shifts have the same sign ($2/32\approx0.06$ for independent classifiers).
+
+| $P_j$ | coverage | Winkler | pool-aware coverage | pool-aware Winkler | low | sd shift | predicted | corr | slope | corr. clf. | same sign |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| $25$ | $0.617$ | $0.647$ | $0.952$ | $0.266$ | $0.348$ | $0.055$ | $0.059$ | $0.99$ | $0.93$ | $0.26$ | $0.20$ |
+| $62$ | $0.758$ | $0.329$ | $0.950$ | $0.201$ | $0.186$ | $0.040$ | $0.041$ | $0.99$ | $0.94$ | $0.32$ | $0.24$ |
+| $125$ | $0.847$ | $0.208$ | $0.950$ | $0.168$ | $0.097$ | $0.032$ | $0.033$ | $0.99$ | $0.93$ | $0.24$ | $0.18$ |
+| $250$ | $0.890$ | $0.171$ | $0.944$ | $0.155$ | $0.064$ | $0.028$ | $0.028$ | $0.99$ | $0.95$ | $0.27$ | $0.20$ |
+| $500$ | $0.924$ | $0.142$ | $0.949$ | $0.139$ | $0.036$ | $0.024$ | $0.026$ | $0.98$ | $0.92$ | $0.33$ | $0.28$ |
+| $2000$ | $0.939$ | $0.131$ | $0.945$ | $0.130$ | $0.017$ | $0.023$ | $0.024$ | $0.98$ | $0.93$ | $0.33$ | $0.27$ |
+| $\infty$ | $0.958$ | $0.124$ | $0.958$ | $0.124$ | $0.010$ | $0.021$ | $0.023$ | $0.98$ | $0.93$ | $0.24$ | $0.23$ |
+
+What the table shows (§T.13):
+
+- coverage falls steadily as the pool shrinks, to $0.85$ at the size of `mammographic` and $0.62$ at $25$ instances per class, and the share of pairs with coverage below $0.5$ grows from $1\%$ to $35\%$;
+- the pool-aware reference covers $0.94$–$0.95$ at every pool size: the pool's own sampling error accounts for the whole loss;
+- the spread of the shift matches its prediction within $0.004$, and the shift follows the gap between $V$ and the pool with correlation $0.98$–$0.99$ and slope about $0.93$, also with an infinite pool, where the gap slightly overstates the shift; the step in which the target bag moves $C$ changes the shift little;
+- shifts of the same sign on all five classifiers occur in about a fifth to a quarter of the replications, against $0.06$ for independent classifiers, with any pool size: shared instances in $V$ and in $U$ both produce them, so they do not identify the pool as the atypical sample. Their frequency depends on $\rho$, which is chosen, not estimated.
 
 ## B. Relation to other extensions
 
@@ -518,6 +740,7 @@ Reproducibility and comparability:
 ## C. Out of scope
 
 - tempering, informative priors, and priors on $C$ other than the empirical-Bayes prior of E2.4 ([[ext5_baycap_priors_tempering|Extension 5]]); the fully hierarchical version of that prior, which would change the model of BayesianCC;
+- cause 4 in E2.5: the size of the test pool is not a factor of E2.5 (user's decision of 2026-10-28);
 - the soft-posterior variant of the realised-table predictive (Proposal B);
 - post-hoc interval recalibration;
 - violations of PPS.
