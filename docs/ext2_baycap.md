@@ -15,7 +15,7 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 | E2.3, the exact realised-table predictive as the method `BayesCAP-real` of `main`, and the E2.2 analysis repeated on it (work-plan card WP-4; `tables/pushforward.py`, `plots/pushforward.py`) | [run], analysis below |
 | `BayCAP` with the hyperparameter `c_prior` $\in\{$uniform, empirical Bayes$\}$ for the prior on the columns of $C$ (work-plan card WP-5) | [implemented], evaluated by E2.4 as `BayesCAP-EB` and `BayesCAP-EB-real` |
 | E2.4, BayCAP with an empirical-Bayes prior on the recalls, with a zero-cost check of its effect and the NUTS diagnostics of all BayCAP methods (work-plan card WP-6; `tables/eb_prior.py`, `plots/eb_prior.py`) | [run], analysis below |
-| E2.5, the empirical-Bayes prior on all the binary datasets of `quapy`, in an experiment separate from `main` | [proposal], decided by the user on 2026-10-28, not implemented |
+| E2.5, the empirical-Bayes prior on all the binary datasets of `quapy`, in an experiment separate from `main` (work-plan card WP-7) | [proposal], decided by the user on 2026-10-28, not implemented |
 | Toy simulations of the empirical-Bayes prior with $K=2$ and of cause 4 (`scripts/toys/ext2_eb_binary.py`, `scripts/toys/ext2_test_pool.py`) | [run], Appendix A |
 | Candidate experiments E2.c1, E2.c2 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis], examined by E2.2 |

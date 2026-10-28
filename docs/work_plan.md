@@ -109,7 +109,7 @@ The CBPE variants `B-CBPE` and `BE-CBPE` were run in earlier versions. Only `plo
 
 ## II.8 Toy simulations
 
-`scripts/toys/ext2_estimand_gap.py`, `scripts/toys/ext5_prior_calibration.py` and `scripts/toys/ext4_budget.py` are seeded toy simulations that support [[ext2_baycap]], [[ext5_baycap_priors_tempering]] and [[ext4_uncertainty_budget]]. Their numbers are toy results, not experiment results.
+`scripts/toys/ext2_estimand_gap.py`, `scripts/toys/ext2_eb_binary.py`, `scripts/toys/ext2_test_pool.py`, `scripts/toys/ext5_prior_calibration.py` and `scripts/toys/ext4_budget.py` are seeded toy simulations that support [[ext2_baycap]] (Appendix A: the estimand gap, the empirical-Bayes prior with two classes, which imports `fit_beta_binomial` from `methods/baycap.py`, and a finite test pool), [[ext5_baycap_priors_tempering]] and [[ext4_uncertainty_budget]]. Their numbers are toy results, not experiment results.
 
 ## II.9 Shared infrastructure and tests
 
@@ -176,8 +176,7 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
-
-No open cards (2026-10-28).
+| WP-7 | E2.5: the empirical-Bayes prior of BayCAP on all the binary datasets of `quapy` | experiment | Scheduled | WP-6 | 2026-10-28 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -219,6 +218,26 @@ Entry template:
 - **Log:** <dated notes on progress: pilot run, problems, decisions>
 - **Outcome:** <filled when the branch is merged: merge commit; decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card>
 ```
+
+### WP-7 E2.5: the empirical-Bayes prior of BayCAP on all the binary datasets of `quapy`
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext2_baycap]] (E2.5, §T.10)
+- **Goal:** test whether the failures of the empirical-Bayes prior on binary datasets found by E2.4 (WP-6) appear on every binary problem, and whether diagnostics computed from the validation set alone predict which pairs fail. Background: with $K=2$ the strength $\hat\nu$ of the Beta prior on the recalls is fitted from a single difference between two recalls, so it often reaches its upper bound $10^4$ and the plug-in prior then drops the uncertainty of its centre $\hat m$ (interval too narrow); with a moderate $\hat\nu$ it pulls the true-positive and true-negative rates together.
+  - *Datasets:* the binary datasets of `quapy` (`UCI_BINARY_DATASETS`) not used by `main`: `transfusion`, `breast-cancer`, `wdbc`, `ionosphere`, `haberman`, `spectf`, `sonar`, `balance.1`, `balance.3`, `cmc.1`, `cmc.2`, `cmc.3`, `ctg.1`, `ctg.2`, `ctg.3`, `iris.1`, `iris.2`, `iris.3`, `wine.1`, `wine.2`, `wine.3`, `wine-q-red`, `wine-q-white`, `yeast`, `pageblocks.5` ($25$ datasets).
+  - *Pretraining:* the $5$ classifiers of `pretrain/classic.py:gen_classifiers` on these datasets, with the split of `cap-ml`'s `fetch_UCIBinaryDataset`, stored so that `main` does not see them (`pretrain/classic.py:gen_datasets` and `experiments/datasets.py:get_filtered_datasets` unchanged).
+  - *Experiment:* a new experiment, separate from `main`, with the bag protocol of `main` ($100$ UPP bags of size $1000$ per pair, same seeds) and the four methods of `experiments/methods.py:BAYCAP_VARIANTS` (`BayesCAP`, `BayesCAP-real`, `BayesCAP-EB`, `BayesCAP-EB-real`), storing results and NUTS diagnostics in the format of `main` under its own folder of `<OUT_DIR>/uncawe/`; `--datasets`, `--classifiers` and `--methods` filters; a `make run-<name>` target.
+  - *Measures, per pair:* $n^s_1$, $n^s_2$, $\hat r_1$, $\hat r_2$; the gap statistic $z=(\hat r_1-\hat r_2)/\sqrt{\hat r_1(1-\hat r_1)/n^s_1+\hat r_2(1-\hat r_2)/n^s_2}$; $\hat m$, $\hat\nu$, bound flags, $\operatorname{sd}(\hat m)$, the left-out standard deviation; the check of E2.4 (predicted and observed change of the recall term) and the predicted pull $\sum_j\pi_j(1-w_j)(\hat m-\hat r_j)$, averaged over the bags; for the four methods, coverage, amplitude, Winkler score, $\mathcal C_s$, shift, $R$, $R_0$, $P$, the Winkler tests of E2.4 (empirical Bayes minus uniform within each pushforward, Holm over the pairs of E2.5) and the NUTS diagnostics.
+  - *Tables and plots:* reading the new results together with the $25$ binary pairs of `main` (E2.4, marked): a comparison table and a fit table, one row per pair; three scatters: $\lvert z\rvert$ against $\hat\nu$ (log scale), the left-out standard deviation (log scale) against the change of realised coverage, and the predicted against the observed change of the recall term. Reuse `tables/eb_prior.py` and `tables/displacement.py:pair_table`.
+- **Estimand:** population table for `BayesCAP` and `BayesCAP-EB`, realised table for `BayesCAP-real` and `BayesCAP-EB-real`; all four scored against the realised table of each bag (`true_cts`). The fit diagnostics use only the labels of $V$; the check and the error terms use target labels, so they are an analysis.
+- **Scope:** `pretrain/` (a pretraining entry point or option for the new datasets); a new experiment module in `src/uncawe/experiments/` and its entry point; new modules in `src/uncawe/tables/` and `src/uncawe/plots/`; `Makefile` targets; tests. `main`, its pretrained classifiers, results, tables and ranks are unchanged.
+- **Depends on:** WP-6 (the four BayCAP methods, the NUTS diagnostics, `tables/eb_prior.py`); stored `main` results for the binary pairs of E2.4.
+- **Comparability:** new pretrained classifiers and a new results folder; nothing stored is rerun or deleted. The pairs are comparable with the binary pairs of E2.4 (same protocol, methods and seeds) but are not part of the grid of `main`. Cause 4 (the finite test pool) is not studied (user's decision of 2026-10-28); datasets with very small test pools (`iris.x`, `wine.x`) are kept and flagged. The sizes of the datasets, and whether the $5$ classifiers train on the smallest ones, are to be checked first.
+- **Deviations from Part V:** none expected.
+- **Done when:** the full runs of the four methods have stored results with diagnostics for all pairs, and the E2.5 tables and plots are generated; the results are described in Part II with their location, the `cap-ml` commit and the date of the runs.
+- **Commands:** to be filled when the code exists (pretraining; pilot on a few datasets with LR; full runs on `bcuda` with `JAX=cpu`, one method per run, each $125\times100=12\,500$ NUTS runs, about $1.7$ times a run of E2.4 by the number of pairs, not measured; tables and plots).
+- **Log:** 2026-10-28: card added by the user.
+- **Outcome:** —
 
 ## III.3 Completed cards
 
