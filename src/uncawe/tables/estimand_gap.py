@@ -169,12 +169,12 @@ def pilot_datasets(table: pd.DataFrame, classifier: str = "LR") -> dict:
     return chosen
 
 
-def load_results(method: str = METHOD) -> pd.DataFrame:
-    """Return the stored ``main`` results of ``method`` (vanilla accuracy, ``classic`` domain)."""
-    base_dir = os.path.join(env.root_dir, EXPERIMENT)
+def load_results(method: str = METHOD, experiment: str = EXPERIMENT, domain: str = DOMAIN) -> pd.DataFrame:
+    """Return the stored results of ``method`` (vanilla accuracy; default: ``main``, ``classic`` domain)."""
+    base_dir = os.path.join(env.root_dir, experiment)
     results = Results.load(
         base_dir=base_dir,
-        domain=DOMAIN,
+        domain=domain,
         acc_name=ACC_NAME,
         filter_classifiers=list(CLASSIFIER_ORDER),
         filter_methods=[method],
