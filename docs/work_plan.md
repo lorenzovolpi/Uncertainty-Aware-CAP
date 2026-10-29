@@ -253,6 +253,27 @@ Entry template:
 - **Log:** 2026-10-28: card added by the user.
 - **Outcome:** —
 
+### WP-9 E2.6: zero-cost screens for a hierarchical prior on the recalls of BayCAP
+
+- **Kind / status:** analysis / Scheduled
+- **Source:** [[ext2_baycap]] (E2.6, §T.14)
+- **Goal:** before implementing a hierarchical prior on the recalls of BayCAP (a prior on the typical recall $m$ and strength $\nu$ of the Beta prior of the recalls, instead of the plug-in $(\hat m,\hat\nu)$ of the empirical-Bayes prior), screen four possible problems at no run cost, on the 75 pairs of `main` and the 125 of E2.5 (`eb_binary`), vanilla accuracy.
+  - *Grid posterior:* $p(m,\nu\mid V)$ from the validation counts alone (product of beta-binomial likelihoods of the diagonal counts), on the grid of `scripts/toys/ext2_hierarchical.py` (200 values of $m$ in $[0.0025,0.9975]$, 200 of $\ln\nu$ in $[\ln0.1,\ln10^4]$), uniform prior on $m$, three priors on $\nu$: $\nu^{-3/2}$, log-uniform, flat; mixture mean and variance of each recall and the variance of accuracy due to $C$, $V_C(\pi)$, by the laws of total expectation and variance.
+  - *D4, prediction validated on EB:* per bag, the stored draws of `BayesCAP` / `BayesCAP-real` moved by $\Delta=\sum_j\bar\pi_j(\mathbb E_{\text{new}}[r_j]-\mathbb E_{\text{u}}[r_j])$ ($\bar\pi$ from `estim_cts`) and rescaled so that their variance replaces $V_{C,\text{u}}(\bar\pi)$ with $V_{C,\text{new}}(\bar\pi)$; coverage, amplitude, Winkler score of the predicted draws; validated against the stored `BayesCAP-EB` / `BayesCAP-EB-real`, then applied to the three hierarchical priors.
+  - *D1:* ratio of the 90% widths of the posterior and prior of $\ln\nu$; predicted recall-term change and $V_C$ at the uniform prevalence and at the vertices; range of the D4 predictions over the three priors.
+  - *D2:* leave-one-class-out predictive p-value of each $f_{jj}$ and vertex shift $z_j=(\mathbb E[r_j\mid V]-f_{jj}/n_j)/\operatorname{sd}(r_j\mid V)$; per pair the smallest p-value, the classes below $0.01$, the largest $\lvert z_j\rvert$.
+  - *D3:* $P(\min(\nu m,\nu(1-m))<1\mid V)$ and the 90% width of $\ln\nu$, against the stored share of divergent bags of `BayesCAP-EB`.
+  - *Tables and plots:* a validation table and a screens table (one row per pair, by dataset and $K$, E2.5 pairs marked; CSV, LaTeX, landscape PDF); five scatters (validation, prediction, sensitivity, exchangeability, sampler risk).
+- **Estimand:** the D4 predictions keep the estimand of the method they start from (population for `BayesCAP`, realised for `BayesCAP-real`), all scored against the realised table (`true_cts`); D1–D3 use only $V$. D4 uses target labels for scoring, so it is an analysis, not a method.
+- **Scope:** a new module in `src/uncawe/tables/` and one in `src/uncawe/plots/`; `Makefile` targets; tests; §II of the work plan. No change to `methods/`, `experiments/` or stored results.
+- **Depends on:** WP-6 and WP-7 (stored results of the four BayCAP methods with NUTS diagnostics, `tables/eb_prior.py`, `tables/displacement.py:load_validation_counts`).
+- **Comparability:** reads stored results only; nothing is rerun or deleted.
+- **Deviations from Part V:** none expected.
+- **Done when:** the E2.6 tables and plots are generated on all pairs of both sources, and described in Part II with their location and the date.
+- **Commands:** to be filled when the code exists.
+- **Log:** —
+- **Outcome:** —
+
 ## III.3 Completed cards
 
 Cards that are done, most recent first. Each entry keeps the history of the card (goal as planned, dependencies, deviations, log, outcome); what the card implemented and, for experiments and analyses, the run and the findings are described in the Part II (or Part I) section it points to, and are not repeated here.
