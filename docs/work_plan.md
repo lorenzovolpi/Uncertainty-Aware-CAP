@@ -193,6 +193,7 @@ This part tracks all implementation and experimentation work of the project: wha
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
 | WP-8 | E3.1: BayCAP with a fixed $\hat C$, quantifier × input classifier × pushforward, on the `main` protocol | experiment | Scheduled | WP-4, WP-6 | 2026-10-28 |
+| WP-10 | E2.7: BayCAP-H, the hierarchical prior on the recalls of BayCAP, on the pairs of `main` | experiment | Scheduled | WP-6, WP-9 | 2026-10-29 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -259,6 +260,25 @@ Entry template:
 - **Done when:** the eight methods have stored results with diagnostics for all 75 pairs and the three metrics, and the E3.1 tables and plots are generated; the results are described in Part II with their location, the `cap-ml` commit and the date of the runs.
 - **Commands:** to be filled when the code exists (pilot on two datasets, one binary and one with large $K$, with LR and kNN, all eight methods; full runs on `bcuda` with `JAX=cpu`, one method per run, each $7500$ NUTS runs, cost not measured; tables and plots).
 - **Log:** 2026-10-28: card added by the user.
+- **Outcome:** —
+
+### WP-10 E2.7: BayCAP-H, the hierarchical prior on the recalls of BayCAP, on the pairs of `main`
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext2_baycap]] (E2.7, §T.14, §T.15)
+- **Goal:** run BayCAP with a hierarchical prior on the recalls, as it is, to measure its coverage and its sampling problems before any countermeasure is chosen. Background: the empirical-Bayes prior of `BayesCAP-EB(-real)` plugs in a fitted typical recall $\hat m$ and strength $\hat\nu$; it removes the large-$K$ displacement of the uniform prior but collapses at $K=2$ and makes NUTS diverge when a Dirichlet parameter falls below $1$. The zero-cost screens of WP-9 (E2.6) found that a hierarchical prior barely depends on the prior on $\nu$ and that the classes can be pooled, but could not predict its effect on the width of the interval, and expect NUTS to struggle on pairs with a class perfect or never right on $V$ (boundary) and on pairs where $V$ supports nearly complete pooling (funnel).
+  - *Method:* `BayesCAP-H-real`, BayCAP (`methods/baycap.py:BayCAP`) with a third prior on $C$: $m\sim U(0,1)$; $u=1/\sqrt{1+\nu}\sim U(0,1)$, i.e. $p(\nu)=\frac12(1+\nu)^{-3/2}$; the recalls $C_{jj}\mid m,\nu\sim\operatorname{Beta}(\nu m,\nu(1-m))$ independently; the off-diagonal cells of column $j$ equal to $(1-C_{jj})s_j$ with $s_j\sim\operatorname{Dir}(\mathbf 1_{K-1})$; $(m,u)$ sampled by NUTS with $C$ and $\pi^Q$. Likelihood, prior on $\pi^Q$, NUTS settings and default seed as `BayesCAP`; realised pushforward only; centred parametrisation, no other sampler, no bound on $\nu$, no bag discarded for divergences.
+  - *Runs:* in `main`, all $75$ pairs ($15$ datasets × $5$ classifiers), the $100$ UPP bags of size $1000$ of `main`, the three metrics of `main`; a pilot first on `mammographic`, `shuttle`, `poker_hand` and `isolet` with LR (funnel and boundary cases).
+  - *Measures* (vanilla accuracy unless stated): AE, coverage, amplitude and Winkler score next to the stored `BayesCAP-real` and `BayesCAP-EB-real`; paired bootstrap tests of the mean Winkler difference against each of the two, Holm over the $75$ pairs, as in WP-6; per bag, the NUTS diagnostics of WP-6 (divergences, largest split-$\hat R$, smallest effective sample size) and failed bags; the posterior mean of $m$, the median and $90\%$ interval of $\ln\nu$, $P(\nu>\min_jn_j)$; the posterior mean and covariance of $\pi^Q$; the D4 prediction of coverage and amplitude for the same prior on the grid of WP-9 (`tables/hierarchical.py`, with the prior on $u$ added to `NU_PRIORS`); the residual variance $s^2-V_C(\bar\pi)$ of the accuracy draws of `BayesCAP-real` and of BayCAP-H ($V_C$ from the grid) and the prevalence part $\bar r^\top\Sigma_\pi\bar r$ of BayCAP-H; the share of divergent bags against the D3 indicators of WP-9 (posterior-parameter risk, classes perfect or never right on $V$, funnel risk).
+  - *Tables and plots:* a comparison table and a sampler-and-checks table (one row per pair, by dataset and $K$; CSV, LaTeX, landscape PDF); four scatters: coverage against the two stored methods, observed against predicted coverage and amplitude (D4), residual variance against the uniform one and against its prevalence part, divergences against the D3 indicators.
+- **Estimand:** realised table of the target bag for `BayesCAP-H-real`; scored against the realised table (`true_cts`). The D4 checks use target labels only for scoring, so they are analyses.
+- **Scope:** `methods/baycap.py` (a third `c_prior`, the posterior moments of $\pi^Q$ kept for the records; docstring with estimand and represented sources; tests); `experiments/methods.py` (`BayesCAP-H-real` in `BAYCAP_VARIANTS`) and `experiments/main.py` (optional per-bag columns, §V.3); `tables/hierarchical.py` (`NU_PRIORS`); a new module in `tables/` and one in `plots/`; labels in `tables/common.py` and `plots/common.py`; `Makefile` targets; §II.5, §II.12 and §V.3 of the work plan.
+- **Depends on:** WP-6 (the BayCAP methods, the NUTS diagnostics and the stored results of `BayesCAP-real` and `BayesCAP-EB-real` with diagnostics), WP-9 (the grid posterior, the D4 prediction and the D3 indicators of `tables/hierarchical.py`).
+- **Comparability:** adds one method to `main`; the stored results of every other method are untouched; same bags, seeds and NUTS settings as the stored BayCAP methods, so the comparison is bag by bag. Whether `BayesCAP-H-real` enters the tables, ranks and default plots of `main` is decided by the user; until its results are stored, every pair counts as incomplete for `check_missing.py` (§V.1).
+- **Deviations from Part V:** the pilot uses four datasets with LR, chosen for the risks of D3.
+- **Done when:** `BayesCAP-H-real` has stored results with diagnostics for all $75$ pairs and the three metrics, and the E2.7 tables and plots are generated; the results are described in Part II with their location, the `cap-ml` commit and the date of the run.
+- **Commands:** to be filled when the code exists (pilot; full run on `bcuda` with `JAX=cpu`, $7\,500$ NUTS runs, cost not measured; tables and plots).
+- **Log:** 2026-10-29: card added at the user's request.
 - **Outcome:** —
 
 ## III.3 Completed cards
