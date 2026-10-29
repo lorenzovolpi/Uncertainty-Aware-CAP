@@ -4,8 +4,9 @@
 The hierarchical prior gives each recall $r_j=C_{jj}$ of a classifier the prior $\\operatorname{Beta}(\\nu m,\\nu(1-m))$
 and puts a prior on $(m,\\nu)$ instead of plugging in the fit $(\\hat m,\\hat\\nu)$ of the empirical-Bayes prior of
 ``BayesCAP-EB``. Its posterior is computed from the validation counts alone (§T.14), on the grid of
-``scripts/toys/ext2_hierarchical.py``: $m$ uniform, and one of three priors on $\\nu\\in[0.1,10^4]$ (``NU_PRIORS``,
-written as log-densities in $\\ln\\nu$). No NUTS is run. Four screens, per (dataset, classifier) pair of ``main``,
+``scripts/toys/ext2_hierarchical.py``: $m$ uniform, and one of three priors on $\\nu\\in[0.1,10^4]$ (``SCREEN_PRIORS``,
+written as log-densities in $\\ln\\nu$). No NUTS is run. ``NU_PRIORS`` also holds the prior of ``BayesCAP-H-real``
+(E2.7, work-plan card WP-10), $u=1/\\sqrt{1+\\nu}\\sim U(0,1)$, restricted to the grid, for the D4 prediction of E2.7. Four screens, per (dataset, classifier) pair of ``main``,
 vanilla accuracy, $|U|=1000$:
 
 - D4, prediction from $V$ alone: the stored accuracy draws of ``BayesCAP`` (population table) and ``BayesCAP-real``
@@ -65,9 +66,17 @@ SCORES = ("coverage", "amplitude", "winkler")
 
 GRID_M = np.linspace(0.0025, 0.9975, 200)
 GRID_LN_NU = np.linspace(np.log(0.1), np.log(1e4), 200)
-# prior on nu as a log-density in ln(nu): p(nu) d(nu) = p(nu) nu d(ln nu)
-NU_PRIORS = {"nu32": -0.5, "loguniform": 0.0, "flat": 1.0}
-NU_PRIOR_LABELS = {"nu32": "$\\nu^{-3/2}$", "loguniform": "log-unif.", "flat": "flat"}
+# prior on nu as a log-density in ln(nu), up to a constant: p(nu) d(nu) = p(nu) nu d(ln nu); "unifu" is the prior of
+# BayesCAP-H-real (E2.7), u = 1/sqrt(1+nu) uniform, i.e. p(nu) = (1+nu)^(-3/2)/2
+NU_PRIORS = {
+    "nu32": lambda ln_nu: -0.5 * ln_nu,
+    "loguniform": lambda ln_nu: 0.0 * ln_nu,
+    "flat": lambda ln_nu: 1.0 * ln_nu,
+    "unifu": lambda ln_nu: ln_nu - 1.5 * np.log1p(np.exp(ln_nu)),
+}
+NU_PRIOR_LABELS = {"nu32": "$\\nu^{-3/2}$", "loguniform": "log-unif.", "flat": "flat", "unifu": "$u$ unif."}
+# the priors of the screens of E2.6, over which the range of the D4 predictions is taken
+SCREEN_PRIORS = ("nu32", "loguniform", "flat")
 MAIN_PRIOR = "loguniform"
 TAIL = 0.05  # 90% intervals of ln(nu)
 TOP_NU = 1e3
@@ -136,7 +145,7 @@ def class_log_marginals(f: np.ndarray, n: np.ndarray) -> np.ndarray:
 
 def grid_weights(log_lik: np.ndarray, prior: str) -> np.ndarray:
     """Normalised posterior weights on the grid, from the log-likelihood summed over classes, shape (M, N)."""
-    log_w = log_lik + NU_PRIORS[prior] * GRID_LN_NU[None, :]
+    log_w = log_lik + NU_PRIORS[prior](GRID_LN_NU)[None, :]
     w = np.exp(log_w - log_w.max())
     return w / w.sum()
 
@@ -273,7 +282,7 @@ def hierarchical_screens(val_counts: np.ndarray) -> tuple[dict, dict[str, Recall
         "eb_post_alpha_share": eb_posterior_low_share(val_counts),
     }
     posteriors = {}
-    for prior in NU_PRIORS:
+    for prior in SCREEN_PRIORS:
         weights = grid_weights(total_ll, prior)
         post = mixture_posterior(f, n, weights)
         posteriors[prior] = post
@@ -431,7 +440,7 @@ def pair_row(results: dict[str, pd.DataFrame], val_counts: np.ndarray) -> dict:
             for score, value in scores.items():
                 row[f"{name}_{target}_pred_{score}"] = value
     for score in ("coverage", "winkler"):
-        values = [row[f"realised_{prior}_pred_{score}"] for prior in NU_PRIORS]
+        values = [row[f"realised_{prior}_pred_{score}"] for prior in SCREEN_PRIORS]
         row[f"realised_pred_{score}_range"] = float(np.nanmax(values) - np.nanmin(values))
     return row
 
@@ -495,7 +504,8 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
       shift of D4 and the stored recall part, and the mean absolute prevalence part;
     - ``prediction``: mean realised coverage and Winkler score, stored (uniform, empirical Bayes) and predicted (each
       prior on $\\nu$);
-    - ``screens``: median width ratio of $\\ln\\nu$ and median range of the predicted realised coverage over the priors;
+    - ``screens``: median width ratio of $\\ln\\nu$ and median range of the predicted realised coverage over the priors
+      of E2.6 (``SCREEN_PRIORS``);
       pairs with a p-value below ``P_SMALL`` and with $|z_j|>2$ (``MAIN_PRIOR``); for each indicator of D3 (prior and
       posterior parameters below $1$, funnel, and the empirical-Bayes cells below $1$) its median and its Spearman
       correlation with the stored share of divergent bags of ``BayesCAP-EB``; pairs with a class perfect on $V$.
@@ -537,14 +547,14 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
             "uniform_W": float(sub["BayesCAP-real_winkler"].mean()),
             "eb_W": float(sub["BayesCAP-EB-real_winkler"].mean()),
         }
-        for prior in NU_PRIORS:
+        for prior in SCREEN_PRIORS:
             prediction[f"{prior}_cov"] = float(sub[f"realised_{prior}_pred_coverage"].mean())
             prediction[f"{prior}_W"] = float(sub[f"realised_{prior}_pred_winkler"].mean())
         out["prediction"].append(prediction)
         divergent = sub["BayesCAP-EB_share_divergent"]
         screens = {
             **key,
-            **{f"{prior}_width_ratio": float(sub[f"{prior}_width_ratio"].median()) for prior in NU_PRIORS},
+            **{f"{prior}_width_ratio": float(sub[f"{prior}_width_ratio"].median()) for prior in SCREEN_PRIORS},
             "cov_range": float(sub["realised_pred_coverage_range"].median()),
             "small_pvalue": int((sub[f"{MAIN_PRIOR}_min_pvalue"] < P_SMALL).sum()),
             "large_z": int((sub[f"{MAIN_PRIOR}_max_abs_z"] > 2).sum()),
@@ -615,7 +625,7 @@ def _fmt_p(value: float) -> str:
 
 def _screens_styler(table: pd.DataFrame):
     cols = {}
-    for prior in NU_PRIORS:
+    for prior in SCREEN_PRIORS:
         label = NU_PRIOR_LABELS[prior]
         cols[(label, "width")] = table[f"{prior}_width_ratio"].to_numpy()
         cols[(label, "$\\mathcal{C}$")] = table[f"realised_{prior}_pred_coverage"].to_numpy()

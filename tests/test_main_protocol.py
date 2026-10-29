@@ -52,6 +52,7 @@ class _BayCAP(BayCAP, _ContingencyMethod):
 
     def __init__(self):
         _ContingencyMethod.__init__(self)
+        self.c_prior = "uniform"
 
     fit = _ContingencyMethod.fit
     switch = _ContingencyMethod.switch
@@ -62,6 +63,17 @@ class _BayCAP(BayCAP, _ContingencyMethod):
 
     def last_nuts_diagnostics(self):
         return {"nuts_divergences": self.predict_calls, "nuts_max_rhat": 1.0, "nuts_min_ess": 500.0}
+
+
+class _HierarchicalBayCAP(_BayCAP):
+    """A BayCAP with the hierarchical prior, whose summaries report the index of the bag."""
+
+    def __init__(self):
+        _BayCAP.__init__(self)
+        self.c_prior = "hierarchical"
+
+    def last_posterior_summaries(self):
+        return {"nuts_failed": 0, "h_pi_mean": np.full(2, self.predict_calls / 10)}
 
 
 class _DirectMethod:
@@ -142,6 +154,19 @@ class MainProtocolTest(unittest.TestCase):
                     self.assertEqual(call.kwargs["extra_columns"], expected)
                 if expected is not None:
                     self.assertEqual(tuple(expected), NUTS_DIAGNOSTICS)
+
+    @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
+    @patch("uncawe.experiments.main.os.path.exists", return_value=False)
+    @patch("uncawe.experiments.main.build_result_frame", return_value=Mock())
+    def test_contingency_method_stores_hierarchical_summaries_per_bag(self, build, _exists, _path):
+        main._evaluate_contingency_method(
+            self.pretrain, "method", _HierarchicalBayCAP(), self.dataset, Mock(), Mock(), self.context
+        )
+        columns = build.call_args_list[0].kwargs["extra_columns"]
+        self.assertEqual(list(columns), list(NUTS_DIAGNOSTICS) + ["nuts_failed", "h_pi_mean"])
+        self.assertEqual(columns["nuts_divergences"], [1, 2])
+        self.assertEqual(columns["nuts_failed"], [0, 0])
+        np.testing.assert_allclose(np.stack(columns["h_pi_mean"]), [[0.1, 0.1], [0.2, 0.2]])
 
     @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
     @patch("uncawe.experiments.main.os.path.exists", return_value=False)

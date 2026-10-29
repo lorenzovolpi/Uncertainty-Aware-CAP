@@ -15,6 +15,7 @@ from quapy.data.datasets import UCI_BINARY_DATASETS
 
 from uncawe.experiments import eb_binary as experiment
 from uncawe.experiments import main
+from uncawe.experiments.methods import BAYCAP_VARIANTS
 from uncawe.methods.baycap import fit_beta_binomial
 from uncawe.plots import eb_binary as eb_binary_plots
 from uncawe.pretrain import classic, classic_binary
@@ -103,7 +104,7 @@ class ExperimentTest(unittest.TestCase):
             for d in ("wdbc", "sonar", "unknown")
             for h in ("LR", "kNN")
         }
-        methods = [(name, name.lower()) for name in experiment.METHODS] + [("DoC", "doc")]
+        methods = [(name, name.lower()) for name in experiment.METHODS] + [("DoC", "doc"), ("BayesCAP-H-real", "h")]
         with (
             patch.object(experiment, "load_info_paths", return_value=list(infos)) as paths,
             patch.object(experiment.PretrainInfo, "load", side_effect=lambda path, fast: infos[path]),
@@ -120,6 +121,10 @@ class ExperimentTest(unittest.TestCase):
         self.assertEqual({task[1] for task in tasks}, set(experiment.METHODS))
         self.assertEqual({task[0].split("_")[0] for task in tasks}, {"wdbc", "sonar"})
         self.assertEqual(exists.call_args.args[5], "eb_binary")
+
+    def test_methods_are_those_of_e24(self):
+        self.assertEqual(experiment.METHODS, ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real"])
+        self.assertTrue(set(experiment.METHODS) <= set(BAYCAP_VARIANTS))
 
     def test_pilot_filters_pairs_and_methods(self):
         tasks, _ = self._tasks(datasets=["sonar"], classifiers=["LR"], methods=["BayesCAP-EB"])

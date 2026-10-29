@@ -98,6 +98,12 @@ class PosteriorTest(unittest.TestCase):
         np.testing.assert_allclose(flat_ln, flat_ln[0])
         flat_nu = h.prior_weights("flat").sum(axis=0)
         np.testing.assert_allclose(flat_nu / flat_nu[0], np.exp(h.GRID_LN_NU - h.GRID_LN_NU[0]))
+        # prior of BayesCAP-H-real (E2.7): in ln(nu) the density is nu p(nu) = nu (1+nu)^(-3/2) / 2
+        nu = np.exp(h.GRID_LN_NU)
+        unifu = h.prior_weights("unifu").sum(axis=0)
+        expected = nu * (1 + nu) ** -1.5
+        np.testing.assert_allclose(unifu, expected / expected.sum())
+        self.assertEqual(set(h.SCREEN_PRIORS), set(h.NU_PRIORS) - {"unifu"})
         # the 90% width of a flat density on [a, b] is 0.9 (b - a)
         width = h.ln_nu_width(h.prior_weights("loguniform"))
         step = h.GRID_LN_NU[1] - h.GRID_LN_NU[0]
@@ -259,7 +265,7 @@ class TableTest(unittest.TestCase):
     def test_rows_order_and_columns(self):
         self.assertNotIn("source", self.table)
         self.assertEqual(list(self.table["dataset"].astype(str)), ["german", "wdbc", "letter"])
-        for prior in h.NU_PRIORS:
+        for prior in h.SCREEN_PRIORS:
             for column in ("width_ratio", "alpha_risk", "post_alpha_risk", "funnel_risk", "min_pvalue", "max_abs_z"):
                 self.assertIn(f"{prior}_{column}", self.table)
             self.assertIn(f"realised_{prior}_pred_coverage", self.table)
