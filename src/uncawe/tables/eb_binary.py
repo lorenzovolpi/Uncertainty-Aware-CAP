@@ -17,6 +17,12 @@ pushforward. Since $\\frac{f_{jj}+\\hat\\nu\\hat m}{n^s_j+\\hat\\nu}-\\hat r_j=(
 the prior part $R_0$ of the empirical-Bayes methods. The check, the error terms and the pull use the true class
 proportions and recalls of the bags, so they are an analysis, not a method.
 
+Each row also has the size of the test pool $U$ from which the bags are drawn (``n_test``), the smaller of the two
+Beta parameters of the empirical-Bayes prior, $\\min(\\hat\nu\\hat m,\\hat\nu(1-\\hat m))$ (``eb_alpha_min``), and the
+ratio of the realised amplitudes, empirical Bayes over $\\operatorname{Dir}(\\mathbf 1)$ (``realised_amplitude_ratio``).
+:func:`analysis_summary` reduces the table to the summaries of the Analysis of E2.5, per source and per pool size
+($|U|$ below or above ``SMALL_POOL``), which ``--tables`` prints.
+
 The Winkler tests are Holm-adjusted within each source: over the pairs of E2.5 for the new rows, over the $75$ pairs of
 E2.4 for the rows of ``main``, which therefore keep the p-values of the E2.4 table.
 
@@ -36,6 +42,7 @@ from uncawe import env
 from uncawe.experiments.eb_binary import EXPERIMENT
 from uncawe.methods.baycap import BetaBinomialFit, fit_beta_binomial
 from uncawe.pretrain.classic_binary import DOMAIN
+from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.tables import eb_prior, estimand_gap, pushforward
 from uncawe.tables import main as main_tables
 from uncawe.tables.displacement import load_validation_counts, plain_recalls
@@ -46,6 +53,8 @@ TABLE_NAME = "eb_binary"
 KEYS = eb_prior.KEYS
 SOURCES = ("E2.5", "E2.4")
 E24_MARK = "$^\\ddagger$"
+SMALL_POOL = 100  # test pools with fewer instances are read apart (cause 4, §T.13)
+Z_BANDS = ((0, 1), (1, 2), (2, np.inf))
 
 
 def gap_statistic(recalls: np.ndarray, n_s: np.ndarray) -> float:
@@ -103,13 +112,32 @@ def binary_columns(results: pd.DataFrame, val_counts: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def extend(table: pd.DataFrame, results: pd.DataFrame, val_counts: dict, source: str) -> pd.DataFrame:
-    """Add to an E2.4 per-pair table the columns of E2.5: ``source``, the fit diagnostics, the pull and the change of
-    coverage within each pushforward (empirical Bayes minus $\\operatorname{Dir}(\\mathbf 1)$)."""
+def load_pool_sizes(pairs, domain: str) -> dict:
+    """Return the size of the test pool $U$ of the given (dataset, classifier) pairs of ``domain``."""
+    infos = {}
+    for path in load_info_paths(domain=domain):
+        p = PretrainInfo.load(path, fast=True)
+        infos[(p.d_info.name, p.h_info.name)] = p
+    missing = [pair for pair in pairs if pair not in infos]
+    if missing:
+        raise FileNotFoundError(f"No pretrain info found for {missing}")
+    return {pair: len(infos[pair].load_dataset_bundle().U) for pair in pairs}
+
+
+def extend(
+    table: pd.DataFrame, results: pd.DataFrame, val_counts: dict, source: str, pool_sizes: dict | None = None
+) -> pd.DataFrame:
+    """Add to an E2.4 per-pair table the columns of E2.5: ``source``, the fit diagnostics, the pull, the change of
+    coverage within each pushforward (empirical Bayes minus $\\operatorname{Dir}(\\mathbf 1)$), the smaller Beta
+    parameter of the empirical-Bayes prior, the ratio of the realised amplitudes and, if given, the pool size."""
     table = table.merge(binary_columns(results, val_counts), on=KEYS, how="left")
     table.insert(2, "source", source)
     for name, (uniform, eb) in eb_prior.PUSHFORWARDS.items():
         table[f"{name}_coverage_change"] = table[f"{eb}_coverage"] - table[f"{uniform}_coverage"]
+    table["eb_alpha_min"] = table["eb_nu"] * np.minimum(table["eb_m"], 1 - table["eb_m"])
+    table["realised_amplitude_ratio"] = table["BayesCAP-EB-real_amplitude"] / table["BayesCAP-real_amplitude"]
+    pairs = zip(table["dataset"].astype(str), table["classifier"].astype(str))
+    table["n_test"] = [np.nan if pool_sizes is None else pool_sizes[pair] for pair in pairs]
     return table
 
 
@@ -135,7 +163,9 @@ def _source_table(experiment: str, domain: str, source: str, binary_only: bool) 
     index = pd.MultiIndex.from_tuples(pairs, names=KEYS)
     results = results.loc[pd.MultiIndex.from_frame(results[KEYS]).isin(index)].reset_index(drop=True)
     table = table.assign(dataset=table["dataset"].astype(str), classifier=table["classifier"].astype(str))
-    return extend(table, results, load_validation_counts(pairs, domain=domain), source)
+    return extend(
+        table, results, load_validation_counts(pairs, domain=domain), source, load_pool_sizes(pairs, domain=domain)
+    )
 
 
 def compute_table() -> pd.DataFrame:
@@ -143,6 +173,127 @@ def compute_table() -> pd.DataFrame:
     new = _source_table(EXPERIMENT, DOMAIN, "E2.5", binary_only=False)
     main = _source_table(eb_prior.EXPERIMENT, estimand_gap.DOMAIN, "E2.4", binary_only=True)
     return ordered(pd.concat([new, main], ignore_index=True))
+
+
+def _winkler_tests(sub: pd.DataFrame) -> tuple[int, int]:
+    """Number of pairs where the realised Winkler score of empirical Bayes is significantly lower and higher."""
+    significant = sub["realised_winkler_p_holm"] < pushforward.WINKLER_TEST_LEVEL
+    lower = sub["realised_winkler_diff_mean"] < 0
+    return int((significant & lower).sum()), int((significant & ~lower).sum())
+
+
+def _groups(table: pd.DataFrame):
+    """Yield (label, rows): each source, and the pairs of E2.5 split by pool size."""
+    for source in SOURCES:
+        sub = table.loc[table["source"] == source]
+        if sub.empty:
+            continue
+        yield source, sub
+        if source == "E2.5" and sub["n_test"].notna().all():
+            yield f"E2.5, |U| >= {SMALL_POOL}", sub.loc[sub["n_test"] >= SMALL_POOL]
+            yield f"E2.5, |U| < {SMALL_POOL}", sub.loc[sub["n_test"] < SMALL_POOL]
+
+
+def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Return the summaries of the Analysis of E2.5, one row per group of :func:`_groups`.
+
+    - ``scores``: realised coverage of the two priors (mean, pairs below 0.9 and 0.5), mean realised Winkler scores,
+      mean change of realised coverage, and the Winkler tests;
+    - ``uniform_failures``: on the pairs where ``BayesCAP-real`` covers less than 0.9, how many underestimate accuracy
+      (negative shift), and the means of the shift, the recall term $R$, its prior part $R_0$ and the prevalence term;
+    - ``bound``: per band of $|z|$ (and ``z undefined``), the pairs, those with $\\hat\\nu$ at a bound, the mean
+      change of realised coverage and the Winkler tests;
+    - ``finite_nu``: on the pairs with $\\hat\\nu$ not at a bound, the correlation and slope of the observed against
+      the predicted change of $R$, the Spearman correlation of $|\\Delta R|$ with $|\\hat r_1-\\hat r_2|$, the
+      mean change of realised coverage, the Winkler tests and the median amplitude ratio, also on the pairs where
+      empirical Bayes is significantly worse;
+    - ``divergences``: the mean share of bags with divergent transitions of the two realised methods, the pairs where
+      it exceeds 0.1 for ``BayesCAP-EB-real`` and how many of these have ``eb_alpha_min`` below 1, and the pairs with
+      ``eb_alpha_min`` below 1.
+    """
+    out = {name: [] for name in ("scores", "uniform_failures", "bound", "finite_nu", "divergences")}
+    for label, sub in _groups(table):
+        uniform, eb = sub["BayesCAP-real_coverage"], sub["BayesCAP-EB-real_coverage"]
+        change = sub["realised_coverage_change"]
+        lower, higher = _winkler_tests(sub)
+        out["scores"].append(
+            {
+                "group": label,
+                "pairs": len(sub),
+                "uniform_cov": uniform.mean(),
+                "uniform_below_0.9": int((uniform < 0.9).sum()),
+                "uniform_below_0.5": int((uniform < 0.5).sum()),
+                "eb_cov": eb.mean(),
+                "eb_below_0.5": int((eb < 0.5).sum()),
+                "uniform_W": sub["BayesCAP-real_winkler"].mean(),
+                "eb_W": sub["BayesCAP-EB-real_winkler"].mean(),
+                "cov_change": change.mean(),
+                "eb_W_lower": lower,
+                "eb_W_higher": higher,
+            }
+        )
+        failing = sub.loc[uniform < 0.9]
+        out["uniform_failures"].append(
+            {
+                "group": label,
+                "pairs": len(failing),
+                "negative_shift": int((failing["BayesCAP-real_shift"] < 0).sum()),
+                "shift": failing["BayesCAP-real_shift"].mean(),
+                "R": failing["BayesCAP-real_recall_term"].mean(),
+                "R0": failing["BayesCAP-real_prior_part"].mean(),
+                "P": failing["BayesCAP-real_prevalence_term"].mean(),
+            }
+        )
+        abs_z, at_bound = sub["gap_z"].abs(), sub["eb_nu_at_bound"].astype(bool)
+        bands = [(f"{lo} <= |z| < {hi}", (abs_z >= lo) & (abs_z < hi)) for lo, hi in Z_BANDS]
+        for band, mask in bands + [("z undefined", abs_z.isna())]:
+            lower, higher = _winkler_tests(sub.loc[mask])
+            out["bound"].append(
+                {
+                    "group": label,
+                    "band": band,
+                    "pairs": int(mask.sum()),
+                    "at_bound": int((mask & at_bound).sum()),
+                    "cov_change": change[mask].mean(),
+                    "eb_W_lower": lower,
+                    "eb_W_higher": higher,
+                }
+            )
+        finite = sub.loc[~at_bound]
+        predicted, observed = finite["predicted_recall_change"], finite["observed_recall_change"]
+        lower, higher = _winkler_tests(finite)
+        enough = len(finite) > 2  # correlations and slopes need at least three pairs
+        worse = finite.loc[
+            (finite["realised_winkler_p_holm"] < pushforward.WINKLER_TEST_LEVEL)
+            & (finite["realised_winkler_diff_mean"] > 0)
+        ]
+        out["finite_nu"].append(
+            {
+                "group": label,
+                "pairs": len(finite),
+                "corr_dR": predicted.corr(observed) if enough else np.nan,
+                "slope_dR": np.polyfit(predicted, observed, 1)[0] if enough else np.nan,
+                "spearman_gap_dR": finite["recall_gap"].corr(observed.abs(), method="spearman") if enough else np.nan,
+                "cov_change": finite["realised_coverage_change"].mean(),
+                "eb_W_lower": lower,
+                "eb_W_higher": higher,
+                "amplitude_ratio": finite["realised_amplitude_ratio"].median(),
+                "amplitude_ratio_worse": worse["realised_amplitude_ratio"].median(),
+            }
+        )
+        heavy = sub["BayesCAP-EB-real_share_divergent"] > 0.1
+        small_alpha = sub["eb_alpha_min"] < 1
+        out["divergences"].append(
+            {
+                "group": label,
+                "uniform_share": sub["BayesCAP-real_share_divergent"].mean(),
+                "eb_share": sub["BayesCAP-EB-real_share_divergent"].mean(),
+                "eb_above_0.1": int(heavy.sum()),
+                "eb_above_0.1_alpha_below_1": int((heavy & small_alpha).sum()),
+                "alpha_below_1": int(small_alpha.sum()),
+            }
+        )
+    return {name: pd.DataFrame(rows) for name, rows in out.items()}
 
 
 COMPARISON_CAPTION = (
@@ -274,6 +425,9 @@ def gen_tables(pargs):
             f.write(eb_prior._latex_document(f"tabular/{_stem(name)}_long.tex"))
 
     _print_summary(table)
+    with pd.option_context("display.width", 200, "display.max_columns", None, "display.precision", 3):
+        for name, summary in analysis_summary(table).items():
+            print(f"\n{name}:\n{summary.to_string(index=False)}")
     print(f"tables written to {out_dir}")
 
 

@@ -19,7 +19,7 @@ from uncawe.methods.baycap import fit_beta_binomial
 from uncawe.plots import eb_binary as eb_binary_plots
 from uncawe.pretrain import classic, classic_binary
 from uncawe.tables import eb_binary, eb_prior
-from uncawe.tables.eb_binary import TABLES, extend, fit_diagnostics, gap_statistic, ordered, pull
+from uncawe.tables.eb_binary import TABLES, analysis_summary, extend, fit_diagnostics, gap_statistic, ordered, pull
 
 MAIN_BINARY = {"german", "mammographic", "semeion", "spambase", "tictactoe"}
 # cap-ml layout: true classes on rows
@@ -28,6 +28,7 @@ VAL_COUNTS = {
     ("wdbc", "kNN"): np.array([[95, 5], [5, 95]]),
     ("german", "LR"): np.array([[180, 20], [40, 60]]),
 }
+POOL_SIZES = {("wdbc", "LR"): 171, ("wdbc", "kNN"): 171, ("german", "LR"): 300}
 
 
 def results(estim_shift: float, pairs=tuple(VAL_COUNTS)) -> pd.DataFrame:
@@ -65,7 +66,7 @@ def source_tables():
         res = method_results(pairs)
         table = eb_prior.pair_table(res, VAL_COUNTS)
         table = table.assign(dataset=table["dataset"].astype(str), classifier=table["classifier"].astype(str))
-        out.append(extend(table, res["BayesCAP"], VAL_COUNTS, source))
+        out.append(extend(table, res["BayesCAP"], VAL_COUNTS, source, POOL_SIZES))
     return out
 
 
@@ -200,6 +201,20 @@ class TableTest(unittest.TestCase):
         self.assertAlmostEqual(self.table["realised_coverage_change"].iloc[0], 1.0)
         # the pull, averaged over the bags, is the prior part of the empirical-Bayes method
         np.testing.assert_allclose(self.table["pull"], self.table["BayesCAP-EB_prior_part"])
+        self.assertEqual(list(self.table["n_test"]), [171, 171, 300])
+        np.testing.assert_allclose(
+            self.table["eb_alpha_min"], self.table["eb_nu"] * np.minimum(self.table["eb_m"], 1 - self.table["eb_m"])
+        )
+        np.testing.assert_allclose(
+            self.table["realised_amplitude_ratio"],
+            self.table["BayesCAP-EB-real_amplitude"] / self.table["BayesCAP-real_amplitude"],
+        )
+
+    def test_pool_size_is_nan_when_not_given(self):
+        res = method_results(list(VAL_COUNTS)[:1])
+        table = eb_prior.pair_table(res, VAL_COUNTS)
+        table = table.assign(dataset=table["dataset"].astype(str), classifier=table["classifier"].astype(str))
+        self.assertTrue(extend(table, res["BayesCAP"], VAL_COUNTS, "E2.5")["n_test"].isna().all())
 
     def test_compute_table_reads_both_sources(self):
         def load(method, experiment, domain):
@@ -213,6 +228,7 @@ class TableTest(unittest.TestCase):
             patch.object(eb_binary.eb_prior, "compute_pair_table", side_effect=pair_table) as tables,
             patch.object(eb_binary.eb_prior, "load_results", side_effect=load),
             patch.object(eb_binary, "load_validation_counts", side_effect=lambda pairs, domain: VAL_COUNTS) as counts,
+            patch.object(eb_binary, "load_pool_sizes", side_effect=lambda pairs, domain: POOL_SIZES) as pools,
         ):
             table = eb_binary.compute_table()
         self.assertEqual(
@@ -220,7 +236,58 @@ class TableTest(unittest.TestCase):
             [{"experiment": "eb_binary", "domain": "classic_binary"}, {"experiment": "main", "domain": "classic"}],
         )
         self.assertEqual([call.kwargs["domain"] for call in counts.call_args_list], ["classic_binary", "classic"])
+        self.assertEqual([call.kwargs["domain"] for call in pools.call_args_list], ["classic_binary", "classic"])
         self.assertEqual(list(table["source"]), ["E2.5", "E2.5", "E2.4"])
+
+    def test_analysis_summary(self):
+        table = pd.DataFrame(
+            {
+                "source": ["E2.5"] * 4 + ["E2.4"],
+                "n_test": [500, 500, 50, 50, 300],
+                "BayesCAP-real_coverage": [0.95, 0.80, 0.40, 0.95, 0.85],
+                "BayesCAP-EB-real_coverage": [0.95, 0.50, 0.40, 0.99, 0.80],
+                "realised_coverage_change": [0.0, -0.30, 0.0, 0.04, -0.05],
+                "BayesCAP-real_winkler": [0.1, 0.3, 0.5, 0.2, 0.2],
+                "BayesCAP-EB-real_winkler": [0.1, 0.6, 0.5, 0.1, 0.3],
+                "realised_winkler_diff_mean": [0.0, 0.3, 0.0, -0.1, 0.1],
+                "realised_winkler_p_holm": [1.0, 0.01, 1.0, 0.01, 0.01],
+                "BayesCAP-real_shift": [0.0, -0.05, 0.08, 0.0, -0.02],
+                "BayesCAP-real_recall_term": [0.0, -0.04, 0.06, 0.0, -0.02],
+                "BayesCAP-real_prior_part": [0.0, -0.01, -0.02, 0.0, -0.01],
+                "BayesCAP-real_prevalence_term": [0.0, -0.01, 0.02, 0.0, 0.0],
+                "gap_z": [0.5, 1.5, 3.0, np.nan, 0.2],
+                "eb_nu_at_bound": [True, False, False, True, True],
+                "predicted_recall_change": [0.01, 0.02, 0.01, 0.0, 0.0],
+                "observed_recall_change": [0.01, 0.03, 0.02, 0.0, 0.0],
+                "recall_gap": [0.01, 0.1, 0.3, 0.0, 0.01],
+                "realised_amplitude_ratio": [0.5, 0.9, 1.0, 0.1, 0.4],
+                "BayesCAP-real_share_divergent": [0.0, 0.0, 0.2, 0.1, 0.0],
+                "BayesCAP-EB-real_share_divergent": [0.0, 0.3, 0.2, 1.0, 0.0],
+                "eb_alpha_min": [10.0, 0.5, 5.0, 0.001, 50.0],
+            }
+        )
+        summary = analysis_summary(table)
+        scores = summary["scores"].set_index("group")
+        self.assertEqual(list(scores.index), ["E2.5", "E2.5, |U| >= 100", "E2.5, |U| < 100", "E2.4"])
+        self.assertEqual(list(scores["pairs"]), [4, 2, 2, 1])
+        self.assertEqual(scores.loc["E2.5", "uniform_below_0.9"], 2)
+        self.assertEqual(scores.loc["E2.5", "uniform_below_0.5"], 1)
+        self.assertEqual((scores.loc["E2.5", "eb_W_lower"], scores.loc["E2.5", "eb_W_higher"]), (1, 1))
+        failures = summary["uniform_failures"].set_index("group").loc["E2.5"]
+        self.assertEqual((failures["pairs"], failures["negative_shift"]), (2, 1))
+        self.assertAlmostEqual(failures["R0"], -0.015)
+        bound = summary["bound"].set_index(["group", "band"])
+        self.assertEqual(bound.loc[("E2.5", "0 <= |z| < 1"), "at_bound"], 1)
+        self.assertEqual(bound.loc[("E2.5", "1 <= |z| < 2"), "pairs"], 1)
+        self.assertEqual(bound.loc[("E2.5", "1 <= |z| < 2"), "at_bound"], 0)
+        self.assertEqual(bound.loc[("E2.5", "z undefined"), "at_bound"], 1)
+        finite = summary["finite_nu"].set_index("group").loc["E2.5"]
+        self.assertEqual(finite["pairs"], 2)
+        self.assertTrue(np.isnan(finite["slope_dR"]))  # fewer than three pairs
+        self.assertAlmostEqual(finite["amplitude_ratio_worse"], 0.9)
+        divergences = summary["divergences"].set_index("group").loc["E2.5"]
+        self.assertEqual((divergences["eb_above_0.1"], divergences["eb_above_0.1_alpha_below_1"]), (3, 2))
+        self.assertEqual(divergences["alpha_below_1"], 2)
 
     def test_latex_tables(self):
         for name, (styler_fn, caption, label) in TABLES.items():
