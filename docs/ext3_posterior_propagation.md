@@ -389,7 +389,7 @@ E2.3 found this factor within $\pm5\%$ on every pair for BayCAP. For the methods
 | `BayesCAP-real` | all | none |
 | `RQBS`; SQS-B (E3.c1) | $e_1^U$, $e_3$ | $e_1^V$, $e_2$ |
 
-With $\eta$ the ratio of the missing to the represented variance, Extension 4 §3.5 derives that a $95\%$ interval covers with probability about $2\Phi\big(1.96/\sqrt{1+\eta}\big)-1$, where $\Phi$ is the cumulative distribution function of the standard normal: $0.95$ when nothing is missing, and less the more is missing. The predictions for E3.1 [new hypotheses]:
+With $\eta$ the ratio of the missing to the represented variance, Extension 4 §T.7 derives that a $95\%$ interval covers with probability about $2\Phi\big(1.96/\sqrt{1+\eta}\big)-1$, where $\Phi$ is the cumulative distribution function of the standard normal: $0.95$ when nothing is missing, and less the more is missing. The predictions for E3.1 [new hypotheses]:
 
 - **P1, the population interval under-covers.** It misses $e_3$, and its represented part is small when the recalls are similar (§T.5); its coverage should be lowest on the pairs with the smallest spread of the recalls, $\operatorname{sd}_j(\hat d_j)$.
 - **P2, the realised interval is much wider.** The widening factor follows $\sqrt{1+(\bar\sigma_g/\sigma_p)^2}$ and is larger than for BayCAP, so coverage rises more than from `BayesCAP` to `BayesCAP-real`.

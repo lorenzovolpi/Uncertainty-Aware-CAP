@@ -62,7 +62,7 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 - Tackle one experiment at a time.
 - Explain statistics at a first-year-undergraduate level, so that the documents are broadly comprehensible. In Theory sections, be explicit about every statistical argument and do not skip steps: state the model, define each quantity, state each property used before using it (e.g. linearity of the expectation, the variance of a sum, the law of total variance, the aggregation property of the Dirichlet), derive each formula step by step, and pair the derivation with its intuition.
 - Extension documents contain no paper material (contributions, paper outline, figure plan) for now; the paper will be addressed later.
-- Only `docs/ext2_baycap.md` and `docs/ext3_posterior_propagation.md` follow this structure so far; the other extension documents keep their old structure until the user reviews them.
+- Only `docs/ext2_baycap.md`, `docs/ext3_posterior_propagation.md` and `docs/ext4_uncertainty_budget.md` follow this structure so far; the other extension documents keep their old structure until the user reviews them.
 
 ## Work plan
 

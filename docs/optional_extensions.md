@@ -173,3 +173,50 @@ On 2026-10-27 the former Extensions 8 (SQS-B, `docs/sqs_b.md`) and 9 (BayCAP-KDE
 - **Further measures.** Nominal levels $50\%$, $80\%$, $90\%$, $95\%$, $99\%$, reliability plots and CRPS (§1); calibration and sharpness of the prevalence posterior itself; results conditioned on shift magnitude, target size, number of classes and quantifier informativeness.
 - **Relation to Aitchison-SQS.** Aitchison-SQS (§3) constructs a distribution around a non-Bayesian point estimate, while SQS-B and BayCAP-KDEy take the posterior from the quantifier; Aitchison-SQS remains applicable to non-Bayesian quantifiers.
 - **Fallback framing.** If BayCAP-KDEy does not beat the other methods, it could still be presented as an interpretable baseline with closed-form moments for accuracy.
+
+## 9. Material set aside from Extension 4 (paper plan)
+
+On 2026-10-29 [[ext4_uncertainty_budget|Extension 4]] was restructured into the experiment-driven form of Extensions 2 and 3, which keeps no paper material for now. Its contributions, paper outline and figure plan are kept here as they were (section and hypothesis numbers refer to the earlier version, commit `dbb04dc`); the hypotheses H1–H4 are now in the experiments E4.1 and E4.2 of Extension 4, and the sections cited as §1–§3 are its §T.1–§T.8.
+
+### Contributions
+
+1. **An exact error split and a budget** for CAP under PPS, which makes explicit that the realised table is the estimand and identifies which uncertainty terms shrink with $\lvert U\rvert$ and which do not.
+2. **A unifying classification** of existing and proposed uncertainty-aware CAP methods by the parts they represent (§3.4), and a coverage rule in terms of the ratio $\eta$ of missing to represented variance (§3.5), which explains why the paper's methods are calibrated in different regimes.
+3. **A regime map**, empirical, of coverage as a function of $(\lvert U\rvert,\lvert V\rvert)$, showing whether the paper's ranking at $\lvert U\rvert=1000$ depends on the design ratio $r$.
+4. **Completed methods**: evidence that methods representing all terms (realised-table BayCAP from Extension 2, and SQS-H with $U$ and $V$ resampling) are calibrated across the map.
+
+### Hypotheses
+
+Primary:
+
+- **H1 (SQS-type intervals degrade with $n$).** At fixed $V$, the coverage of SQS-H and RQBS decreases as $\lvert U\rvert$ grows, faster when $\lvert V_j\rvert$ is small. *Confirmed if* in E4.2 the coverage of RQBS decreases monotonically with $\lvert U\rvert$ on most (dataset, classifier) pairs and the decrease is larger at the smaller $\lvert V\rvert$ level. *Refuted if* coverage is flat in $\lvert U\rvert$; then $e_2$ and $e_1^{V}$ are negligible on real data and the budget adds little to Extension 2.
+- **H2 (BayCAP under-covers at small $n$ and large $V$).** The coverage of BayCAP with the population pushforward increases with $\lvert U\rvert$ at fixed $V$ and is below nominal where its $\eta=\sigma_3^2/(\sigma_{1U}^2+\sigma_{1V}^2+\sigma_2^2)$ is large (§3.6). *Confirmed if* in E4.2 coverage increases with $\lvert U\rvert$ at fixed $V$ and decreases with $\lvert V\rvert$ at fixed $\lvert U\rvert$. *Refuted if* BayCAP over-covers at every $r$; then the fixed-count likelihood (source (i) of [[ext2_baycap]] §3) or prior effects dominate, and the budget does not explain BayCAP.
+- **H3 (the budget accounts for the error).** In E4.1, $\operatorname{RMSE}(e_3)$ scales as $n^{-1/2}$, $\operatorname{RMSE}(e_2)$ is constant in $n$ and scales as $\lvert V\rvert^{-1/2}$, and $e_1$ is the sum of a part shrinking with $n$ and a part fixed given $V$. *Confirmed if* the fitted slopes on log–log axes are within $\pm0.15$ of the predicted ones and, for every method, the coverage plotted against its $\eta$ (computed from the variances of the parts estimated in E4.1) lies within $\pm0.05$ of $2\Phi(1.96/\sqrt{1+\eta})-1$ on most (dataset, classifier) pairs. *Refuted if* coverage does not follow $\eta$; then non-normality, the within-group correlations of §3.2 or quantifier bias $b_q$ matter, and the budget must be refined.
+
+Secondary:
+
+- **H4 (completing the budget restores coverage).** Methods that represent all terms are within $\pm0.03$ of nominal coverage across the grid, while each partial method fails where its missing term dominates. *Confirmed if* in E4.2 the realised-table BayCAP and SQS-H with $U$ and $V$ resampling meet this tolerance at every $(\lvert U\rvert,\lvert V\rvert)$ level. *Refuted if* they fail at large $n$ as well; then quantifier bias $b_q$ is the dominant fixed term and no variance-based correction suffices.
+
+### Paper outline
+
+| Paper location | Content | Claim | Evidence |
+|---|---|---|---|
+| §3 (problem), new subsection "Target estimand and uncertainty budget" | §1–§3.3 of this note | The CAP error splits into prevalence, rate-matrix and finite-$U$ parts with different scaling. | derivation; F0 (toy); E4.1 |
+| §4–§5 (methods), one table and the coverage rule | §3.4–§3.5 | Each method represents only some parts; its coverage follows from the ratio $\eta$ of missing to represented variance. | tables of §3.4–§3.5; E4.1 (H3) |
+| §5, new subsections from Extensions 2 and 3 | completed methods | Adding the missing term restores calibration. | E4.2 (H4); [[ext5_baycap_priors_tempering]] E5.2 |
+| §6 (experiments), new subsection "Target and validation size" | E4.1, E4.2 | The paper's ranking at $\lvert U\rvert=1000$ is regime-dependent. | F1, F2, T1 |
+| §7 (conclusions) | one paragraph | Practical guidance: which method to use given $\lvert U\rvert$ and $\lvert V\rvert$. | F2 |
+
+Wording if results are mixed: if H1 is refuted, the budget becomes a short section explaining the estimand gap, and Extension 2 carries the main claim; if H3 is refuted but H1 and H2 hold, the regime map is presented empirically without the closed-form ratio.
+
+#### Figures and tables
+
+| Item | Question | Content | What it must show |
+|---|---|---|---|
+| F0 (optional) | toy | coverage vs $r$ for each method of Appendix A | the predicted shape of F2 |
+| F1 | E4.1 | RMSE of $e_1$, $e_2$, $e_3$ vs $\lvert U\rvert$ (log–log), one panel per $\lvert V\rvert$ level, one line per dataset (LR) | the scaling of H3 |
+| F2 | E4.2 | (a) coverage vs $r$ (log), one panel per method, one point per (dataset, classifier, $\lvert U\rvert$, $\lvert V\rvert$), dashed line at $0.95$; (b) coverage vs each method's $\eta$ (log), all methods in one panel, with the curve $2\Phi(1.96/\sqrt{1+\eta})-1$ | (a) the regime map, H1, H2, H4; (b) the coverage rule, H3 |
+| T1 | E4.2 | mean Winkler rank per method, one column block per $\lvert U\rvert$ at full $V$; oracle references as unranked columns (`tables/rank.py`) | whether the ranking changes with $\lvert U\rvert$ |
+| T2 (appendix) | E4.1 | per-dataset bias and standard deviation of $\hat\pi$ (L1) and $\hat A$ vs $\lvert U\rvert$ | quantifier bias $b_q$, needed to interpret H4 |
+
+Macro-F1 and macro-K versions of F2 go to the appendix.
