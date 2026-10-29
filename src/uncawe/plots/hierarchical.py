@@ -1,16 +1,17 @@
 """Scatter plots of the zero-cost screens for a hierarchical prior on the recalls of BayCAP (work-plan card WP-9, E2.6
-of
-``docs/ext2_baycap.md``).
+of ``docs/ext2_baycap.md``).
 
 The figures read the per-pair CSV written by ``tables/hierarchical.py --tables``
-(``<OUT_DIR>/uncawe/tables/hierarchical/
-hierarchical.csv``), whose grid posteriors are too slow to recompute for every plot: one point per (dataset, classifier)
-pair of ``main`` (E2.4) and of the binary datasets of E2.5 (drawn with a ring), vanilla accuracy, $|U|=1000$. Markers by
-classifier, colour by $K$ unless stated. Predicted draws keep the estimand of the method they start from
+(``<OUT_DIR>/uncawe/tables/hierarchical/hierarchical.csv``), whose grid posteriors are too slow to recompute for every
+plot: one point per (dataset, classifier) pair of ``main``, vanilla accuracy, $|U|=1000$. Markers by classifier, colour
+by $K$. Predicted draws keep the estimand of the method they start from
 (``BayesCAP-real``: realised table) and are scored against the realised table; the hierarchical prior shown is the
 log-uniform one (``MAIN_PRIOR``).
 
 - ``validation``: predicted against stored realised coverage of the empirical-Bayes prior (D4), with the line $y=x$;
+- ``centre``: the diagnosis of D4, realised pushforward, two panels with the line $y=x$: the stored recall part of the
+  change of the centre against the shift of D4, and the absolute coverage error of D4 with the stored prevalence part
+  added against that of D4;
 - ``prediction``: predicted realised coverage with the hierarchical prior against the stored coverage of
 ``BayesCAP-real``
   and of ``BayesCAP-EB-real``, two panels, with the line $y=x$;
@@ -34,14 +35,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.colors import LogNorm
-from matplotlib.lines import Line2D
 
 from uncawe import env
 from uncawe.plots.common import (
     SEQUENTIAL_CMAP,
     classifier_legend_handles,
     font_size,
-    marker_size,
     ordered_classifiers,
     scatter_by_classifier,
     style_scatter_axes,
@@ -49,8 +48,7 @@ from uncawe.plots.common import (
 from uncawe.tables.hierarchical import MAIN_PRIOR, NU_PRIOR_LABELS, P_SMALL, csv_path
 
 PLOT_NAME = "hierarchical"
-FIGURES = ("validation", "prediction", "sensitivity", "exchangeability", "sampler")
-RING_COLOR = "#1f1f1f"
+FIGURES = ("validation", "centre", "prediction", "sensitivity", "exchangeability", "sampler")
 P_FLOOR = 1e-12  # p-values below are drawn at the floor
 
 
@@ -72,15 +70,12 @@ def _k_norm(table: pd.DataFrame) -> LogNorm:
 
 
 def _scatter(ax, table: pd.DataFrame, x: str, y: str):
-    sc = scatter_by_classifier(ax, table, x, y, "n_classes", SEQUENTIAL_CMAP, _k_norm(table))
-    sub = table.loc[table["source"] == "E2.5"]
-    ax.scatter(sub[x], sub[y], s=marker_size(140), facecolors="none", edgecolors=RING_COLOR, linewidths=1.0, zorder=2)
-    return sc
+    return scatter_by_classifier(ax, table, x, y, "n_classes", SEQUENTIAL_CMAP, _k_norm(table))
 
 
-def _identity(ax, table: pd.DataFrame, x: str, y: str):
-    lo = float(np.nanmin([table[x].min(), table[y].min(), 0.0]))
-    hi = float(np.nanmax([table[x].max(), table[y].max(), 1.0]))
+def _identity(ax, table: pd.DataFrame, x: str, y: str, unit: bool = True):
+    lo = float(np.nanmin([table[x].min(), table[y].min()] + ([0.0] if unit else [])))
+    hi = float(np.nanmax([table[x].max(), table[y].max()] + ([1.0] if unit else [])))
     pad = 0.03 * (hi - lo)
     lim = (lo - pad, hi + pad)
     ax.plot(lim, lim, color="#595959", linewidth=1.2, linestyle="--", zorder=1)
@@ -93,8 +88,6 @@ def _finish(fig, axes, sc, table: pd.DataFrame):
     cbar.set_label("$K$", fontsize=font_size(12))
     classifiers = ordered_classifiers(table)
     handles, labels = classifier_legend_handles(classifiers), list(classifiers)
-    handles.append(Line2D([], [], marker="o", linestyle="", markerfacecolor="none", color=RING_COLOR, markersize=10))
-    labels.append("binary datasets of E2.5")
     fig.legend(handles, labels, loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=True, fontsize=font_size(10))
 
 
@@ -107,6 +100,28 @@ def plot_validation(table: pd.DataFrame):
     style_scatter_axes(ax, "predicted coverage (EB, from BayCAP-real)", "stored coverage (BayCAP-EB-real)")
     ax.set_title("D4: prediction of the empirical-Bayes prior", fontsize=font_size(11))
     _finish(fig, ax, sc, table)
+    return fig
+
+
+def plot_centre(table: pd.DataFrame):
+    """Diagnosis of D4 (realised pushforward): recall part against the D4 shift, and coverage errors with and without
+    the stored prevalence part."""
+    data = table.assign(
+        err_d4=(table["realised_eb_pred_coverage"] - table["BayesCAP-EB-real_coverage"]).abs(),
+        err_prev=(table["realised_ebprev_pred_coverage"] - table["BayesCAP-EB-real_coverage"]).abs(),
+    )
+    fig, axes = plt.subplots(1, 2, figsize=(12.0, 5.5), layout="constrained")
+    panels = (
+        ("realised_d4_shift", "realised_recall_part", "shift of D4", "stored recall part $R$", False),
+        ("err_d4", "err_prev", "|coverage error| of D4", "|coverage error| of D4 + stored $P$", False),
+    )
+    sc = None
+    for ax, (x, y, xlabel, ylabel, unit) in zip(axes, panels):
+        sc = _scatter(ax, data, x, y)
+        _identity(ax, data, x, y, unit=unit)
+        style_scatter_axes(ax, xlabel, ylabel)
+    fig.suptitle("D4: recall part and prevalence part of the empirical-Bayes change", fontsize=font_size(11))
+    _finish(fig, axes, sc, data)
     return fig
 
 
@@ -173,6 +188,7 @@ def plot_sampler(table: pd.DataFrame):
 
 PLOTTERS = {
     "validation": plot_validation,
+    "centre": plot_centre,
     "prediction": plot_prediction,
     "sensitivity": plot_sensitivity,
     "exchangeability": plot_exchangeability,

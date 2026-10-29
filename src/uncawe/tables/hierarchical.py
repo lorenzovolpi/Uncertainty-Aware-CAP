@@ -5,34 +5,33 @@ The hierarchical prior gives each recall $r_j=C_{jj}$ of a classifier the prior 
 and puts a prior on $(m,\\nu)$ instead of plugging in the fit $(\\hat m,\\hat\\nu)$ of the empirical-Bayes prior of
 ``BayesCAP-EB``. Its posterior is computed from the validation counts alone (§T.14), on the grid of
 ``scripts/toys/ext2_hierarchical.py``: $m$ uniform, and one of three priors on $\\nu\\in[0.1,10^4]$ (``NU_PRIORS``,
-written as log-densities in $\\ln\\nu$). No NUTS is run. Four screens, per (dataset, classifier) pair, vanilla accuracy,
-$|U|=1000$:
+written as log-densities in $\\ln\\nu$). No NUTS is run. Four screens, per (dataset, classifier) pair of ``main``,
+vanilla accuracy, $|U|=1000$:
 
 - D4, prediction from $V$ alone: the stored accuracy draws of ``BayesCAP`` (population table) and ``BayesCAP-real``
   (realised table) are moved by the change of the posterior-mean recalls weighted by the posterior-mean prevalence of
-  the
-  bag (from ``estim_cts``, no labels) and rescaled so that their variance swaps the part due to $C$ under
+  the bag (from ``estim_cts``, no labels) and rescaled so that their variance swaps the part due to $C$ under
   $\\operatorname{Dir}(\\mathbf 1)$ for that under another prior (``predict_draws``). The prediction for the
   empirical-Bayes prior is validated against the stored ``BayesCAP-EB`` and ``BayesCAP-EB-real``; the same prediction
-  is then made for each hierarchical prior. Predicted draws keep the estimand of the method they start from, and every
-  score is computed against the realised table of each bag (``true_cts``), so D4 is an analysis, not a method;
+  is then made for each hierarchical prior. Its misses are diagnosed by splitting, per bag, the change of the centre
+  between the stored uniform and empirical-Bayes tables into a recall part and a prevalence part (``centre_split``),
+  and by repeating the prediction with the stored prevalence part added (``ebprev``) or with the stored centre
+  (``ebcentre``). Predicted draws keep the estimand of the method they start from, and every score is computed against
+  the realised table of each bag (``true_cts``), so D4 is an analysis, not a method;
 - D1, prior sensitivity: the ratio of the 90% widths of the posterior and of the prior of $\\ln\\nu$, the posterior mean
   of $m$, the posterior mass with $\\nu\\ge10^3$, the change of the posterior-mean accuracy from
   $\\operatorname{Dir}(\\mathbf 1)$ and the standard deviation of accuracy due to $C$, at the uniform prevalence and
-  at the
-  vertices; the range of the D4 predictions over the three priors;
+  at the vertices; the range of the D4 predictions over the three priors;
 - D2, exchangeability: per class, the leave-one-class-out predictive p-value of $f_{jj}$ and the vertex shift
   $z_j=(\\mathbb E[r_j\\mid V]-f_{jj}/n_j)/\\operatorname{sd}(r_j\\mid V)$; per pair the smallest p-value, the number of
   classes below ``P_SMALL`` and the largest $|z_j|$;
 - D3, sampler risk: $P(\\min(\\nu m,\\nu(1-m))<1\\mid V)$ and the 90% width of the posterior of $\\ln\\nu$, next to the
   stored share of bags with divergent transitions of ``BayesCAP-EB``.
 
-The pairs are those of ``main`` (all $75$, labelled ``E2.4``) and of ``eb_binary`` (``E2.5``, marked in the tables),
-each with all four BayCAP methods stored. Outputs, under ``<OUT_DIR>/uncawe/tables/hierarchical/``: a per-pair CSV,
-which
-``plots/hierarchical.py`` reads, and two tables (validation; screens), each as a LaTeX tabular fragment, a longtable
-and a
-standalone landscape document. Validation counts follow the ``cap-ml`` layout (true classes on rows).
+The pairs are those of ``main`` (all $75$) with all four BayCAP methods stored. Outputs, under
+``<OUT_DIR>/uncawe/tables/hierarchical/``: a per-pair CSV, which ``plots/hierarchical.py`` reads, and two tables
+(validation; screens), each as a LaTeX tabular fragment, a longtable and a standalone landscape document. Validation
+counts and tables follow the ``cap-ml`` layout (true classes on rows).
 """
 
 import os
@@ -46,10 +45,8 @@ from scipy.special import betaln, gammaln
 
 from uncawe import env
 from uncawe.config import acc_from_ct
-from uncawe.experiments.eb_binary import EXPERIMENT as EB_BINARY_EXPERIMENT
-from uncawe.main import EXPERIMENT as MAIN_EXPERIMENT
+from uncawe.main import EXPERIMENT
 from uncawe.methods.baycap import fit_beta_binomial
-from uncawe.pretrain.classic_binary import DOMAIN as BINARY_DOMAIN
 from uncawe.tables import eb_prior, estimand_gap
 from uncawe.tables import main as main_tables
 from uncawe.tables.displacement import class_props_and_recalls, load_validation_counts
@@ -58,9 +55,7 @@ from uncawe.util import decorate_dataset
 
 TABLE_NAME = "hierarchical"
 KEYS = eb_prior.KEYS
-# source label -> (experiment, pretrain domain); the pairs of main are those of E2.4
-SOURCES = {"E2.4": (MAIN_EXPERIMENT, estimand_gap.DOMAIN), "E2.5": (EB_BINARY_EXPERIMENT, BINARY_DOMAIN)}
-E25_MARK = "$^\\ddagger$"
+DOMAIN = estimand_gap.DOMAIN
 PUSHFORWARDS = eb_prior.PUSHFORWARDS  # name -> (uniform method, empirical-Bayes method)
 SCORES = ("coverage", "amplitude", "winkler")
 
@@ -294,15 +289,26 @@ def _scores(method: str, true_ct, samples) -> dict:
     }
 
 
-def predicted_scores(df: pd.DataFrame, method: str, uniform: RecallPosterior, target: RecallPosterior) -> dict:
+def predicted_scores(
+    df: pd.DataFrame,
+    method: str,
+    uniform: RecallPosterior,
+    target: RecallPosterior,
+    extra_shift: np.ndarray | None = None,
+) -> dict:
     """Mean scores over the bags of one pair of the draws of ``method`` (uniform prior) predicted for the prior
-    ``target`` (D4), and the share of bags where the prediction is undefined."""
+    ``target`` (D4), and the share of bags where the prediction is undefined.
+
+    ``extra_shift`` (one value per bag) is added to the shift of D4; the diagnosis of D4 uses it to add a part of the
+    stored change of the centre (``centre_split``).
+    """
     props = np.stack([_bag_props(ct) for ct in df["estim_cts"]])
     mean_u, var_u = accuracy_moments(uniform, props)
     mean_t, var_t = accuracy_moments(target, props)
+    shifts = mean_t - mean_u if extra_shift is None else mean_t - mean_u + np.asarray(extra_shift, dtype=float)
     rows, undefined = [], 0
     for b, row in enumerate(df.itertuples()):
-        draws = predict_draws(row.estim_acc_ranges, mean_t[b] - mean_u[b], var_u[b], var_t[b])
+        draws = predict_draws(row.estim_acc_ranges, shifts[b], var_u[b], var_t[b])
         if draws is None:
             undefined += 1
             continue
@@ -312,8 +318,53 @@ def predicted_scores(df: pd.DataFrame, method: str, uniform: RecallPosterior, ta
     return out
 
 
+def _props_and_recalls(ct) -> tuple[np.ndarray, np.ndarray]:
+    ct = np.asarray(ct, dtype=float)
+    return class_props_and_recalls(ct / ct.sum())
+
+
+def centre_split(
+    uniform_df: pd.DataFrame, eb_df: pd.DataFrame, uniform: RecallPosterior, eb: RecallPosterior
+) -> dict[str, np.ndarray]:
+    """Split, per bag, the change of the centre of accuracy from the stored uniform to the stored empirical-Bayes
+    method into a recall part and a prevalence part (§T.14, diagnosis of D4).
+
+    With $\\hat\\pi$, $\\hat r$ the prevalences and recalls of the posterior-mean table (``estim_cts``) of each method,
+    $\\sum_j\\hat\\pi^{EB}_j\\hat r^{EB}_j-\\sum_j\\hat\\pi^{u}_j\\hat r^{u}_j=R+P$ exactly, with
+    $R=\\sum_j\\hat\\pi^{u}_j(\\hat r^{EB}_j-\\hat r^{u}_j)$ and $P=\\sum_j(\\hat\\pi^{EB}_j-\\hat\\pi^{u}_j)\\hat r^{EB}_j$. Also returned:
+    the shift of D4 for the same bag, and $\\lVert\\hat\\pi^{EB}-\\hat\\pi^{u}\\rVert_1$. The bags of the two methods are
+    matched by their stored order, and must have the same realised table.
+    """
+    if len(uniform_df) != len(eb_df):
+        raise ValueError(f"different numbers of bags: {len(uniform_df)} and {len(eb_df)}")
+    parts = []
+    for u, e in zip(uniform_df.itertuples(), eb_df.itertuples()):
+        if not np.allclose(np.asarray(u.true_cts, dtype=float), np.asarray(e.true_cts, dtype=float)):
+            raise ValueError("the bags of the two methods do not match")
+        props_u, recalls_u = _props_and_recalls(u.estim_cts)
+        props_e, recalls_e = _props_and_recalls(e.estim_cts)
+        parts.append(
+            (
+                props_u,
+                float(props_u @ (recalls_e - recalls_u)),
+                float((props_e - props_u) @ recalls_e),
+                float(np.abs(props_e - props_u).sum()),
+            )
+        )
+    props = np.stack([p[0] for p in parts])
+    mean_u, _ = accuracy_moments(uniform, props)
+    mean_e, _ = accuracy_moments(eb, props)
+    return {
+        "d4_shift": mean_e - mean_u,
+        "recall_part": np.array([p[1] for p in parts]),
+        "prevalence_part": np.array([p[2] for p in parts]),
+        "props_l1": np.array([p[3] for p in parts]),
+    }
+
+
 def pair_row(results: dict[str, pd.DataFrame], val_counts: np.ndarray) -> dict:
-    """All the columns of one pair: stored scores of the four methods, the D4 predictions and the screens."""
+    """All the columns of one pair: stored scores of the four methods, the D4 predictions, the diagnosis of D4 and the
+    screens."""
     row = {
         "n_classes": int(val_counts.shape[0]),
         "min_val_per_class": int(val_counts.sum(axis=1).min()),
@@ -330,24 +381,37 @@ def pair_row(results: dict[str, pd.DataFrame], val_counts: np.ndarray) -> dict:
         for target, post in targets.items():
             for score, value in predicted_scores(results[uniform_method], uniform_method, uniform, post).items():
                 row[f"{name}_{target}_pred_{score}"] = value
+        split = centre_split(results[uniform_method], results[eb_method], uniform, eb)
+        for part, values in split.items():
+            row[f"{name}_{part}"] = float(values.mean())
+        row[f"{name}_abs_prevalence_part"] = float(np.abs(split["prevalence_part"]).mean())
+        # the stored centre: D4 shift + (R - D4 shift) + P
+        diagnoses = {
+            "ebprev": split["prevalence_part"],
+            "ebcentre": split["recall_part"] + split["prevalence_part"] - split["d4_shift"],
+        }
+        for target, extra in diagnoses.items():
+            scores = predicted_scores(results[uniform_method], uniform_method, uniform, eb, extra_shift=extra)
+            for score, value in scores.items():
+                row[f"{name}_{target}_pred_{score}"] = value
     for score in ("coverage", "winkler"):
         values = [row[f"realised_{prior}_pred_{score}"] for prior in NU_PRIORS]
         row[f"realised_pred_{score}_range"] = float(np.nanmax(values) - np.nanmin(values))
     return row
 
 
-def source_table(source: str, experiment: str, domain: str) -> pd.DataFrame:
-    """The per-pair table of one source: the pairs with all four BayCAP methods stored."""
+def compute_table() -> pd.DataFrame:
+    """The ordered per-pair table: the pairs of ``main`` with all four BayCAP methods stored."""
     results = {}
     for method in eb_prior.METHODS:
-        df = estimand_gap.load_results(method, experiment=experiment, domain=domain)
+        df = estimand_gap.load_results(method, experiment=EXPERIMENT, domain=DOMAIN)
         if df.empty:
-            raise RuntimeError(f"No {method} results found for {experiment}.")
+            raise RuntimeError(f"No {method} results found for {EXPERIMENT}.")
         results[method] = df
     pairs = eb_prior.common_pairs(results)
     if not pairs:
-        raise RuntimeError(f"No pair of {experiment} has stored results for all of {eb_prior.METHODS}.")
-    val_counts = load_validation_counts(pairs, domain=domain)
+        raise RuntimeError(f"No pair of {EXPERIMENT} has stored results for all of {eb_prior.METHODS}.")
+    val_counts = load_validation_counts(pairs, domain=DOMAIN)
     divergences = eb_prior.diagnostics_table(results["BayesCAP-EB"]).set_index(KEYS)["share_divergent"]
     rows = []
     for dataset, classifier in pairs:
@@ -355,27 +419,20 @@ def source_table(source: str, experiment: str, domain: str) -> pd.DataFrame:
             method: df.loc[(df["dataset"] == dataset) & (df["classifier"] == classifier)].reset_index(drop=True)
             for method, df in results.items()
         }
-        row = {"dataset": dataset, "classifier": classifier, "source": source}
+        row = {"dataset": dataset, "classifier": classifier}
         row.update(pair_row(pair_results, val_counts[(dataset, classifier)]))
         row["BayesCAP-EB_share_divergent"] = float(divergences.get((dataset, classifier), np.nan))
         rows.append(row)
-    return pd.DataFrame(rows)
+    return ordered(pd.DataFrame(rows))
 
 
 def ordered(table: pd.DataFrame) -> pd.DataFrame:
-    """Order the pairs of E2.4 before those of E2.5, then by $K$, dataset and classifier as in ``main``."""
+    """Order the pairs by $K$, dataset and classifier as in ``main``."""
     table = table.copy()
-    source_rank = table["source"].map({source: i for i, source in enumerate(SOURCES)})
-    keys = table.assign(source_rank=source_rank).drop_duplicates("dataset")
-    order = keys.sort_values(["source_rank", "n_classes", "dataset"])["dataset"].tolist()
+    order = table.drop_duplicates("dataset").sort_values(["n_classes", "dataset"])["dataset"].tolist()
     table["dataset"] = pd.Categorical(table["dataset"], categories=order, ordered=True)
     table["classifier"] = pd.Categorical(table["classifier"], categories=CLASSIFIER_ORDER, ordered=True)
     return table.sort_values(["dataset", "classifier"]).reset_index(drop=True)
-
-
-def compute_table(sources=tuple(SOURCES)) -> pd.DataFrame:
-    """Return the ordered per-pair table of the given sources."""
-    return ordered(pd.concat([source_table(s, *SOURCES[s]) for s in sources], ignore_index=True))
 
 
 def _k_group(n_classes: int) -> str:
@@ -383,47 +440,50 @@ def _k_group(n_classes: int) -> str:
 
 
 def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """Reduce the per-pair table to the summaries of the Analysis of E2.6, per source and group of $K$.
+    """Reduce the per-pair table to the summaries of the Analysis of E2.6, over all pairs and per group of $K$.
 
     - ``validation``: for each pushforward, the mean absolute difference of the predicted and stored coverage of the
       empirical-Bayes method, the share of pairs within $0.05$, the correlation of predicted and stored coverage, and
-      the
-      share of pairs where the predicted and the stored change of the Winkler score from the uniform prior have the same
-      sign;
+      the share of pairs where the predicted and the stored change of the Winkler score from the uniform prior have the
+      same sign; for the diagnosis, the mean absolute coverage difference and the share within $0.05$ with the stored
+      prevalence part added (``prev``) and with the stored centre (``centre``), the correlation across pairs of the
+      shift of D4 and the stored recall part, and the mean absolute prevalence part;
     - ``prediction``: mean realised coverage and Winkler score, stored (uniform, empirical Bayes) and predicted (each
       prior on $\\nu$);
     - ``screens``: median width ratio of $\\ln\\nu$ and median range of the predicted realised coverage over the priors;
       pairs with a p-value below ``P_SMALL`` and with $|z_j|>2$ (``MAIN_PRIOR``); median sampler risk, and its Spearman
       correlation with the stored share of divergent bags of ``BayesCAP-EB``.
     """
-    groups = []
-    for source in SOURCES:
-        sub = table.loc[table["source"] == source]
-        if sub.empty:
-            continue
-        groups.append((source, "all", sub))
-        for name in K_GROUPS:
-            part = sub.loc[sub["n_classes"].map(_k_group) == name]
-            if not part.empty:
-                groups.append((source, name, part))
+    groups = [("all", table)]
+    for name in K_GROUPS:
+        part = table.loc[table["n_classes"].map(_k_group) == name]
+        if not part.empty:
+            groups.append((name, part))
     out = {"validation": [], "prediction": [], "screens": []}
-    for source, k_group, sub in groups:
-        key = {"source": source, "K": k_group, "pairs": len(sub)}
+    for k_group, sub in groups:
+        key = {"K": k_group, "pairs": len(sub)}
         for name, (uniform_method, eb_method) in PUSHFORWARDS.items():
-            pred, stored = sub[f"{name}_eb_pred_coverage"], sub[f"{eb_method}_coverage"]
+            stored = sub[f"{eb_method}_coverage"]
+            pred = sub[f"{name}_eb_pred_coverage"]
             pred_dw = sub[f"{name}_eb_pred_winkler"] - sub[f"{uniform_method}_winkler"]
             stored_dw = sub[f"{eb_method}_winkler"] - sub[f"{uniform_method}_winkler"]
-            out["validation"].append(
-                {
-                    **key,
-                    "pushforward": name,
-                    "mean_abs_cov_diff": float((pred - stored).abs().mean()),
-                    "within_0.05": float(((pred - stored).abs() <= 0.05).mean()),
-                    "corr_cov": float(pred.corr(stored)) if len(sub) > 2 else np.nan,
-                    "same_sign_dW": float((np.sign(pred_dw) == np.sign(stored_dw)).mean()),
-                    "undefined": float(sub[f"{name}_eb_pred_undefined"].mean()),
-                }
-            )
+            row = {
+                **key,
+                "pushforward": name,
+                "mean_abs_cov_diff": float((pred - stored).abs().mean()),
+                "within_0.05": float(((pred - stored).abs() <= 0.05).mean()),
+                "corr_cov": float(pred.corr(stored)) if len(sub) > 2 else np.nan,
+                "same_sign_dW": float((np.sign(pred_dw) == np.sign(stored_dw)).mean()),
+                "undefined": float(sub[f"{name}_eb_pred_undefined"].mean()),
+            }
+            for target, label in (("ebprev", "prev"), ("ebcentre", "centre")):
+                diff = (sub[f"{name}_{target}_pred_coverage"] - stored).abs()
+                row[f"mean_abs_cov_diff_{label}"] = float(diff.mean())
+                row[f"within_0.05_{label}"] = float((diff <= 0.05).mean())
+            shift, recall = sub[f"{name}_d4_shift"], sub[f"{name}_recall_part"]
+            row["corr_shift_recall"] = float(shift.corr(recall)) if len(sub) > 2 else np.nan
+            row["mean_abs_prevalence_part"] = float(sub[f"{name}_abs_prevalence_part"].mean())
+            out["validation"].append(row)
         prediction = {
             **key,
             "uniform_cov": float(sub["BayesCAP-real_coverage"].mean()),
@@ -452,14 +512,14 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 VALIDATION_CAPTION = (
     "Prediction of the empirical-Bayes (EB) prior of BayCAP from the stored draws of BayCAP with the "
-    "$\\operatorname{Dir}(\\mathbf 1)$ prior and the validation counts alone (E2.6, D4), vanilla accuracy, $|U|=1000$; "
-    f"{E25_MARK}: binary datasets of \\texttt{{quapy}} outside \\texttt{{main}} (E2.5). Coverage $\\mathcal{{C}}$, "
+    "$\\operatorname{Dir}(\\mathbf 1)$ prior and the validation counts alone (E2.6, D4), vanilla accuracy, $|U|=1000$. Coverage $\\mathcal{C}$, "
     "amplitude $\\mathcal{A}$ and Winkler score $\\mathcal{W}$ against the realised table, means over the bags: stored "
-    "(BayCAP-EB, BayCAP-EB-real) and predicted, for the population and the realised pushforward."
+    "(BayCAP-EB, BayCAP-EB-real) and predicted, for the population and the realised pushforward. Diagnosis of the "
+    "prediction: coverage with the stored change of the estimated prevalences added (+$P$) and with the stored centre "
+    "of the EB method (centre)."
 )
 SCREENS_CAPTION = (
-    "Screens of a hierarchical prior on the recalls of BayCAP (E2.6), vanilla accuracy, $|U|=1000$; "
-    f"{E25_MARK}: binary datasets of \\texttt{{quapy}} outside \\texttt{{main}} (E2.5). For each prior on $\\nu$: the "
+    "Screens of a hierarchical prior on the recalls of BayCAP (E2.6), vanilla accuracy, $|U|=1000$. For each prior on $\\nu$: the "
     "ratio of the 90\\% widths of the posterior and of the prior of $\\ln\\nu$ (D1), and the predicted coverage and "
     "Winkler score of the realised pushforward (D4). Stored realised coverage with the "
     "$\\operatorname{Dir}(\\mathbf 1)$ and EB priors. Log-uniform prior: smallest leave-one-class-out p-value, "
@@ -473,7 +533,6 @@ SCREENS_LABEL = "tab:hierarchical-screens"
 
 def _index(table: pd.DataFrame) -> pd.MultiIndex:
     names = table["dataset"].astype(str).map(lambda d: decorate_dataset(main_tables.dataset_map.get(d, d)))
-    names = names + np.where(table["source"] == "E2.5", E25_MARK, "")
     return pd.MultiIndex.from_arrays(
         [names, table["n_classes"].astype(int), table["classifier"].astype(str)],
         names=["dataset", "$K$", "classifier"],
@@ -489,6 +548,9 @@ def _validation_styler(table: pd.DataFrame):
         for score in SCORES:
             cols[(name, SCORE_LABELS[score], "stored")] = table[f"{eb_method}_{score}"].to_numpy()
             cols[(name, SCORE_LABELS[score], "pred.")] = table[f"{name}_eb_pred_{score}"].to_numpy()
+            if score == "coverage":
+                cols[(name, SCORE_LABELS[score], "+$P$")] = table[f"{name}_ebprev_pred_{score}"].to_numpy()
+                cols[(name, SCORE_LABELS[score], "centre")] = table[f"{name}_ebcentre_pred_{score}"].to_numpy()
     out = pd.DataFrame(cols)
     out.columns = pd.MultiIndex.from_tuples(out.columns)
     out.index = _index(table)
@@ -539,7 +601,7 @@ def _stem(name: str) -> str:
 
 
 def gen_tables(pargs):
-    table = compute_table(tuple(pargs.sources))
+    table = compute_table()
     out_dir = table_dir(pargs)
     tabular_dir = os.path.join(out_dir, "tabular")
     os.makedirs(tabular_dir, exist_ok=True)
@@ -579,7 +641,6 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--tables", action="store_true", help="Generate tables")
     parser.add_argument("-p", "--pdf", action="store_true", help="Generate PDF from tables")
     parser.add_argument("-a", "--all", action="store_true", help="Generate both tables and PDF")
-    parser.add_argument("--sources", nargs="+", choices=list(SOURCES), default=list(SOURCES))
     parser.add_argument(
         "--table-dir",
         "--output-dir",

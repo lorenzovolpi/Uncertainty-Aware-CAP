@@ -21,22 +21,28 @@ VAL_COUNTS = {
     ("german", "LR"): np.array([[180, 20], [40, 60]]),
     ("letter", "LR"): np.array([[45, 3, 2], [4, 40, 6], [1, 2, 47]]),
 }
-SOURCE_PAIRS = {"E2.4": [("german", "LR"), ("letter", "LR")], "E2.5": [("wdbc", "LR")]}
+PAIRS = [("letter", "LR"), ("wdbc", "LR"), ("german", "LR")]
 
 
-def results(pairs, estim_shift: float, seed: int = 0) -> pd.DataFrame:
-    """Stored results of one method: per bag a true table, a mean table and accuracy draws around its trace."""
-    rng = np.random.default_rng(seed)
+def results(pairs, estim_shift: float, seed: int = 0, props_shift: float = 0.0) -> pd.DataFrame:
+    """Stored results of one method: per bag a true table, a mean table and accuracy draws around its trace.
+
+    The bags (true tables) are the same for every method; ``estim_shift`` moves the recalls of the mean table and
+    ``props_shift`` its prevalence of the first class.
+    """
+    bag_rng, rng = np.random.default_rng(0), np.random.default_rng(seed)
     rows = []
     for dataset, classifier in pairs:
         k = VAL_COUNTS[(dataset, classifier)].shape[0]
         for bag in range(4):
-            props = rng.dirichlet(np.ones(k))
+            props = bag_rng.dirichlet(np.ones(k))
             rates = np.full((k, k), 0.1 / (k - 1))
             np.fill_diagonal(rates, 0.9)
             true_ct = props[:, None] * rates
             estim_ct = true_ct.copy()
-            estim_ct[np.diag_indices(k)] += estim_shift / k
+            estim_ct[np.diag_indices(k)] = np.maximum(np.diag(estim_ct) + estim_shift / k, 1e-3)
+            estim_ct /= estim_ct.sum()
+            estim_ct[0] *= 1 + props_shift
             estim_ct /= estim_ct.sum()
             rows.append(
                 {
@@ -56,13 +62,15 @@ def results(pairs, estim_shift: float, seed: int = 0) -> pd.DataFrame:
 
 def method_results(pairs) -> dict[str, pd.DataFrame]:
     shifts = {"BayesCAP": -0.05, "BayesCAP-real": -0.05, "BayesCAP-EB": 0.0, "BayesCAP-EB-real": 0.0}
-    return {method: results(pairs, shift, seed=i) for i, (method, shift) in enumerate(shifts.items())}
+    return {
+        method: results(pairs, shift, seed=i, props_shift=0.0 if shift < 0 else 0.3)
+        for i, (method, shift) in enumerate(shifts.items())
+    }
 
 
 def synthetic_table() -> pd.DataFrame:
     def load(method, experiment, domain):
-        source = "E2.4" if experiment == h.SOURCES["E2.4"][0] else "E2.5"
-        return method_results(SOURCE_PAIRS[source])[method]
+        return method_results(PAIRS)[method]
 
     with (
         patch.object(h.estimand_gap, "load_results", side_effect=load),
@@ -167,40 +175,95 @@ class ScreensTest(unittest.TestCase):
         self.assertEqual(predicted["undefined"], 0.0)
 
 
+class CentreSplitTest(unittest.TestCase):
+    def setUp(self):
+        self.pair = [("letter", "LR")]
+        self.uniform_df = results(self.pair, -0.05, seed=1)
+        self.eb_df = results(self.pair, 0.0, seed=2, props_shift=0.3)
+        counts = VAL_COUNTS[self.pair[0]]
+        self.uniform, self.eb = h.uniform_posterior(counts), h.eb_posterior(counts)
+
+    def test_parts_add_up_to_the_change_of_the_centre(self):
+        split = h.centre_split(self.uniform_df, self.eb_df, self.uniform, self.eb)
+        change = [
+            np.trace(e / e.sum()) - np.trace(u / u.sum())
+            for u, e in zip(self.uniform_df["estim_cts"], self.eb_df["estim_cts"])
+        ]
+        np.testing.assert_allclose(split["recall_part"] + split["prevalence_part"], change, atol=1e-12)
+        self.assertTrue((np.abs(split["prevalence_part"]) > 0).all())
+        self.assertTrue((split["props_l1"] > 0).all())
+        props = np.stack([h._bag_props(ct) for ct in self.uniform_df["estim_cts"]])
+        expected = h.accuracy_moments(self.eb, props)[0] - h.accuracy_moments(self.uniform, props)[0]
+        np.testing.assert_allclose(split["d4_shift"], expected)
+
+    def test_same_tables_have_no_parts(self):
+        split = h.centre_split(self.uniform_df, self.uniform_df, self.uniform, self.eb)
+        np.testing.assert_allclose(split["recall_part"], 0.0, atol=1e-15)
+        np.testing.assert_allclose(split["prevalence_part"], 0.0, atol=1e-15)
+
+    def test_bags_must_match(self):
+        other = results(self.pair, 0.0, seed=2)
+        other.at[0, "true_cts"] = other.at[0, "true_cts"][::-1]
+        with self.assertRaises(ValueError):
+            h.centre_split(self.uniform_df, other, self.uniform, self.eb)
+        with self.assertRaises(ValueError):
+            h.centre_split(self.uniform_df, other.iloc[:2], self.uniform, self.eb)
+
+    def test_extra_shift_moves_the_predicted_draws(self):
+        method = "BayesCAP-real"
+        base = h.predicted_scores(self.uniform_df, method, self.uniform, self.uniform)
+        zero = h.predicted_scores(self.uniform_df, method, self.uniform, self.uniform, extra_shift=np.zeros(4))
+        far = h.predicted_scores(self.uniform_df, method, self.uniform, self.uniform, extra_shift=np.full(4, 1.0))
+        for score in h.SCORES:
+            self.assertAlmostEqual(zero[score], base[score])
+        self.assertEqual(far["coverage"], 0.0)
+
+
 class TableTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.table = synthetic_table()
 
     def test_rows_order_and_columns(self):
-        self.assertEqual(list(self.table["source"]), ["E2.4", "E2.4", "E2.5"])
-        self.assertEqual(list(self.table["dataset"].astype(str)), ["german", "letter", "wdbc"])
+        self.assertNotIn("source", self.table)
+        self.assertEqual(list(self.table["dataset"].astype(str)), ["german", "wdbc", "letter"])
         for prior in h.NU_PRIORS:
             for column in ("width_ratio", "alpha_risk", "min_pvalue", "max_abs_z"):
                 self.assertIn(f"{prior}_{column}", self.table)
             self.assertIn(f"realised_{prior}_pred_coverage", self.table)
         self.assertTrue((self.table["realised_eb_pred_undefined"] == 0).all())
         np.testing.assert_allclose(self.table["BayesCAP-EB_share_divergent"], 0.5)
+        for name in h.PUSHFORWARDS:
+            for column in ("d4_shift", "recall_part", "prevalence_part", "abs_prevalence_part", "props_l1"):
+                self.assertIn(f"{name}_{column}", self.table)
+            for target in ("ebprev", "ebcentre"):
+                self.assertIn(f"{name}_{target}_pred_coverage", self.table)
+        self.assertTrue((self.table["realised_abs_prevalence_part"] > 0).all())
 
     def test_analysis_summary(self):
         summary = h.analysis_summary(self.table)
         validation = summary["validation"]
         self.assertEqual(set(validation["pushforward"]), set(h.PUSHFORWARDS))
         first = validation.iloc[0]
-        self.assertEqual((first["source"], first["K"], first["pairs"]), ("E2.4", "all", 2))
-        prediction = summary["prediction"].set_index(["source", "K"])
+        self.assertEqual((first["K"], first["pairs"]), ("all", 3))
+        for column in ("mean_abs_cov_diff_prev", "within_0.05_centre", "corr_shift_recall", "mean_abs_prevalence_part"):
+            self.assertIn(column, validation)
+        stored = self.table["BayesCAP-EB-real_coverage"]
+        realised = validation.set_index(["K", "pushforward"]).loc[("all", "realised")]
         self.assertAlmostEqual(
-            prediction.loc[("E2.5", "all"), "uniform_cov"],
-            self.table.loc[self.table["source"] == "E2.5", "BayesCAP-real_coverage"].mean(),
+            realised["mean_abs_cov_diff_prev"], (self.table["realised_ebprev_pred_coverage"] - stored).abs().mean()
         )
-        self.assertIn(("E2.4", "3<=K<=7"), prediction.index)
+        prediction = summary["prediction"].set_index("K")
+        self.assertAlmostEqual(
+            prediction.loc["K=2", "uniform_cov"], self.table.loc[:1, "BayesCAP-real_coverage"].mean()
+        )
+        self.assertIn("3<=K<=7", prediction.index)
 
     def test_latex_tables(self):
         for name, (styler_fn, caption, label) in h.TABLES.items():
             with self.subTest(table=name):
                 latex = eb_prior._latex_longtable(styler_fn(self.table), caption, label)
                 self.assertIn("\\begin{longtable}", latex)
-                self.assertIn(h.E25_MARK, latex)
 
     def test_figures(self):
         for name, plotter in hierarchical_plots.PLOTTERS.items():
