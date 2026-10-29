@@ -19,8 +19,9 @@ log-uniform one (``MAIN_PRIOR``).
   (D1);
 - ``exchangeability``: the smallest leave-one-class-out p-value (log scale) against the largest vertex shift $|z_j|$
   (D2), with lines at $p=0.01$ and $|z_j|=2$;
-- ``sampler``: $P(\\min(\\nu m,\\nu(1-m))<1\\mid V)$ against the stored share of bags with divergent transitions of
-  ``BayesCAP-EB`` (D3).
+- ``sampler``: the indicators of D3 against the stored share of bags with divergent transitions of ``BayesCAP-EB``,
+  four panels: prior parameters below $1$, posterior parameters below $1$, funnel (hierarchical, log-uniform), and the
+  share of cells with an empirical-Bayes posterior parameter below $1$.
 
 Output: ``<OUT_DIR>/uncawe/plots/hierarchical/``.
 """
@@ -170,19 +171,27 @@ def plot_exchangeability(table: pd.DataFrame):
     return fig
 
 
+SAMPLER_PANELS = {
+    f"{MAIN_PRIOR}_alpha_risk": "$P(\\min(\\nu m,\\nu(1-m))<1\\mid V)$, hierarchical",
+    f"{MAIN_PRIOR}_post_alpha_risk": "$P(\\min_j\\min(a_j,b_j)<1\\mid V)$, hierarchical",
+    f"{MAIN_PRIOR}_funnel_risk": "$P(\\nu>\\min_jn_j\\mid V)$, hierarchical",
+    "eb_post_alpha_share": "share of cells with EB posterior parameter $<1$",
+}
+
+
 def plot_sampler(table: pd.DataFrame):
-    """Posterior probability of a Beta parameter below 1 against the stored divergences of BayCAP-EB (D3)."""
-    x, y = f"{MAIN_PRIOR}_alpha_risk", "BayesCAP-EB_share_divergent"
+    """The indicators of D3 against the stored share of divergent bags of BayCAP-EB."""
+    y = "BayesCAP-EB_share_divergent"
     shown = table.loc[table[y].notna()]
-    fig, ax = plt.subplots(figsize=(7.0, 6.0), layout="constrained")
-    sc = _scatter(ax, shown, x, y)
-    style_scatter_axes(
-        ax, "$P(\\min(\\nu m,\\nu(1-m))<1\\mid V)$, hierarchical", "share of divergent bags, BayCAP-EB (stored)"
-    )
+    fig, axes = plt.subplots(2, 2, figsize=(12.0, 10.0), layout="constrained", sharey=True)
+    sc = None
+    for ax, (x, label) in zip(axes.ravel(), SAMPLER_PANELS.items()):
+        sc = _scatter(ax, shown, x, y)
+        style_scatter_axes(ax, label, "share of divergent bags, BayCAP-EB (stored)")
     excluded = len(table) - len(shown)
     suffix = f" ({excluded} pairs without diagnostics not shown)" if excluded else ""
-    ax.set_title("D3: sampler risk" + suffix, fontsize=font_size(11))
-    _finish(fig, ax, sc, shown)
+    fig.suptitle("D3: sampler risk" + suffix, fontsize=font_size(11))
+    _finish(fig, axes, sc, shown)
     return fig
 
 

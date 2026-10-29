@@ -25,8 +25,12 @@ vanilla accuracy, $|U|=1000$:
 - D2, exchangeability: per class, the leave-one-class-out predictive p-value of $f_{jj}$ and the vertex shift
   $z_j=(\\mathbb E[r_j\\mid V]-f_{jj}/n_j)/\\operatorname{sd}(r_j\\mid V)$; per pair the smallest p-value, the number of
   classes below ``P_SMALL`` and the largest $|z_j|$;
-- D3, sampler risk: $P(\\min(\\nu m,\\nu(1-m))<1\\mid V)$ and the 90% width of the posterior of $\\ln\\nu$, next to the
-  stored share of bags with divergent transitions of ``BayesCAP-EB``.
+- D3, sampler risk: $P(\\min(\\nu m,\\nu(1-m))<1\\mid V)$ and the 90% width of the posterior of $\\ln\\nu$; amended with
+  the parameters of the posterior of the recalls, which are what NUTS sees: $P(\\min_j\\min(a_j,b_j)<1\\mid V)$ with
+  $a_j=\\nu m+f_{jj}$, $b_j=\\nu(1-m)+n_j-f_{jj}$, the classes perfect on $V$ ($f_{jj}=n_j$) and never right
+  ($f_{jj}=0$), the funnel indicator $P(\\nu>\\min_jn_j\\mid V)$, and, for the empirical-Bayes prior, the share of cells
+  of $C$ whose posterior Dirichlet parameter from $V$ is below $1$; all next to the stored share of bags with divergent
+  transitions of ``BayesCAP-EB``.
 
 The pairs are those of ``main`` (all $75$) with all four BayCAP methods stored. Outputs, under
 ``<OUT_DIR>/uncawe/tables/hierarchical/``: a per-pair CSV, which ``plots/hierarchical.py`` reads, and two tables
@@ -46,7 +50,7 @@ from scipy.special import betaln, gammaln
 from uncawe import env
 from uncawe.config import acc_from_ct
 from uncawe.main import EXPERIMENT
-from uncawe.methods.baycap import fit_beta_binomial
+from uncawe.methods.baycap import eb_concentration, fit_beta_binomial
 from uncawe.tables import eb_prior, estimand_gap
 from uncawe.tables import main as main_tables
 from uncawe.tables.displacement import class_props_and_recalls, load_validation_counts
@@ -211,6 +215,31 @@ def alpha_risk(weights: np.ndarray) -> float:
     return float(weights[np.minimum(nu * m, nu * (1 - m)) < 1].sum())
 
 
+def posterior_alpha_risk(f: np.ndarray, n: np.ndarray, weights: np.ndarray) -> float:
+    """$P(\\min_j\\min(a_j,b_j)<1\\mid V)$ on the grid, with the parameters $a_j=\\nu m+f_{jj}$,
+    $b_j=\\nu(1-m)+n_j-f_{jj}$ of the posterior of the recalls given $(m,\\nu)$ (amended D3)."""
+    m = GRID_M[None, :, None]
+    nu = np.exp(GRID_LN_NU)[None, None, :]
+    f, n = np.asarray(f, dtype=float)[:, None, None], np.asarray(n, dtype=float)[:, None, None]
+    low = (np.minimum(nu * m + f, nu * (1 - m) + n - f) < 1).any(axis=0)
+    return float(weights[low].sum())
+
+
+def funnel_risk(n: np.ndarray, weights: np.ndarray) -> float:
+    """$P(\\nu>\\min_jn_j\\mid V)$ on the grid: where the prior outweighs the data of the smallest class (amended D3)."""
+    return float(weights[:, np.exp(GRID_LN_NU) > np.min(n)].sum())
+
+
+def eb_posterior_low_share(val_counts: np.ndarray) -> float:
+    """Share of the cells of $C$ whose posterior Dirichlet parameter from $V$ under the empirical-Bayes prior,
+    $\\alpha_{ij}+f_{ij}$, is below $1$ (amended D3); under $\\operatorname{Dir}(\\mathbf 1)$ it is always $0$."""
+    f, n = diagonal_counts(val_counts)
+    fit = fit_beta_binomial(f, n)
+    # both in the cap-ml layout: row j is the column C_{:j}
+    alpha = eb_concentration(len(f), fit.m, fit.nu) + np.asarray(val_counts, dtype=float)
+    return float((alpha < 1).mean())
+
+
 def loo_pvalue(f_j: float, n_j: float, weights: np.ndarray) -> float:
     """Two-sided predictive p-value of the count $f_{jj}$ under the beta-binomial averaged over ``weights``, the grid
     posterior fitted without class $j$."""
@@ -238,7 +267,12 @@ def hierarchical_screens(val_counts: np.ndarray) -> tuple[dict, dict[str, Recall
     vertices = np.eye(k)
     centre = np.full((1, k), 1 / k)
     nu_grid = np.exp(GRID_LN_NU)
-    out, posteriors = {}, {}
+    out = {
+        "n_perfect_classes": int((f == n).sum()),
+        "n_never_right_classes": int((f == 0).sum()),
+        "eb_post_alpha_share": eb_posterior_low_share(val_counts),
+    }
+    posteriors = {}
     for prior in NU_PRIORS:
         weights = grid_weights(total_ll, prior)
         post = mixture_posterior(f, n, weights)
@@ -260,6 +294,8 @@ def hierarchical_screens(val_counts: np.ndarray) -> tuple[dict, dict[str, Recall
                 f"{prior}_acc_sd_centre": float(np.sqrt(acc_var_c[0])),
                 f"{prior}_acc_sd_vertex": float(np.sqrt(acc_var_v.max())),
                 f"{prior}_alpha_risk": alpha_risk(weights),
+                f"{prior}_post_alpha_risk": posterior_alpha_risk(f, n, weights),
+                f"{prior}_funnel_risk": funnel_risk(n, weights),
                 f"{prior}_min_pvalue": float(min(pvalues)),
                 f"{prior}_n_small_pvalue": int(sum(p < P_SMALL for p in pvalues)),
                 f"{prior}_max_abs_z": float(np.max(np.abs(z))),
@@ -435,6 +471,15 @@ def ordered(table: pd.DataFrame) -> pd.DataFrame:
     return table.sort_values(["dataset", "classifier"]).reset_index(drop=True)
 
 
+# label -> column of the indicators of D3 compared with the stored divergences
+D3_INDICATORS = {
+    "alpha_risk": f"{MAIN_PRIOR}_alpha_risk",
+    "post_alpha_risk": f"{MAIN_PRIOR}_post_alpha_risk",
+    "funnel_risk": f"{MAIN_PRIOR}_funnel_risk",
+    "eb_post_alpha_share": "eb_post_alpha_share",
+}
+
+
 def _k_group(n_classes: int) -> str:
     return next(name for name, (lo, hi) in K_GROUPS.items() if lo <= n_classes <= hi)
 
@@ -451,8 +496,9 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
     - ``prediction``: mean realised coverage and Winkler score, stored (uniform, empirical Bayes) and predicted (each
       prior on $\\nu$);
     - ``screens``: median width ratio of $\\ln\\nu$ and median range of the predicted realised coverage over the priors;
-      pairs with a p-value below ``P_SMALL`` and with $|z_j|>2$ (``MAIN_PRIOR``); median sampler risk, and its Spearman
-      correlation with the stored share of divergent bags of ``BayesCAP-EB``.
+      pairs with a p-value below ``P_SMALL`` and with $|z_j|>2$ (``MAIN_PRIOR``); for each indicator of D3 (prior and
+      posterior parameters below $1$, funnel, and the empirical-Bayes cells below $1$) its median and its Spearman
+      correlation with the stored share of divergent bags of ``BayesCAP-EB``; pairs with a class perfect on $V$.
     """
     groups = [("all", table)]
     for name in K_GROUPS:
@@ -495,18 +541,22 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
             prediction[f"{prior}_cov"] = float(sub[f"realised_{prior}_pred_coverage"].mean())
             prediction[f"{prior}_W"] = float(sub[f"realised_{prior}_pred_winkler"].mean())
         out["prediction"].append(prediction)
-        risk, divergent = sub[f"{MAIN_PRIOR}_alpha_risk"], sub["BayesCAP-EB_share_divergent"]
-        out["screens"].append(
-            {
-                **key,
-                **{f"{prior}_width_ratio": float(sub[f"{prior}_width_ratio"].median()) for prior in NU_PRIORS},
-                "cov_range": float(sub["realised_pred_coverage_range"].median()),
-                "small_pvalue": int((sub[f"{MAIN_PRIOR}_min_pvalue"] < P_SMALL).sum()),
-                "large_z": int((sub[f"{MAIN_PRIOR}_max_abs_z"] > 2).sum()),
-                "alpha_risk": float(risk.median()),
-                "spearman_risk_div": float(risk.corr(divergent, method="spearman")) if len(sub) > 2 else np.nan,
-            }
-        )
+        divergent = sub["BayesCAP-EB_share_divergent"]
+        screens = {
+            **key,
+            **{f"{prior}_width_ratio": float(sub[f"{prior}_width_ratio"].median()) for prior in NU_PRIORS},
+            "cov_range": float(sub["realised_pred_coverage_range"].median()),
+            "small_pvalue": int((sub[f"{MAIN_PRIOR}_min_pvalue"] < P_SMALL).sum()),
+            "large_z": int((sub[f"{MAIN_PRIOR}_max_abs_z"] > 2).sum()),
+            "with_perfect_class": int((sub["n_perfect_classes"] > 0).sum()),
+        }
+        for label, column in D3_INDICATORS.items():
+            risk = sub[column]
+            screens[label] = float(risk.median())
+            screens[f"spearman_{label}_div"] = (
+                float(risk.corr(divergent, method="spearman")) if len(sub) > 2 else np.nan
+            )
+        out["screens"].append(screens)
     return {name: pd.DataFrame(rows) for name, rows in out.items()}
 
 
@@ -523,8 +573,10 @@ SCREENS_CAPTION = (
     "ratio of the 90\\% widths of the posterior and of the prior of $\\ln\\nu$ (D1), and the predicted coverage and "
     "Winkler score of the realised pushforward (D4). Stored realised coverage with the "
     "$\\operatorname{Dir}(\\mathbf 1)$ and EB priors. Log-uniform prior: smallest leave-one-class-out p-value, "
-    "largest vertex shift $|z_j|$ (D2), and "
-    "$P(\\min(\\nu m,\\nu(1-m))<1\\mid V)$ (D3), next to the stored share of bags with divergent transitions of "
+    "largest vertex shift $|z_j|$ (D2), and, for D3, "
+    "$P(\\min(\\nu m,\\nu(1-m))<1\\mid V)$ (prior parameters), $P(\\min_j\\min(a_j,b_j)<1\\mid V)$ (posterior "
+    "parameters), the number of classes perfect on $V$ and $P(\\nu>\\min_jn_j\\mid V)$ (funnel); the share of cells of "
+    "$C$ with an EB posterior parameter below $1$, and the stored share of bags with divergent transitions of "
     "BayCAP-EB."
 )
 VALIDATION_LABEL = "tab:hierarchical-validation"
@@ -573,6 +625,10 @@ def _screens_styler(table: pd.DataFrame):
     cols[("D2", "min $p$")] = [_fmt_p(v) for v in table[f"{MAIN_PRIOR}_min_pvalue"]]
     cols[("D2", "max $|z_j|$")] = table[f"{MAIN_PRIOR}_max_abs_z"].to_numpy()
     cols[("D3", "$P(\\alpha<1)$")] = table[f"{MAIN_PRIOR}_alpha_risk"].to_numpy()
+    cols[("D3", "$P(a,b<1)$")] = table[f"{MAIN_PRIOR}_post_alpha_risk"].to_numpy()
+    cols[("D3", "perfect")] = table["n_perfect_classes"].to_numpy()
+    cols[("D3", "funnel")] = table[f"{MAIN_PRIOR}_funnel_risk"].to_numpy()
+    cols[("D3", "EB cells")] = table["eb_post_alpha_share"].to_numpy()
     cols[("D3", "EB div.")] = table["BayesCAP-EB_share_divergent"].to_numpy()
     out = pd.DataFrame(cols)
     out.columns = pd.MultiIndex.from_tuples(out.columns)

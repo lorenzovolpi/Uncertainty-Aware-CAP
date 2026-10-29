@@ -165,6 +165,38 @@ class ScreensTest(unittest.TestCase):
         weights[100, -1] = 1.0  # m near 0.5, nu = 1e4
         self.assertAlmostEqual(h.alpha_risk(weights), 0.0)
 
+    def test_posterior_alpha_risk_needs_a_perfect_or_never_right_class(self):
+        weights = h.prior_weights("loguniform")
+        # every class has at least one right and one wrong instance: a_j, b_j >= 1 on the whole grid
+        self.assertEqual(h.posterior_alpha_risk(np.array([9.0, 1.0]), np.array([10.0, 10.0]), weights), 0.0)
+        # a perfect class: b_j = nu (1 - m) < 1 on part of the grid, and on all of it at nu = 0.1
+        self.assertGreater(h.posterior_alpha_risk(np.array([10.0, 5.0]), np.array([10.0, 10.0]), weights), 0.0)
+        low_nu = np.zeros_like(weights)
+        low_nu[100, 0] = 1.0
+        self.assertEqual(h.posterior_alpha_risk(np.array([10.0, 5.0]), np.array([10.0, 10.0]), low_nu), 1.0)
+        # the prior-parameter indicator is 1 at nu = 0.1 whatever the counts
+        self.assertEqual(h.alpha_risk(low_nu), 1.0)
+
+    def test_funnel_risk(self):
+        weights = np.zeros((h.GRID_M.size, h.GRID_LN_NU.size))
+        weights[100, -1] = 1.0  # nu = 1e4
+        self.assertEqual(h.funnel_risk(np.array([50.0, 500.0]), weights), 1.0)
+        weights[:] = 0.0
+        weights[100, 0] = 1.0  # nu = 0.1
+        self.assertEqual(h.funnel_risk(np.array([50.0, 500.0]), weights), 0.0)
+
+    def test_eb_posterior_low_share(self):
+        counts = VAL_COUNTS[("letter", "LR")]
+        f, n = h.diagonal_counts(counts)
+        fit = h.fit_beta_binomial(f, n)
+        off = fit.nu * (1 - fit.m) / 2
+        expected = np.mean(
+            [(off + c < 1) if i != j else (fit.nu * fit.m + c < 1) for (i, j), c in np.ndenumerate(counts)]
+        )
+        self.assertAlmostEqual(h.eb_posterior_low_share(counts), expected)
+        # with no empty cell every posterior parameter is at least 1
+        self.assertEqual(h.eb_posterior_low_share(counts + 1), 0.0)
+
     def test_predicted_scores_with_the_uniform_prior_equal_the_stored_ones(self):
         df = results([("letter", "LR")], -0.05)
         uniform = h.uniform_posterior(VAL_COUNTS[("letter", "LR")])
@@ -228,7 +260,7 @@ class TableTest(unittest.TestCase):
         self.assertNotIn("source", self.table)
         self.assertEqual(list(self.table["dataset"].astype(str)), ["german", "wdbc", "letter"])
         for prior in h.NU_PRIORS:
-            for column in ("width_ratio", "alpha_risk", "min_pvalue", "max_abs_z"):
+            for column in ("width_ratio", "alpha_risk", "post_alpha_risk", "funnel_risk", "min_pvalue", "max_abs_z"):
                 self.assertIn(f"{prior}_{column}", self.table)
             self.assertIn(f"realised_{prior}_pred_coverage", self.table)
         self.assertTrue((self.table["realised_eb_pred_undefined"] == 0).all())
@@ -239,6 +271,8 @@ class TableTest(unittest.TestCase):
             for target in ("ebprev", "ebcentre"):
                 self.assertIn(f"{name}_{target}_pred_coverage", self.table)
         self.assertTrue((self.table["realised_abs_prevalence_part"] > 0).all())
+        self.assertEqual(list(self.table["n_perfect_classes"]), [0, 0, 0])
+        self.assertTrue(self.table["eb_post_alpha_share"].between(0, 1).all())
 
     def test_analysis_summary(self):
         summary = h.analysis_summary(self.table)
@@ -258,6 +292,11 @@ class TableTest(unittest.TestCase):
             prediction.loc["K=2", "uniform_cov"], self.table.loc[:1, "BayesCAP-real_coverage"].mean()
         )
         self.assertIn("3<=K<=7", prediction.index)
+        screens = summary["screens"]
+        for label in h.D3_INDICATORS:
+            self.assertIn(label, screens)
+            self.assertIn(f"spearman_{label}_div", screens)
+        self.assertIn("with_perfect_class", screens)
 
     def test_latex_tables(self):
         for name, (styler_fn, caption, label) in h.TABLES.items():
