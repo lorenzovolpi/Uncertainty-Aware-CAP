@@ -176,6 +176,10 @@ Moving a component changes no result if the code moves unchanged, but `uncawe` t
 - **Findings:** $\hat\nu$ reaches its upper bound on all $11$ pairs with $\lvert z\rvert<1$, on $11$ of $35$ with $1\le\lvert z\rvert<2$ and on $2$ of $74$ with $\lvert z\rvert\ge2$; with $\lvert z\rvert<1$ the realised coverage falls by $0.35$ on average, with $\lvert z\rvert\ge2$ by $0.03$ ($0.005$ on pools of at least $100$ instances). With a finite $\hat\nu$ the check predicts the change of the recall term (correlation $0.971$), but the change falls as the gap between the two recalls grows; the harm on those pairs comes from a narrower interval (median $0.76$ times the uniform amplitude on the $13$ pairs with a significantly higher Winkler score) around a centre already displaced. The uniform prior covers $0.854$ on pools of at least $100$ instances and $0.668$ on smaller ones, with a recall error mostly outside its prior part, consistent with cause 4. Realised Winkler score with the EB prior: significantly lower on $41$ pairs, higher on $31$ (Holm, $0.05$). NUTS diverges in more than $10\%$ of the bags on $20$ EB pairs, all with a Beta parameter below $1$, and in $15\%$ of the bags on average with either prior on the small datasets; on `iris.1` the fit is degenerate ($\hat\nu$ at its lower bound).
 - **Card:** WP-7 (§III.3).
 
+## II.16 Zero-cost screens for a hierarchical prior on the recalls of BayCAP
+
+(WP-9, in progress, not run.) [[ext2_baycap]], E2.6. `tables/hierarchical.py` computes, from the validation counts alone, the posterior of $(m,\nu)$ of a hierarchical Beta prior on the recalls of each classifier, on the grid of `scripts/toys/ext2_hierarchical.py` ($200$ values of $m$ in $[0.0025,0.9975]$, uniform; $200$ values of $\ln\nu$ in $[\ln0.1,\ln10^4]$; three priors on $\nu$, `NU_PRIORS`: $\nu^{-3/2}$, log-uniform, flat), and the mixture moments of the recalls and of accuracy (`mixture_posterior`, `recall_moments`, `accuracy_moments`); the $\operatorname{Dir}(\mathbf 1)$ and empirical-Bayes posteriors are the same objects with one point (`uniform_posterior`, `eb_posterior`). On the pairs of `main` (all $75$) and of `eb_binary` (E2.5) with the four BayCAP methods stored, it reports per pair: the stored coverage, amplitude and Winkler score of the four methods; the D4 prediction of the draws of `BayesCAP` and `BayesCAP-real` under another prior (`predict_draws`: shift by the change of the posterior-mean accuracy at the posterior-mean prevalence of the bag, read from `estim_cts`, and rescale so that the variance due to $C$ is swapped), scored against `true_cts`, for the empirical-Bayes prior (validated against the stored `BayesCAP-EB`, `BayesCAP-EB-real`) and for each hierarchical prior; D1 (ratio of the 90% widths of the posterior and prior of $\ln\nu$, posterior mean of $m$, mass with $\nu\ge10^3$, change and standard deviation of accuracy due to $C$ at the uniform prevalence and at the vertices, range of the predictions over the priors); D2 (leave-one-class-out predictive p-values, `loo_pvalue`, and vertex shifts $z_j$); D3 (`alpha_risk`, $P(\min(\nu m,\nu(1-m))<1\mid V)$, and the width of $\ln\nu$, next to the stored share of divergent bags of `BayesCAP-EB`). `analysis_summary` reduces the table to the summaries of the Analysis (validation, prediction, screens; per source and group of $K$), printed by `--tables`. The predictions keep the estimand of the method they start from (population for `BayesCAP`, realised for `BayesCAP-real`), all scored against the realised table; D4 uses target labels only for scoring, so it is an analysis. Outputs: one CSV and two tables (validation; screens), as LaTeX and landscape PDF, under `<OUT_DIR>/uncawe/tables/hierarchical/`. `plots/hierarchical.py` draws the five scatters of E2.6 (`validation`, `prediction`, `sensitivity`, `exchangeability`, `sampler`) from that CSV, under `<OUT_DIR>/uncawe/plots/hierarchical/`. Tests: `tests/test_hierarchical.py`. No method, experiment or stored result changes. Card: WP-9 (§III.2).
+
 # Part III: Work tracker
 
 This part tracks all implementation and experimentation work of the project: what is scheduled, what is being worked on, and which experiments are implemented but not yet run. The board in §III.1 gives the state at a glance; each open card has an entry in §III.2 with its full description, and completed cards are kept in §III.3.
@@ -184,6 +188,7 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
+| WP-9 | E2.6: zero-cost screens for a hierarchical prior on the recalls of BayCAP | analysis | In progress | WP-6, WP-7 | 2026-10-29 |
 | WP-8 | E3.1: BayCAP with a fixed $\hat C$, quantifier × input classifier × pushforward, on the `main` protocol | experiment | Scheduled | WP-4, WP-6 | 2026-10-28 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
@@ -255,7 +260,7 @@ Entry template:
 
 ### WP-9 E2.6: zero-cost screens for a hierarchical prior on the recalls of BayCAP
 
-- **Kind / status:** analysis / Scheduled
+- **Kind / status:** analysis / In progress
 - **Source:** [[ext2_baycap]] (E2.6, §T.14)
 - **Goal:** before implementing a hierarchical prior on the recalls of BayCAP (a prior on the typical recall $m$ and strength $\nu$ of the Beta prior of the recalls, instead of the plug-in $(\hat m,\hat\nu)$ of the empirical-Bayes prior), screen four possible problems at no run cost, on the 75 pairs of `main` and the 125 of E2.5 (`eb_binary`), vanilla accuracy.
   - *Grid posterior:* $p(m,\nu\mid V)$ from the validation counts alone (product of beta-binomial likelihoods of the diagonal counts), on the grid of `scripts/toys/ext2_hierarchical.py` (200 values of $m$ in $[0.0025,0.9975]$, 200 of $\ln\nu$ in $[\ln0.1,\ln10^4]$), uniform prior on $m$, three priors on $\nu$: $\nu^{-3/2}$, log-uniform, flat; mixture mean and variance of each recall and the variance of accuracy due to $C$, $V_C(\pi)$, by the laws of total expectation and variance.
@@ -270,8 +275,10 @@ Entry template:
 - **Comparability:** reads stored results only; nothing is rerun or deleted.
 - **Deviations from Part V:** none expected.
 - **Done when:** the E2.6 tables and plots are generated on all pairs of both sources, and described in Part II with their location and the date.
-- **Commands:** to be filled when the code exists.
-- **Log:** —
+- **Commands:** on `bcuda` (the default; it needs the pretrain files of the domains `classic` and `classic_binary` and the stored results of the four BayCAP methods in `main` and `eb_binary`).
+  - *Tables:* `make run-tables-hierarchical ARGS=--tables` (`ARGS="--tables --sources E2.4"` for the pairs of `main` only), which also prints the summaries of the Analysis; then `make pull` and `make run-tables-hierarchical WHERE=local ARGS=--pdf` where `pdflatex` is installed.
+  - *Plots:* `make run-plot-hierarchical` after the tables, since the plots read their CSV (`ARGS="--figures validation"` for one figure); then `make pull`.
+- **Log:** 2026-10-29: card added by the user. 2026-10-29: started on branch `wp-9/hierarchical-screens`; code and unit tests done, not run (§II.16). Decisions taken during the implementation: the grid posterior keeps, for the mixture moments and the predictive p-values, only the grid points that carry $1-10^{-6}$ of its mass; the plots read the CSV of the tables instead of recomputing the grid posteriors; the pairs of `main` are labelled `E2.4` and those of `eb_binary` `E2.5` (marked $^\ddagger$ in the tables, ringed in the plots); a predicted draw whose variance would not be positive is left out and counted (`<pushforward>_<prior>_pred_undefined`).
 - **Outcome:** —
 
 ## III.3 Completed cards
