@@ -14,18 +14,25 @@ from scipy.stats import betabinom
 from uncawe.methods import BayCAP, beta_binomial_loglik, eb_concentration, fit_beta_binomial, realised_tables
 from uncawe.methods.baycap import (
     EB_NU_BOUNDS,
+    H_KAPPA,
     H_M,
     H_NU,
     H_RECALLS,
+    H_RHO,
+    H_RHO_KAPPA,
+    H_SHARES,
     HIERARCHICAL_SUMMARIES,
+    KAPPA_SUMMARIES,
     NUTS_DIAGNOSTICS,
     P_C_COND_Y,
     P_TEST_Y,
     failed_summaries,
     hierarchical_rates,
     hierarchical_summaries,
+    kappa_summaries,
     nu_from_u,
     nuts_diagnostics,
+    strength_from_rho,
 )
 
 NUTS_PARAMS = {"num_warmup": 50, "num_samples": 40}
@@ -231,6 +238,51 @@ class HierarchicalPriorTest(unittest.TestCase):
         self.assertEqual(out["nuts_failed"], 1)
         self.assertEqual(out["h_pi_cov"].shape, (9,))
         self.assertTrue(np.isnan(out["h_m_mean"]) and np.all(np.isnan(out["h_pi_mean"])))
+        out = failed_summaries(3, with_kappa=True)
+        self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES)
+        self.assertTrue(all(np.isnan(out[name]) for name in KAPPA_SUMMARIES))
+
+
+class LightHierarchicalPriorTest(unittest.TestCase):
+    def test_prior_on_the_strength_has_the_stated_distribution(self):
+        # rho = 1/(1+nu) uniform: P(nu > x) = 1/(1+x), median 1; at x = 141, 1/142 against (142)^(-1/2) for BayCAP-H
+        rho = (np.arange(200_000) + 0.5) / 200_000
+        nu = strength_from_rho(rho)
+        self.assertAlmostEqual(np.median(nu), 1.0, places=3)
+        for x in (0.5, 3.0, 141.0):
+            self.assertAlmostEqual(np.mean(nu > x), 1 / (1 + x), places=4)
+        self.assertAlmostEqual(strength_from_rho(1.0), 0.0)
+        self.assertLess(1 / 142, 142**-0.5)
+
+    def test_rho_is_the_share_of_the_largest_variance_of_a_recall(self):
+        # Var(r | m, nu) = m(1-m) rho for r ~ Beta(nu m, nu(1-m)) (§T.16)
+        m, nu = 0.7, 4.0
+        a, b = nu * m, nu * (1 - m)
+        var = a * b / ((a + b) ** 2 * (a + b + 1))
+        self.assertAlmostEqual(var, m * (1 - m) / (1 + nu))
+
+    def test_kappa_summaries(self):
+        out = kappa_summaries(np.array([0.1, 0.5, 2.0, 8.0]))
+        self.assertEqual(tuple(out), KAPPA_SUMMARIES)
+        self.assertAlmostEqual(out["h_ln_kappa_median"], np.log(1.0))
+        self.assertAlmostEqual(out["h_p_kappa_below_1"], 0.5)
+        self.assertLess(out["h_ln_kappa_q05"], out["h_ln_kappa_q95"])
+        self.assertTrue(all(np.isnan(v) for v in kappa_summaries(None).values()))
+
+    def test_summaries_with_kappa(self):
+        draws = {
+            H_M: np.array([0.4, 0.6]),
+            H_NU: np.array([1.0, 3.0]),
+            H_RECALLS: np.array([[0.5, 0.7, 0.9], [0.6, 0.8, 1.0]]),
+            P_TEST_Y: np.array([[0.2, 0.3, 0.5], [0.4, 0.3, 0.3]]),
+            H_KAPPA: np.array([0.5, 2.0]),
+        }
+        out = hierarchical_summaries(draws, min_val_count=2, with_kappa=True)
+        self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES)
+        self.assertAlmostEqual(out["h_p_kappa_below_1"], 0.5)
+        self.assertAlmostEqual(out["h_ln_kappa_median"], 0.0)
+        # without kappa (BayCAP-H) the summaries are unchanged
+        self.assertEqual(tuple(hierarchical_summaries(draws, min_val_count=2)), HIERARCHICAL_SUMMARIES)
 
 
 class BayCAPTest(unittest.TestCase):
@@ -396,6 +448,72 @@ class BayCAPTest(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(cts)))
         self.assertTrue(all(np.isnan(v) for v in method.last_nuts_diagnostics().values()))
         self.assertEqual(method.last_posterior_summaries()["nuts_failed"], 1)
+
+    def test_light_hierarchical_prior_returns_valid_tables_and_summaries(self):
+        method = self.fit(
+            BayCAP(vanilla_acc, estimand="realised", c_prior="hierarchical-f", random_state=5, **NUTS_PARAMS)
+        )
+        self.assertIsNone(method.c_alpha)
+        cts = method.predict_ct_range(self.X, self.test_posteriors)
+        self.assertEqual(cts.shape, (NUTS_PARAMS["num_samples"], 3, 3))
+        self.assertTrue(np.all(np.isfinite(cts)) and np.all(cts >= 0))
+        np.testing.assert_allclose(cts.sum(axis=(1, 2)), 1.0, rtol=1e-5)
+
+        self.assertEqual(tuple(method.last_nuts_diagnostics()), NUTS_DIAGNOSTICS)
+        draws, _ = method._last_nuts
+        # the diagnostics cover m, rho and rho_kappa, not u
+        self.assertEqual(set(draws), {P_TEST_Y, P_C_COND_Y, H_M, H_RHO, H_RHO_KAPPA})
+        out = method.last_posterior_summaries()
+        self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES)
+        self.assertEqual(out["nuts_failed"], 0)
+        self.assertLessEqual(out["h_ln_kappa_q05"], out["h_ln_kappa_median"])
+        self.assertLessEqual(out["h_ln_kappa_median"], out["h_ln_kappa_q95"])
+        self.assertTrue(0 <= out["h_p_kappa_below_1"] <= 1)
+
+    def test_light_hierarchical_prior_samples_kappa_and_nu_from_rho(self):
+        from numpyro.handlers import seed, trace
+
+        method = self.fit(BayCAP(vanilla_acc, c_prior="hierarchical-f", random_state=5, **NUTS_PARAMS))
+        model = seed(method.model, rng_seed=0)
+        sites = trace(model).get_trace(
+            pred_posterior_count=self.pred_counts,
+            train_class_cond_count=method.val_ct,
+            alpha=np.ones(3),
+            c_alpha=None,
+        )
+        self.assertNotIn("h_u", sites)
+        rho, rho_kappa = sites[H_RHO]["value"], sites[H_RHO_KAPPA]["value"]
+        self.assertAlmostEqual(float(sites[H_NU]["value"]), float(1 / rho - 1), places=4)
+        kappa = float(sites[H_KAPPA]["value"])
+        self.assertAlmostEqual(kappa, float(1 / rho_kappa - 1), places=4)
+        concentration = np.asarray(sites[H_SHARES]["fn"].concentration)
+        np.testing.assert_allclose(concentration, np.full((3, 2), kappa), rtol=1e-5)
+
+    def test_light_hierarchical_prior_with_two_classes_has_no_kappa(self):
+        val_y = np.repeat([0, 1], 20)
+        val_yhat = np.where(np.arange(40) % 5 == 0, 1 - val_y, val_y)
+        validation = LabelledCollection(np.zeros((40, 1)), val_y, classes=np.arange(2))
+        method = BayCAP(vanilla_acc, c_prior="hierarchical-f", random_state=5, **NUTS_PARAMS)
+        method.fit(validation, _one_hot(val_yhat, 2))
+        cts = method.predict_ct_range(np.zeros((30, 1)), _one_hot(np.arange(30) % 2, 2))
+        self.assertTrue(np.all(np.isfinite(cts)))
+        draws, _ = method._last_nuts
+        self.assertEqual(set(draws), {P_TEST_Y, P_C_COND_Y, H_M, H_RHO})
+        out = method.last_posterior_summaries()
+        self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES)
+        self.assertTrue(all(np.isnan(out[name]) for name in KAPPA_SUMMARIES))
+
+    def test_light_hierarchical_failed_start_keeps_the_kappa_columns(self):
+        method = self.fit(BayCAP(vanilla_acc, c_prior="hierarchical-f", random_state=5, **NUTS_PARAMS))
+
+        def no_start(*args, **kwargs):
+            raise RuntimeError("Cannot find valid initial parameters. Please check your model again.")
+
+        method.sample_posterior = no_start
+        self.assertTrue(np.all(np.isnan(method.predict_ct_range(self.X, self.test_posteriors))))
+        out = method.last_posterior_summaries()
+        self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES)
+        self.assertEqual(out["nuts_failed"], 1)
 
     def test_other_priors_have_no_posterior_summaries(self):
         method = self.fit(BayCAP(vanilla_acc, random_state=5, **NUTS_PARAMS))

@@ -56,16 +56,18 @@ METHOD_CLASS = {
     "BayesCAP-EB": BayCAP,
     "BayesCAP-EB-real": BayCAP,
     "BayesCAP-H-real": BayCAP,
+    "BayesCAP-Hf-real": BayCAP,
 }
 # estimand and prior on the columns of C of the BayCAP methods of main (methods/baycap.py:BayCAP): BayesCAP-real is
-# E2.3, the EB methods are E2.4 and BayesCAP-H-real is E2.7 of docs/ext2_baycap.md; all share the priors on pi, NUTS
-# settings and default seed
+# E2.3, the EB methods are E2.4, BayesCAP-H-real is E2.7 and BayesCAP-Hf-real is E2.8 of docs/ext2_baycap.md; all
+# share the priors on pi, NUTS settings and default seed
 BAYCAP_VARIANTS = {
     "BayesCAP": ("population", "uniform"),
     "BayesCAP-real": ("realised", "uniform"),
     "BayesCAP-EB": ("population", "empirical-bayes"),
     "BayesCAP-EB-real": ("realised", "empirical-bayes"),
     "BayesCAP-H-real": ("realised", "hierarchical"),
+    "BayesCAP-Hf-real": ("realised", "hierarchical-f"),
 }
 
 

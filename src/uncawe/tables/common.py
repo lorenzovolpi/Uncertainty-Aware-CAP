@@ -6,6 +6,7 @@ METHOD_LATEX_LABELS = {
     "BayesCAP-EB": "\\bcap{}-EB",
     "BayesCAP-EB-real": "\\bcap{}-EB-real",
     "BayesCAP-H-real": "\\bcap{}-H-real",
+    "BayesCAP-Hf-real": "\\bcap{}-Hf-real",
     "RQBS": "\\rqbs",
     "O-LEAP": "LEAP",
 }
