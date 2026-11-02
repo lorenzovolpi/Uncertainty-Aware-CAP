@@ -12,7 +12,21 @@ from scipy.special import gammaln
 from scipy.stats import betabinom
 
 from uncawe.methods import BayCAP, beta_binomial_loglik, eb_concentration, fit_beta_binomial, realised_tables
-from uncawe.methods.baycap import EB_NU_BOUNDS, NUTS_DIAGNOSTICS, P_C_COND_Y, P_TEST_Y, nuts_diagnostics
+from uncawe.methods.baycap import (
+    EB_NU_BOUNDS,
+    H_M,
+    H_NU,
+    H_RECALLS,
+    HIERARCHICAL_SUMMARIES,
+    NUTS_DIAGNOSTICS,
+    P_C_COND_Y,
+    P_TEST_Y,
+    failed_summaries,
+    hierarchical_rates,
+    hierarchical_summaries,
+    nu_from_u,
+    nuts_diagnostics,
+)
 
 NUTS_PARAMS = {"num_warmup": 50, "num_samples": 40}
 
@@ -171,6 +185,54 @@ class NutsDiagnosticsTest(unittest.TestCase):
         self.assertLess(out["nuts_min_ess"], 50)
 
 
+class HierarchicalPriorTest(unittest.TestCase):
+    def test_prior_on_nu_has_the_stated_distribution(self):
+        # u uniform: P(nu <= x) = 1 - (1 + x)^(-1/2), median 3, P(nu < 1) = 1 - 1/sqrt(2)
+        u = (np.arange(200_000) + 0.5) / 200_000
+        nu = nu_from_u(u)
+        self.assertAlmostEqual(np.median(nu), 3.0, places=3)
+        self.assertAlmostEqual(np.mean(nu < 1), 1 - 1 / np.sqrt(2), places=4)
+        self.assertAlmostEqual(nu_from_u(1.0), 0.0)
+
+    def test_rates_in_the_cap_layout(self):
+        recalls = np.array([0.9, 0.6, 0.3])
+        shares = np.array([[0.25, 0.75], [0.5, 0.5], [1.0, 0.0]])
+        rates = np.asarray(hierarchical_rates(recalls, shares))
+        # row j is the column C_{:j}: recall on the diagonal, the mistakes shared among the other classes in order
+        expected = np.array([[0.9, 0.025, 0.075], [0.2, 0.6, 0.2], [0.7, 0.0, 0.3]])
+        np.testing.assert_allclose(rates, expected, rtol=1e-6)
+        np.testing.assert_allclose(rates.sum(axis=1), 1.0, rtol=1e-6)
+
+    def test_rates_with_two_classes(self):
+        rates = np.asarray(hierarchical_rates(np.array([0.8, 0.3]), np.ones((2, 1))))
+        np.testing.assert_allclose(rates, [[0.8, 0.2], [0.7, 0.3]], rtol=1e-6)
+
+    def test_summaries_of_hand_built_draws(self):
+        draws = {
+            H_M: np.array([0.2, 0.4, 0.6, 0.8]),
+            H_NU: np.array([1.0, 10.0, 100.0, 1000.0]),
+            H_RECALLS: np.array([[0.5, 0.7], [0.6, 0.8], [0.7, 0.9], [0.8, 1.0]]),
+            P_TEST_Y: np.array([[0.2, 0.8], [0.4, 0.6], [0.6, 0.4], [0.8, 0.2]]),
+        }
+        out = hierarchical_summaries(draws, min_val_count=50)
+        self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES)
+        self.assertEqual(out["nuts_failed"], 0)
+        self.assertAlmostEqual(out["h_m_mean"], 0.5)
+        self.assertAlmostEqual(out["h_ln_nu_median"], np.log(np.sqrt(10.0 * 100.0)))
+        self.assertAlmostEqual(out["h_p_nu_above_min_n"], 0.5)
+        np.testing.assert_allclose(out["h_recall_mean"], [0.65, 0.85])
+        np.testing.assert_allclose(out["h_pi_mean"], [0.5, 0.5])
+        var = np.var([0.2, 0.4, 0.6, 0.8], ddof=1)
+        np.testing.assert_allclose(out["h_pi_cov"], [var, -var, -var, var])
+
+    def test_failed_summaries(self):
+        out = failed_summaries(3)
+        self.assertEqual(set(out), set(HIERARCHICAL_SUMMARIES))
+        self.assertEqual(out["nuts_failed"], 1)
+        self.assertEqual(out["h_pi_cov"].shape, (9,))
+        self.assertTrue(np.isnan(out["h_m_mean"]) and np.all(np.isnan(out["h_pi_mean"])))
+
+
 class BayCAPTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -276,6 +338,69 @@ class BayCAPTest(unittest.TestCase):
         self.assertEqual(diverging.shape, (NUTS_PARAMS["num_samples"],))
         pi, c = draws[P_TEST_Y][0], draws[P_C_COND_Y][0]
         np.testing.assert_allclose(np.einsum("sy,syc->syc", pi, c), cts, rtol=1e-6)
+
+    def test_hierarchical_prior_returns_valid_tables_and_summaries(self):
+        for estimand in ("population", "realised"):
+            with self.subTest(estimand=estimand):
+                method = self.fit(
+                    BayCAP(vanilla_acc, estimand=estimand, c_prior="hierarchical", random_state=5, **NUTS_PARAMS)
+                )
+                self.assertIsNone(method.c_alpha)
+                cts = method.predict_ct_range(self.X, self.test_posteriors)
+                self.assertEqual(cts.shape, (NUTS_PARAMS["num_samples"], 3, 3))
+                self.assertTrue(np.all(np.isfinite(cts)) and np.all(cts >= 0))
+                np.testing.assert_allclose(cts.sum(axis=(1, 2)), 1.0, rtol=1e-5)
+
+                self.assertEqual(tuple(method.last_nuts_diagnostics()), NUTS_DIAGNOSTICS)
+                out = method.last_posterior_summaries()
+                self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES)
+                self.assertEqual(out["nuts_failed"], 0)
+                self.assertTrue(0 < out["h_m_mean"] < 1 and 0 <= out["h_p_nu_above_min_n"] <= 1)
+                self.assertLessEqual(out["h_ln_nu_q05"], out["h_ln_nu_median"])
+                self.assertLessEqual(out["h_ln_nu_median"], out["h_ln_nu_q95"])
+                cov = out["h_pi_cov"].reshape(3, 3)
+                np.testing.assert_allclose(cov, cov.T)
+                self.assertTrue(np.all(np.linalg.eigvalsh(cov) > -1e-9))
+                # the draws of C have the recalls of the summaries on their diagonal
+                draws, _ = method._last_nuts
+                recalls = np.diagonal(draws[P_C_COND_Y][0], axis1=1, axis2=2)
+                np.testing.assert_allclose(recalls.mean(axis=0), out["h_recall_mean"], rtol=1e-5)
+
+    def test_hierarchical_prior_with_two_classes(self):
+        val_y = np.repeat([0, 1], 20)
+        val_yhat = np.where(np.arange(40) % 5 == 0, 1 - val_y, val_y)
+        validation = LabelledCollection(np.zeros((40, 1)), val_y, classes=np.arange(2))
+        method = BayCAP(vanilla_acc, c_prior="hierarchical", random_state=5, **NUTS_PARAMS)
+        method.fit(validation, _one_hot(val_yhat, 2))
+        cts = method.predict_ct_range(np.zeros((30, 1)), _one_hot(np.arange(30) % 2, 2))
+        self.assertTrue(np.all(np.isfinite(cts)))
+        draws, _ = method._last_nuts
+        np.testing.assert_allclose(draws[P_C_COND_Y][0].sum(axis=2), 1.0, rtol=1e-5)
+
+    def test_hierarchical_prior_is_reproducible(self):
+        first = self.fit(BayCAP(vanilla_acc, c_prior="hierarchical", random_state=5, **NUTS_PARAMS))
+        second = self.fit(BayCAP(vanilla_acc, c_prior="hierarchical", random_state=5, **NUTS_PARAMS))
+        np.testing.assert_array_equal(
+            first.predict_ct_range(self.X, self.test_posteriors), second.predict_ct_range(self.X, self.test_posteriors)
+        )
+
+    def test_failed_start_keeps_the_bag_as_nan(self):
+        method = self.fit(BayCAP(vanilla_acc, c_prior="hierarchical", random_state=5, **NUTS_PARAMS))
+
+        def no_start(*args, **kwargs):
+            raise RuntimeError("Cannot find valid initial parameters. Please check your model again.")
+
+        method.sample_posterior = no_start
+        cts = method.predict_ct_range(self.X, self.test_posteriors)
+        self.assertEqual(cts.shape, (NUTS_PARAMS["num_samples"], 3, 3))
+        self.assertTrue(np.all(np.isnan(cts)))
+        self.assertTrue(all(np.isnan(v) for v in method.last_nuts_diagnostics().values()))
+        self.assertEqual(method.last_posterior_summaries()["nuts_failed"], 1)
+
+    def test_other_priors_have_no_posterior_summaries(self):
+        method = self.fit(BayCAP(vanilla_acc, random_state=5, **NUTS_PARAMS))
+        method.predict_ct_range(self.X, self.test_posteriors)
+        self.assertEqual(method.last_posterior_summaries(), {})
 
 
 if __name__ == "__main__":

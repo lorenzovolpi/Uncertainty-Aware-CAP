@@ -33,7 +33,7 @@ from uncawe.plots.common import (
 
 PLOT_NAME = "amplitude_vs_coverage"
 # the BayCAP variants of the E2 analyses are added to the default methods (user's request)
-PLOT_METHODS = DEFAULT_METHODS + ["BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real"]
+PLOT_METHODS = DEFAULT_METHODS + ["BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real"]
 
 
 def _plot_dir() -> str:

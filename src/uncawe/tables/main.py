@@ -77,7 +77,7 @@ metrics_map = {
 
 
 # methods stored in main but left out of its tables and ranks: the BayCAP variants are used only by the E2 analyses;
-# BayesCAP-EB-real is in the tables and ranks (user's request)
+# BayesCAP-EB-real and BayesCAP-H-real are in the tables and ranks (user's requests)
 EXCLUDED_METHODS = {"BayesCAP-real", "BayesCAP-EB"}
 
 

@@ -52,7 +52,7 @@ from uncawe.experiments.methods import (
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
-from uncawe.methods.baycap import NUTS_DIAGNOSTICS, BayCAP
+from uncawe.methods.baycap import BayCAP
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.util import all_results_exist, get_logger, get_plain_prev, local_path
 
@@ -124,21 +124,22 @@ def _evaluate_contingency_method(
         method = method.fit(validation, validation_posteriors)
         t_train = time() - started
 
-        # the time of the NUTS diagnostics of BayCAP (E2.4 of docs/ext2_baycap.md) is left out of the test time
+        # the time of the NUTS diagnostics of BayCAP (E2.4 of docs/ext2_baycap.md) and of the posterior summaries of its
+        # hierarchical prior (E2.7) is left out of the test time
         started, t_diagnostics = time(), 0.0
         estim_ct_ranges, diagnostics = [], []
         for sample, posteriors in zip(dataset.test_prot(), dataset.test_prot_posteriors):
             estim_ct_ranges.append(method.predict_ct_range(sample.X, posteriors))
             if isinstance(method, BayCAP):
                 started_diagnostics = time()
-                diagnostics.append(method.last_nuts_diagnostics())
+                diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
                 t_diagnostics += time() - started_diagnostics
         t_test_ave = (time() - started - t_diagnostics) / dataset.test_prot.total()
         estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
     except Exception as error:
         print_exception(error)
         return [EXP.ERROR(error, p, "ct", method_name)]
-    extra_columns = {name: [d[name] for d in diagnostics] for name in NUTS_DIAGNOSTICS} if diagnostics else None
+    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]} if diagnostics else None
 
     results = []
     for acc_name, acc_fn in gen_acc_measure(p.d_info.n_classes > 2):

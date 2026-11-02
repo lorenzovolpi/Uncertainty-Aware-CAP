@@ -21,6 +21,7 @@ METHOD_COLORS = {
     "BayesCAP-real": "#9D755D",
     "BayesCAP-EB": "#EECA3B",
     "BayesCAP-EB-real": "#FF9DA6",
+    "BayesCAP-H-real": "#79706E",
     "PQ": "#E45756",
     "RQBS": "#B279A2",
     "DoC": "#54A24B",
@@ -38,6 +39,7 @@ METHOD_PLOT_LABELS = {
     "BayesCAP-real": "BayCAP-real",
     "BayesCAP-EB": "BayCAP-EB",
     "BayesCAP-EB-real": "BayCAP-EB-real",
+    "BayesCAP-H-real": "BayCAP-H-real",
 }
 
 ACC_NAME = "vanilla_accuracy"

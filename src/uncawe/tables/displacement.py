@@ -266,6 +266,7 @@ METHOD_LABELS = {
     "BayesCAP-real": "BayCAP-real",
     "BayesCAP-EB": "BayCAP-EB",
     "BayesCAP-EB-real": "BayCAP-EB-real",
+    "BayesCAP-H-real": "BayCAP-H-real",
 }
 CAPTION = (
     "Causes of {method}'s displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "

@@ -2,7 +2,7 @@
 WP-7, E2.5 of ``docs/ext2_baycap.md``).
 
 E2.5 tests whether the failures of the empirical-Bayes prior on the recalls found on the binary datasets of ``main``
-(E2.4) appear on every binary problem. It runs the four methods of ``experiments/methods.py:BAYCAP_VARIANTS``:
+(E2.4) appear on every binary problem. It runs the four BayCAP methods of E2.4 (``METHODS``, from ``experiments/methods.py:BAYCAP_VARIANTS``):
 ``BayesCAP`` and ``BayesCAP-EB`` target the population table $C\\operatorname{diag}(\\pi^Q)$, ``BayesCAP-real`` and
 ``BayesCAP-EB-real`` the realised table of the target sample; all are scored downstream against the realised table of
 each bag (``true_cts``).
@@ -29,14 +29,15 @@ from cap.models.confidence import CAPWithConfidence
 
 from uncawe.experiments.execution import run_tasks, shutdown_parallel_workers
 from uncawe.experiments.main import exp_protocol
-from uncawe.experiments.methods import BAYCAP_VARIANTS, BAYES_ENV, BAYES_N_JOBS, gen_methods
+from uncawe.experiments.methods import BAYES_ENV, BAYES_N_JOBS, gen_methods
 from uncawe.experiments.metrics import get_acc_names
 from uncawe.pretrain.classic_binary import DATASETS, DOMAIN
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.util import all_results_exist, get_logger
 
 EXPERIMENT = "eb_binary"
-METHODS = list(BAYCAP_VARIANTS)
+# the BayCAP methods of E2.4; the later ones of BAYCAP_VARIANTS (BayesCAP-H-real, E2.7) are not part of E2.5
+METHODS = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real"]
 
 
 def experiment_args(
