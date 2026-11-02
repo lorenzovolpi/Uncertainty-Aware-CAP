@@ -25,8 +25,8 @@ Per pair:
   quantiles of $\\ln\\nu$ and of $P(\\nu>\\min_jn_j)$, for both; of the median and the $5\\%$ and $95\\%$ quantiles of
   $\\ln\\kappa$ and of $P(\\kappa<1)$, for BayCAP-Hf ($K\\ge3$);
 - from $V$: the share of off-diagonal cells with $f_{ij}=0$, the classes perfect and never right;
-- a failure class of BayCAP-Hf for each pair that does not mix (largest split-$\\hat R$ above ``RHAT_HIGH``) or has
-  divergences in more than ``DIVERGENT_SHARE`` of the bags: ``funnel`` if the mean posterior $P(\\nu>\\min_jn_j)$ exceeds
+- a failure class of BayCAP-Hf for each pair that does not mix (largest split-$\\hat R$ above ``RHAT_HIGH``) or whose
+  share of divergent draws exceeds ``DIVERGENT_DRAWS``: ``funnel`` if the mean posterior $P(\\nu>\\min_jn_j)$ exceeds
   ``FUNNEL_HIGH``; else ``boundary`` if a class is perfect or never right on $V$, or if the posterior median of $\\kappa$
   (the mean over the bags of the median of $\\ln\\kappa$) is below $1$ and some off-diagonal cell is empty on $V$; else
   ``other``.
@@ -73,7 +73,9 @@ TESTED_SCORES = ("ae", "winkler")
 TEST_STATS = ("diff_mean", "ci_low", "ci_high", "p", "p_holm")
 NU_POSTERIOR = ("h_m_mean", "h_ln_nu_median", "h_ln_nu_q05", "h_ln_nu_q95", "h_p_nu_above_min_n")
 KAPPA_POSTERIOR = ("h_ln_kappa_median", "h_ln_kappa_q05", "h_ln_kappa_q95", "h_p_kappa_below_1")
-DIVERGENT_SHARE = 0.10
+# a pair fails if more than this share of its draws is divergent (E2.8, decided after the pilot: the share of bags
+# with divergent transitions counted a single divergent transition as a failure)
+DIVERGENT_DRAWS = 0.01
 # the NUTS draws retained after warm-up in each bag of main (``experiments/methods.py``)
 NUTS_DRAWS = BOOTSTRAP_ITERS
 RHAT_HIGH = 1.1
@@ -96,7 +98,7 @@ def empty_off_diagonal_share(val_counts: np.ndarray) -> float:
 
 
 def failure_class(
-    share_divergent: float,
+    share_divergent_draws: float,
     max_rhat: float,
     p_funnel: float,
     n_boundary: int,
@@ -104,8 +106,8 @@ def failure_class(
     empty_share: float,
 ) -> str:
     """Class of a pair with failures (E2.8): ``funnel``, ``boundary`` or ``other``; empty for a pair that mixes and
-    diverges in at most ``DIVERGENT_SHARE`` of the bags. The funnel is checked first."""
-    if not (share_divergent > DIVERGENT_SHARE or max_rhat > RHAT_HIGH):
+    has at most ``DIVERGENT_DRAWS`` of its draws divergent. The funnel is checked first."""
+    if not (share_divergent_draws > DIVERGENT_DRAWS or max_rhat > RHAT_HIGH):
         return ""
     if p_funnel > FUNNEL_HIGH:
         return "funnel"
@@ -213,7 +215,7 @@ def pair_row(results: dict[str, pd.DataFrame], val_counts: np.ndarray, key: tupl
     both_ok = ~failed[METHOD] & ~failed[H_METHOD]
     row.update(pair_tests(bags, both_ok, key))
     row["failure_class"] = failure_class(
-        row["hf_share_divergent"],
+        row["hf_share_divergent_draws"],
         row["hf_max_rhat"],
         row["hf_p_nu_above_min_n"],
         row["n_perfect_classes"] + row["n_never_right_classes"],
@@ -267,7 +269,7 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
     - ``scores``: mean AE, coverage and Winkler score of the four methods, and, for each test, the pairs where
       BayCAP-Hf is significantly (Holm) lower and higher;
     - ``sampler``: for BayCAP-Hf and BayCAP-H, the pairs that do not mix (largest $\\hat R$ above ``RHAT_HIGH``), with
-      divergences in more than ``DIVERGENT_SHARE`` of the bags, with failed bags; the pairs of BayCAP-Hf in each failure
+      more than ``DIVERGENT_DRAWS`` of their draws divergent, with failed bags; the pairs of BayCAP-Hf in each failure
       class;
     - ``posterior``: the median over the pairs of the median of $\\ln\\nu$ under both methods and of $\\ln\\kappa$, the
       pairs with a posterior median of $\\kappa$ below $1$, the Spearman correlation across pairs of the median of
@@ -292,7 +294,7 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
         sampler = dict(key)
         for prefix in HIERARCHICAL.values():
             sampler[f"{prefix}_not_mixing"] = int((sub[f"{prefix}_max_rhat"] > RHAT_HIGH).sum())
-            sampler[f"{prefix}_above_share"] = int((sub[f"{prefix}_share_divergent"] > DIVERGENT_SHARE).sum())
+            sampler[f"{prefix}_above_draws"] = int((sub[f"{prefix}_share_divergent_draws"] > DIVERGENT_DRAWS).sum())
             sampler[f"{prefix}_with_failed_bags"] = int((sub[f"{prefix}_share_failed"] > 0).sum())
         sampler.update({cls: int((sub["failure_class"] == cls).sum()) for cls in FAILURE_CLASSES})
         out["sampler"].append(sampler)
@@ -331,7 +333,7 @@ SAMPLER_CAPTION = (
     "means over the bags of the median of $\\ln\\nu$ and of $P(\\nu>\\min_jn_j)$, and, for BayCAP-Hf, of the median and "
     "the 90\\% interval of $\\ln\\kappa$ and of $P(\\kappa<1)$. $V$: share of empty off-diagonal cells, classes perfect "
     "or never right. Mean recall and prevalence terms of the shift of BayCAP-Hf, BayCAP-H and BayCAP-EB-real "
-    "($\\times10^2$). Class of BayCAP-Hf for the pairs that do not mix or diverge in more than 10\\% of the bags."
+    "($\\times10^2$). Class of BayCAP-Hf for the pairs that do not mix or have more than 1\\% of the draws divergent."
 )
 COMPARISON_LABEL = "tab:baycap-hf-comparison"
 SAMPLER_LABEL = "tab:baycap-hf-sampler"

@@ -50,7 +50,7 @@ def results(method: str, seed: int) -> pd.DataFrame:
                 "estim_cts": estim_ct,
                 "estim_acc_ranges": draws,
                 "acc_err": abs(np.trace(estim_ct) - np.trace(true_ct)),
-                "nuts_divergences": bag % 2 if dataset == "german" else 0,
+                "nuts_divergences": 30 * (bag % 2) if dataset == "german" else 0,
                 "nuts_max_rhat": 1.3 if (dataset == "wdbc" and method == hf.H_METHOD) else 1.0,
                 "nuts_min_ess": 400.0,
             }
@@ -113,8 +113,8 @@ class FunctionsTest(unittest.TestCase):
         self.assertAlmostEqual(hf.empty_off_diagonal_share(VAL_COUNTS[("wdbc", "LR")]), 0.0)
 
     def test_failure_class_checks_the_funnel_first(self):
-        # (share divergent, max rhat, P(nu > min n), boundary classes, median ln kappa, empty share)
-        self.assertEqual(hf.failure_class(0.05, 1.01, 0.9, 1, -1.0, 0.5), "")
+        # (share of divergent draws, max rhat, P(nu > min n), boundary classes, median ln kappa, empty share)
+        self.assertEqual(hf.failure_class(0.005, 1.01, 0.9, 1, -1.0, 0.5), "")
         self.assertEqual(hf.failure_class(np.nan, np.nan, 0.9, 1, -1.0, 0.5), "")
         self.assertEqual(hf.failure_class(0.05, 1.5, 0.2, 1, np.nan, 0.0), "funnel")
         self.assertEqual(hf.failure_class(0.5, 1.0, 0.2, 1, np.nan, 0.0), "funnel")
@@ -192,10 +192,10 @@ class TableTest(unittest.TestCase):
         german, wdbc, letter = self.row("german"), self.row("wdbc"), self.row("letter")
         # half of the bags of german diverge, P(nu > min n) of Hf is low and a class is perfect on V
         self.assertAlmostEqual(german["hf_share_divergent"], 0.5)
-        # one divergent transition in every other bag: 0.5 per bag, of NUTS_DRAWS draws
+        # 30 divergent transitions in every other bag: 15 per bag, 1.5% of the NUTS_DRAWS draws, above DIVERGENT_DRAWS
         for prefix in hf.HIERARCHICAL.values():
-            self.assertAlmostEqual(german[f"{prefix}_mean_divergences"], 0.5)
-            self.assertAlmostEqual(german[f"{prefix}_share_divergent_draws"], 0.5 / hf.NUTS_DRAWS)
+            self.assertAlmostEqual(german[f"{prefix}_mean_divergences"], 15.0)
+            self.assertAlmostEqual(german[f"{prefix}_share_divergent_draws"], 15.0 / hf.NUTS_DRAWS)
         # the failed bag of BayCAP-Hf on wdbc is left out
         self.assertAlmostEqual(wdbc["hf_mean_divergences"], 0.0)
         self.assertEqual(hf.NUTS_DRAWS, 1000)
@@ -210,6 +210,15 @@ class TableTest(unittest.TestCase):
         self.assertAlmostEqual(letter["h_ln_nu_median"], 4.0)
         self.assertAlmostEqual(letter["hf_ln_nu_median"], 2.0)
         self.assertAlmostEqual(letter["empty_off_diagonal_share"], 2 / 6)
+
+    def test_failure_rule_on_the_share_of_divergent_draws(self):
+        # every bag divergent but few draws (hand_digits kNN in the pilot): no class; many draws: a class
+        self.assertEqual(hf.failure_class(0.0016, 1.05, 0.3, 0, -1.3, 0.76), "")
+        self.assertEqual(hf.failure_class(0.65, 1.06, 0.0, 6, -3.0, 0.79), "boundary")
+        self.assertEqual(hf.failure_class(0.009, 1.03, 0.053, 0, np.nan, 0.0), "")
+        self.assertEqual(hf.failure_class(0.011, 1.03, 0.053, 0, np.nan, 0.0), "funnel")
+        # not mixing is a failure whatever the divergences
+        self.assertEqual(hf.failure_class(0.0, 1.2, 0.0, 0, np.nan, 0.0), "other")
 
     def test_diagnostics_match_eb_prior(self):
         df = self.pair(hf.METHOD, "german")
