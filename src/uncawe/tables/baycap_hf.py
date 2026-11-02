@@ -18,7 +18,9 @@ Per pair:
 - the split of the mean shift $\\overline{\\hat A-A}$ into the recall and the prevalence terms
   (``tables/displacement.py:error_terms``) for BayCAP-Hf, BayCAP-H and the empirical-Bayes method;
 - the sampler of BayCAP-Hf and BayCAP-H: the share of bags with divergent transitions, the largest split-$\\hat R$ and the
-  smallest effective sample size (``tables/eb_prior.py:diagnostics_table``), the share of failed bags;
+  smallest effective sample size (``tables/eb_prior.py:diagnostics_table``), the mean number of divergent transitions
+  per bag and the share of divergent draws (that mean over the ``NUTS_DRAWS`` draws of a bag), both over the bags with
+  draws, and the share of failed bags;
 - the posterior of the runs: means over the bags of the posterior mean of $m$, of the median and the $5\\%$ and $95\\%$
   quantiles of $\\ln\\nu$ and of $P(\\nu>\\min_jn_j)$, for both; of the median and the $5\\%$ and $95\\%$ quantiles of
   $\\ln\\kappa$ and of $P(\\kappa<1)$, for BayCAP-Hf ($K\\ge3$);
@@ -43,6 +45,7 @@ import numpy as np
 import pandas as pd
 
 from uncawe import env
+from uncawe.experiments.methods import BOOTSTRAP_ITERS
 from uncawe.main import EXPERIMENT
 from uncawe.tables import baycap_h, eb_prior, estimand_gap, pushforward
 from uncawe.tables import hierarchical as h
@@ -71,6 +74,8 @@ TEST_STATS = ("diff_mean", "ci_low", "ci_high", "p", "p_holm")
 NU_POSTERIOR = ("h_m_mean", "h_ln_nu_median", "h_ln_nu_q05", "h_ln_nu_q95", "h_p_nu_above_min_n")
 KAPPA_POSTERIOR = ("h_ln_kappa_median", "h_ln_kappa_q05", "h_ln_kappa_q95", "h_p_kappa_below_1")
 DIVERGENT_SHARE = 0.10
+# the NUTS draws retained after warm-up in each bag of main (``experiments/methods.py``)
+NUTS_DRAWS = BOOTSTRAP_ITERS
 RHAT_HIGH = 1.1
 # E2.7: the mean posterior P(nu > min_j n_j) was at most 0.008 on spambase (divergent, but mixing) and 0.12-0.88 on
 # the funnel pairs of mammographic and hand_digits
@@ -107,6 +112,15 @@ def failure_class(
     if n_boundary > 0 or (ln_kappa_median < 0 and empty_share > 0):
         return "boundary"
     return "other"
+
+
+def divergence_load(df: pd.DataFrame, ok: np.ndarray) -> dict:
+    """Mean number of divergent transitions per bag and share of divergent draws, over the bags in ``ok`` (the bags with
+    draws); NaN where the results were stored without the NUTS diagnostics."""
+    if "nuts_divergences" not in df:
+        return {"mean_divergences": np.nan, "share_divergent_draws": np.nan}
+    mean = _mean(df, "nuts_divergences", ok)
+    return {"mean_divergences": mean, "share_divergent_draws": mean / NUTS_DRAWS}
 
 
 def bag_frame(df: pd.DataFrame, method: str) -> pd.DataFrame:
@@ -192,6 +206,7 @@ def pair_row(results: dict[str, pd.DataFrame], val_counts: np.ndarray, key: tupl
         row[f"{prefix}_share_failed"] = float(failed[method].mean())
         diagnostics = eb_prior.diagnostics_table(df).iloc[0]
         row.update({f"{prefix}_{name}": float(diagnostics[name]) for name in eb_prior.DIAGNOSTICS})
+        row.update({f"{prefix}_{name}": value for name, value in divergence_load(df, ok).items()})
         names = NU_POSTERIOR + (KAPPA_POSTERIOR if method == METHOD else ())
         row.update({f"{prefix}_{name.removeprefix('h_')}": _mean(df, name, ok) for name in names})
 
@@ -310,7 +325,9 @@ COMPARISON_CAPTION = (
 )
 SAMPLER_CAPTION = (
     "Sampler and posterior of BayCAP-Hf-real and BayCAP-H-real on \\texttt{main} (E2.8, vanilla accuracy, $|U|=1000$). "
-    "NUTS: share of bags with divergent transitions, largest split-$\\hat R$, share of bags without draws (Hf only). Run: "
+    "NUTS: share of bags with divergent transitions, mean number of divergent transitions per bag and share of "
+    f"divergent draws (of the {NUTS_DRAWS} draws of a bag), over the bags with draws, largest split-$\\hat R$, share of "
+    "bags without draws (Hf only). Run: "
     "means over the bags of the median of $\\ln\\nu$ and of $P(\\nu>\\min_jn_j)$, and, for BayCAP-Hf, of the median and "
     "the 90\\% interval of $\\ln\\kappa$ and of $P(\\kappa<1)$. $V$: share of empty off-diagonal cells, classes perfect "
     "or never right. Mean recall and prevalence terms of the shift of BayCAP-Hf, BayCAP-H and BayCAP-EB-real "
@@ -345,6 +362,8 @@ def _sampler_styler(table: pd.DataFrame):
     cols = {}
     for prefix, label in (("hf", "Hf"), ("h", "H")):
         cols[(f"NUTS {label}", "div.")] = table[f"{prefix}_share_divergent"].to_numpy()
+        cols[(f"NUTS {label}", "\\#div.")] = table[f"{prefix}_mean_divergences"].to_numpy()
+        cols[(f"NUTS {label}", "draws")] = table[f"{prefix}_share_divergent_draws"].to_numpy()
         cols[(f"NUTS {label}", "$\\hat R$")] = table[f"{prefix}_max_rhat"].to_numpy()
     cols[("NUTS Hf", "fail.")] = table["hf_share_failed"].to_numpy()
     for prefix, label in (("hf", "Hf"), ("h", "H")):
@@ -366,6 +385,9 @@ def _sampler_styler(table: pd.DataFrame):
     out.index = baycap_h._index(table)
     styler = out.style.format(precision=2, na_rep="--")
     formats = {("NUTS Hf", "$\\hat R$"): "{:.3f}", ("NUTS H", "$\\hat R$"): "{:.3f}"}
+    for label in ("Hf", "H"):
+        formats[(f"NUTS {label}", "\\#div.")] = "{:.1f}"
+        formats[(f"NUTS {label}", "draws")] = "{:.3f}"
     for key, fmt in formats.items():
         styler = styler.format(fmt, subset=[key], na_rep="--")
     return styler

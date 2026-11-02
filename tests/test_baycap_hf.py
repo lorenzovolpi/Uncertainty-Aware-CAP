@@ -192,6 +192,13 @@ class TableTest(unittest.TestCase):
         german, wdbc, letter = self.row("german"), self.row("wdbc"), self.row("letter")
         # half of the bags of german diverge, P(nu > min n) of Hf is low and a class is perfect on V
         self.assertAlmostEqual(german["hf_share_divergent"], 0.5)
+        # one divergent transition in every other bag: 0.5 per bag, of NUTS_DRAWS draws
+        for prefix in hf.HIERARCHICAL.values():
+            self.assertAlmostEqual(german[f"{prefix}_mean_divergences"], 0.5)
+            self.assertAlmostEqual(german[f"{prefix}_share_divergent_draws"], 0.5 / hf.NUTS_DRAWS)
+        # the failed bag of BayCAP-Hf on wdbc is left out
+        self.assertAlmostEqual(wdbc["hf_mean_divergences"], 0.0)
+        self.assertEqual(hf.NUTS_DRAWS, 1000)
         self.assertEqual(german["n_perfect_classes"], 1)
         self.assertEqual(german["failure_class"], "boundary")
         # BayCAP-H does not mix on wdbc, BayCAP-Hf does
