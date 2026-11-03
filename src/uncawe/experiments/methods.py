@@ -57,10 +57,11 @@ METHOD_CLASS = {
     "BayesCAP-EB-real": BayCAP,
     "BayesCAP-H-real": BayCAP,
     "BayesCAP-Hf-real": BayCAP,
+    "BayesCAP-Hfn-real": BayCAP,
 }
 # estimand and prior on the columns of C of the BayCAP methods of main (methods/baycap.py:BayCAP): BayesCAP-real is
-# E2.3, the EB methods are E2.4, BayesCAP-H-real is E2.7 and BayesCAP-Hf-real is E2.8 of docs/ext2_baycap.md; all
-# share the priors on pi, NUTS settings and default seed
+# E2.3, the EB methods are E2.4, BayesCAP-H-real is E2.7, BayesCAP-Hf-real is E2.8 and BayesCAP-Hfn-real is E2.9 of
+# docs/ext2_baycap.md; all share the priors on pi, NUTS settings and default seed
 BAYCAP_VARIANTS = {
     "BayesCAP": ("population", "uniform"),
     "BayesCAP-real": ("realised", "uniform"),
@@ -68,7 +69,11 @@ BAYCAP_VARIANTS = {
     "BayesCAP-EB-real": ("realised", "empirical-bayes"),
     "BayesCAP-H-real": ("realised", "hierarchical"),
     "BayesCAP-Hf-real": ("realised", "hierarchical-f"),
+    "BayesCAP-Hfn-real": ("realised", "hierarchical-f"),
 }
+# the other hyperparameters of BayCAP that differ from its defaults: BayesCAP-Hfn-real samples the model of
+# BayesCAP-Hf-real with non-centred shares of the mistakes (E2.9, §T.17)
+BAYCAP_OPTIONS = {"BayesCAP-Hfn-real": {"shares": "non-centred"}}
 
 
 def kdey():
@@ -108,7 +113,14 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     for name, (estimand, c_prior) in BAYCAP_VARIANTS.items():
         yield (
             name,
-            BayCAP(acc, estimand=estimand, c_prior=c_prior, num_samples=BOOTSTRAP_ITERS, num_warmup=BAYES_WARMUPS),
+            BayCAP(
+                acc,
+                estimand=estimand,
+                c_prior=c_prior,
+                num_samples=BOOTSTRAP_ITERS,
+                num_warmup=BAYES_WARMUPS,
+                **BAYCAP_OPTIONS.get(name, {}),
+            ),
         )
 
 

@@ -3,6 +3,7 @@ import unittest
 from cap.models.confidence import ACC_BayesCAP
 
 from uncawe.experiments.methods import (
+    BAYCAP_OPTIONS,
     BAYCAP_VARIANTS,
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
@@ -18,11 +19,19 @@ from uncawe.tables import rank
 from uncawe.tables.common import METHOD_LATEX_LABELS
 from uncawe.tables.displacement import METHOD_LABELS
 
-BAYCAP_METHODS = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real", "BayesCAP-Hf-real"]
-E2_METHODS = ["BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real", "BayesCAP-Hf-real"]
+E2_METHODS = [
+    "BayesCAP-real",
+    "BayesCAP-EB",
+    "BayesCAP-EB-real",
+    "BayesCAP-H-real",
+    "BayesCAP-Hf-real",
+    "BayesCAP-Hfn-real",
+]
+BAYCAP_METHODS = ["BayesCAP", *E2_METHODS]
 # E2 methods in the tables and ranks of main (user's requests)
 IN_MAIN_TABLES = ["BayesCAP-EB-real", "BayesCAP-H-real"]
-# BayCAP methods in the coverage vs amplitude plot (user's requests); BayesCAP-Hf-real (E2.8) waits for the user
+# BayCAP methods in the coverage vs amplitude plot (user's requests); BayesCAP-Hf-real (E2.8) and BayesCAP-Hfn-real
+# (E2.9) wait for the user
 IN_AVC = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real"]
 
 
@@ -39,14 +48,18 @@ class BayCAPFactoryTest(unittest.TestCase):
             "BayesCAP-EB-real": ("realised", "empirical-bayes"),
             "BayesCAP-H-real": ("realised", "hierarchical"),
             "BayesCAP-Hf-real": ("realised", "hierarchical-f"),
+            "BayesCAP-Hfn-real": ("realised", "hierarchical-f"),
         }
         self.assertEqual(BAYCAP_VARIANTS, expected)
+        # only BayesCAP-Hfn-real changes another hyperparameter: the coordinates of the shares (E2.9)
+        self.assertEqual(BAYCAP_OPTIONS, {"BayesCAP-Hfn-real": {"shares": "non-centred"}})
         for name, (estimand, c_prior) in expected.items():
             with self.subTest(method=name):
                 method = self.methods[name]
                 self.assertIs(METHOD_CLASS[name], BayCAP)
                 self.assertIsInstance(method, BayCAP)
                 self.assertEqual((method.estimand, method.c_prior), (estimand, c_prior))
+                self.assertEqual(method.shares, BAYCAP_OPTIONS.get(name, {}).get("shares", "centred"))
                 self.assertEqual((method.num_samples, method.num_warmup), (BOOTSTRAP_ITERS, BAYES_WARMUPS))
                 # ACC_BayesCAP stores its seed as ``randm_state``; equal seeds give equal NUTS draws
                 self.assertEqual(method.random_state, reference.randm_state)
