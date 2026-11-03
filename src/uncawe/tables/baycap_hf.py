@@ -263,11 +263,32 @@ def compute_table() -> pd.DataFrame:
     return pair_table(results, load_validation_counts(pairs, domain=DOMAIN))
 
 
+def is_unreliable(table: pd.DataFrame) -> pd.Series:
+    """The pairs where BayCAP-Hf has a failure class (empty in the table, NaN once read back from the CSV)."""
+    return table["failure_class"].fillna("").astype(str) != ""
+
+
+def _scores_summary(sub: pd.DataFrame, k_group: str) -> dict:
+    scores = {"K": k_group, "pairs": len(sub)}
+    for method in METHODS:
+        for score, label in (("ae", "AE"), ("coverage", "cov"), ("winkler", "W")):
+            scores[f"{method}_{label}"] = float(sub[f"{method}_{score}"].mean())
+    for name in REFERENCES:
+        for score in TESTED_SCORES:
+            significant = sub[test_column(name, score, "p_holm")] < pushforward.WINKLER_TEST_LEVEL
+            lower = sub[test_column(name, score, "diff_mean")] < 0
+            scores[f"{score}_lower_than_{name}"] = int((lower & significant).sum())
+            scores[f"{score}_higher_than_{name}"] = int((~lower & significant).sum())
+    return scores
+
+
 def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Reduce the per-pair table to the summaries of the Analysis of E2.8, over all pairs and per group of $K$.
 
     - ``scores``: mean AE, coverage and Winkler score of the four methods, and, for each test, the pairs where
       BayCAP-Hf is significantly (Holm) lower and higher;
+    - ``scores_reliable``: the same, on the pairs where BayCAP-Hf has no failure class (the pairs on which E2.8
+      decides; the p-values keep their Holm adjustment over all the pairs);
     - ``sampler``: for BayCAP-Hf and BayCAP-H, the pairs that do not mix (largest $\\hat R$ above ``RHAT_HIGH``), with
       more than ``DIVERGENT_DRAWS`` of their draws divergent, with failed bags; the pairs of BayCAP-Hf in each failure
       class;
@@ -276,20 +297,12 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
       $\\ln\\kappa$ with the share of empty off-diagonal cells, and the mean recall and prevalence terms of the three
       methods.
     """
-    out = {"scores": [], "sampler": [], "posterior": []}
+    out = {"scores": [], "scores_reliable": [], "sampler": [], "posterior": []}
+    reliable = table.loc[~is_unreliable(table)]
+    out["scores_reliable"] = [_scores_summary(sub, k_group) for k_group, sub in baycap_h._k_groups(reliable)]
     for k_group, sub in baycap_h._k_groups(table):
         key = {"K": k_group, "pairs": len(sub)}
-        scores = dict(key)
-        for method in METHODS:
-            for score, label in (("ae", "AE"), ("coverage", "cov"), ("winkler", "W")):
-                scores[f"{method}_{label}"] = float(sub[f"{method}_{score}"].mean())
-        for name in REFERENCES:
-            for score in TESTED_SCORES:
-                significant = sub[test_column(name, score, "p_holm")] < pushforward.WINKLER_TEST_LEVEL
-                lower = sub[test_column(name, score, "diff_mean")] < 0
-                scores[f"{score}_lower_than_{name}"] = int((lower & significant).sum())
-                scores[f"{score}_higher_than_{name}"] = int((~lower & significant).sum())
-        out["scores"].append(scores)
+        out["scores"].append(_scores_summary(sub, k_group))
 
         sampler = dict(key)
         for prefix in HIERARCHICAL.values():

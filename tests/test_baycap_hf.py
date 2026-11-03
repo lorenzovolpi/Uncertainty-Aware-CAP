@@ -227,7 +227,11 @@ class TableTest(unittest.TestCase):
 
     def test_summary(self):
         summary = hf.analysis_summary(self.table)
-        self.assertEqual(set(summary), {"scores", "sampler", "posterior"})
+        self.assertEqual(set(summary), {"scores", "scores_reliable", "sampler", "posterior"})
+        # german has a failure class, so the reliable scores leave it out
+        self.assertEqual(summary["scores_reliable"].iloc[0]["pairs"], 2)
+        read_back = pd.read_csv(pd.io.common.StringIO(self.table.to_csv(index=False)))
+        self.assertEqual(int(hf.is_unreliable(read_back).sum()), 1)
         overall = summary["sampler"].iloc[0]
         self.assertEqual((overall["K"], overall["pairs"]), ("all", 3))
         self.assertEqual(overall["h_not_mixing"], 1)
