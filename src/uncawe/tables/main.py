@@ -10,6 +10,7 @@ from scipy.stats import wilcoxon
 
 import uncawe.env as env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
+from uncawe.experiments.methods import FIXED_C_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
@@ -78,8 +79,9 @@ metrics_map = {
 
 # methods stored in main but left out of its tables and ranks: the BayCAP variants are used only by the E2 analyses;
 # BayesCAP-EB-real and BayesCAP-H-real are in the tables and ranks (user's requests); BayesCAP-Hf-real (E2.8) and
-# BayesCAP-Hfn-real (E2.9) are not, until the user decides
-EXCLUDED_METHODS = {"BayesCAP-real", "BayesCAP-EB", "BayesCAP-Hf-real", "BayesCAP-Hfn-real"}
+# BayesCAP-Hfn-real (E2.9) are not, until the user decides; the eight methods with a fixed rate matrix of E3.1
+# (docs/ext3_posterior_propagation.md) are used only by the E3.1 analyses
+EXCLUDED_METHODS = {"BayesCAP-real", "BayesCAP-EB", "BayesCAP-Hf-real", "BayesCAP-Hfn-real"} | set(FIXED_C_VARIANTS)
 
 
 def table_method_names() -> list[str]:

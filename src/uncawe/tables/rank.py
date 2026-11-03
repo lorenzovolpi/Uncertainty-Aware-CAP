@@ -8,6 +8,7 @@ from matplotlib.colors import rgb2hex
 
 import uncawe.env as env
 from uncawe.config import acc_from_ct, get_acc_names, get_method_names
+from uncawe.experiments.methods import FIXED_C_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.results import Results
 from uncawe.tables import main as main_tables
@@ -37,8 +38,14 @@ def _selected_metrics(pargs) -> tuple[str, ...]:
     return tuple(metric for metric in METRICS if metric in pargs.metrics)
 
 
-def _methods() -> list[str]:
-    return [method for method in get_method_names() if method not in EXCLUDED_METHODS]
+def _methods(include: tuple[str, ...] = ()) -> list[str]:
+    """The methods of the rank tables: those of ``main`` without ``EXCLUDED_METHODS``, plus the excluded ones named in
+    ``include`` (e.g. the eight methods of E3.1, ``--include-e31``)."""
+    return [method for method in get_method_names() if method not in EXCLUDED_METHODS or method in include]
+
+
+# output subfolder of the rank tables with included methods, so that the tables of the paper are not overwritten
+EXTENDED_DIR = "extended"
 
 
 def _rgb_array(rgb: tuple[int, int, int]) -> np.ndarray:
@@ -316,7 +323,20 @@ def _prepare_results(acc_name: str, domain: str, methods: list[str]) -> pd.DataF
 
 
 def _table_dir(pargs) -> str:
-    return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables", "rank")
+    if pargs.table_dir is not None:
+        return pargs.table_dir
+    base = os.path.join(env.root_dir, "tables", "rank")
+    return os.path.join(base, EXTENDED_DIR) if _included(pargs) else base
+
+
+def _included(pargs) -> tuple[str, ...]:
+    include = tuple(getattr(pargs, "include", None) or ())
+    if getattr(pargs, "include_e31", False):
+        include += tuple(FIXED_C_VARIANTS)
+    unknown = [method for method in include if method not in get_method_names()]
+    if unknown:
+        raise ValueError(f"Unknown methods: {', '.join(unknown)}")
+    return include
 
 
 def _rank_latex_document(tables: list[tuple[str, str, str]]) -> str:
@@ -362,7 +382,7 @@ def _rank_latex_document(tables: list[tuple[str, str, str]]) -> str:
 def gen_tables(pargs):
     domain = pargs.domain
     metrics = _selected_metrics(pargs)
-    methods = _methods()
+    methods = _methods(_included(pargs))
 
     table_dir = _table_dir(pargs)
     tabular_dir = os.path.join(table_dir, "tabular")
@@ -430,6 +450,17 @@ if __name__ == "__main__":
     parser.add_argument("--image", action="store_const", dest="domain", const="image")
     parser.add_argument("--classic", action="store_const", dest="domain", const="classic")
     parser.add_argument("--metrics", nargs="+", choices=METRICS, default=None, help="Metrics to include in tables")
+    parser.add_argument(
+        "--include",
+        nargs="+",
+        default=None,
+        help=f"Methods excluded from the tables of main to rank too (output under rank/{EXTENDED_DIR}/)",
+    )
+    parser.add_argument(
+        "--include-e31",
+        action="store_true",
+        help=f"Rank the eight methods of E3.1 too (output under rank/{EXTENDED_DIR}/)",
+    )
     parser.add_argument(
         "--table-dir",
         "--output-dir",

@@ -45,6 +45,7 @@ from uncawe.experiments.execution import (
 from uncawe.experiments.methods import (
     BAYES_ENV,
     BAYES_N_JOBS,
+    BAYES_POOL_METHODS,
     SAMPLE_SIZE,
     THREAD_LIMITS,
     gen_methods,
@@ -53,6 +54,7 @@ from uncawe.experiments.methods import (
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
 from uncawe.methods.baycap import BayCAP
+from uncawe.methods.baycap_fixed import BayCAPFixed
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.util import all_results_exist, get_logger, get_plain_prev, local_path
 
@@ -124,13 +126,14 @@ def _evaluate_contingency_method(
         method = method.fit(validation, validation_posteriors)
         t_train = time() - started
 
-        # the time of the NUTS diagnostics of BayCAP (E2.4 of docs/ext2_baycap.md) and of the posterior summaries of its
-        # hierarchical prior (E2.7) is left out of the test time
+        # the time of the NUTS diagnostics of BayCAP (E2.4 of docs/ext2_baycap.md), of the posterior summaries of its
+        # hierarchical prior (E2.7) and of the summaries of BayCAPFixed (E3.1 of docs/ext3_posterior_propagation.md) is
+        # left out of the test time
         started, t_diagnostics = time(), 0.0
         estim_ct_ranges, diagnostics = [], []
         for sample, posteriors in zip(dataset.test_prot(), dataset.test_prot_posteriors):
             estim_ct_ranges.append(method.predict_ct_range(sample.X, posteriors))
-            if isinstance(method, BayCAP):
+            if isinstance(method, (BayCAP, BayCAPFixed)):
                 started_diagnostics = time()
                 diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
                 t_diagnostics += time() - started_diagnostics
@@ -320,7 +323,7 @@ def experiments(
             if method_name not in method_names:
                 continue
             args = (info_path, method_name, method)
-            (bayes_args if "BayesCAP" in method_name else regular_args).append(args)
+            (bayes_args if method_name in BAYES_POOL_METHODS else regular_args).append(args)
 
     run_experiment_args(log, regular_args, n_jobs=capenv["N_JOBS"], env=THREAD_LIMITS)
     run_experiment_args(log, bayes_args, n_jobs=BAYES_N_JOBS, env=BAYES_ENV)

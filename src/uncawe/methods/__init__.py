@@ -8,11 +8,11 @@ from uncawe.methods.baycap import (
     fit_beta_binomial,
     realised_tables,
 )
-from uncawe.methods.baycap_kdey import BayCAPKDEy
+from uncawe.methods.baycap_fixed import BayCAPFixed
 
 __all__ = [
     "BayCAP",
-    "BayCAPKDEy",
+    "BayCAPFixed",
     "BetaBinomialFit",
     "beta_binomial_loglik",
     "eb_concentration",

@@ -8,9 +8,8 @@ A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, no
 
 | Item | Status |
 |---|---|
-| `methods/baycap_kdey.py:BayCAPKDEy`: BayesKDEy on an MLP, fixed $\hat C$, population pushforward (work plan §II.4) | [implemented], not evaluated |
-| BayesianMAPLS as quantifier, $h$ as input classifier, realised pushforward | [proposal], needed by E3.1 |
-| E3.1, BayCAP with a fixed $\hat C$: quantifier × input classifier × pushforward, on the `main` protocol | [proposal], scheduled (card WP-8 of [[work_plan]]), not run |
+| `methods/baycap_fixed.py:BayCAPFixed`: fixed $\hat C$, BayesKDEy or BayesianMAPLS, $h$ or an MLP as input classifier, population or realised pushforward (work plan §II.4); it replaces `BayCAPKDEy` | [implemented], not evaluated |
+| E3.1, BayCAP with a fixed $\hat C$: quantifier × input classifier × pushforward, on the `main` protocol | [implemented] (card WP-8 of [[work_plan]]), not run |
 | SQS-B | [proposal], not implemented |
 | BayCAP with a fixed $\hat C$ and the posterior of BayesianCC | [proposal], not implemented |
 | A random rate matrix for BayesKDEy (options 1–3 of Appendix B); BayesianMAPLS with a uniform prior or a random calibration map (Appendix E) | [new hypothesis] |
@@ -117,7 +116,7 @@ The methods of E3.1 treat $\hat C$ as if it were the true $C$, so this error, th
 
 **No pull towards $1/K$.** BayCAP gives each column of $C$ the prior $\operatorname{Dir}(\mathbf 1)$, which acts like one imaginary validation instance per cell and pulls the estimated recall to $(f_{jj}+1)/(n^s_j+K)$, towards $1/K$ ([[ext2_baycap]] §T.5). $\hat C$ has no prior, so it has no such pull.
 
-*Implementation note:* `BayCAPKDEy.fit` computes $\hat C$ with `confusion_matrix(..., normalize="true")`, which puts true classes on rows, so the code stores $\hat C^\top$.
+*Implementation note:* `BayCAPFixed.fit` computes $\hat C$ with `confusion_matrix(..., normalize="true")`, which puts true classes on rows, so the code stores $\hat C^\top$.
 
 ## T.3 BayesKDEy
 
@@ -404,18 +403,19 @@ With $\eta$ the ratio of the missing to the represented variance, Extension 4 §
 
 Components (for E3.1):
 
-- **One class for the eight methods.** Generalise `methods/baycap_kdey.py:BayCAPKDEy` (implemented, no stored results) with three parameters: `quantifier` $\in\{$`"kdey"`, `"emq"`$\}$, building QuaPy's `BayesianKDEy` or `BayesianMAPLS`; `input_classifier` $\in\{$`"h"`, `"mlp"`$\}$; `estimand` $\in\{$`"population"`, `"realised"`$\}$. The defaults (`"kdey"`, `"mlp"`, `"population"`) keep the current output up to the seed of the MLP (below). The name of the class and of the module may change with the generalisation; the card decides.
-- **Input classifier `h`.** The quantifier skips QuaPy's classifier step: `fit` calls `aggregation_fit` on the `posteriors` argument (the outputs of $h$ on $V$) and the labels of $V$, and `predict_ct_range` calls `sample_from_posterior` on its `posteriors` argument (the outputs of $h$ on $U$); the class order of the posteriors of $h$ must be that of `val.classes_`. With `"mlp"`, the quantifier is fitted with `fit(*val.Xy)` as now, with QuaPy's $5$-fold cross-fitting.
+- **One class for the eight methods.** `methods/baycap_fixed.py:BayCAPFixed` [implemented] generalises the former `methods/baycap_kdey.py:BayCAPKDEy` (no stored results, removed) with three parameters: `quantifier` $\in\{$`"kdey"`, `"emq"`$\}$, BayesKDEy or BayesianMAPLS; `input_classifier` $\in\{$`"h"`, `"mlp"`$\}$; `estimand` $\in\{$`"population"`, `"realised"`$\}$. The defaults (`"kdey"`, `"mlp"`, `"population"`) are the configuration of `BayCAPKDEy`, with a seeded MLP.
+- **The NUTS models.** QuaPy builds `BayesianKDEy` and `BayesianMAPLS` only when `pystan` is installed, which is not the case in the environment of the project, so the two NUTS models and their preparation are copied from QuaPy's `quapy.method._bayesian` (commit `31f36f6`; user's decision of 2026-11-03): the same sites, priors, likelihoods, initialisation and seeds, so the same draws as QuaPy's `sample_from_posterior` (checked by a test). The kernel densities are QuaPy's (`KDEBase`), and so is the EM start of BayesianMAPLS (`mapls`). The class runs NUTS with `extra_fields=("diverging",)`, which leaves the draws unchanged, and returns the divergences, split-$\hat R$ and effective sample size of $\pi$.
+- **Input classifier `h`.** No classifier is trained: the quantifier is fitted on the `posteriors` argument of `fit` (the outputs of $h$ on $V$) and the labels of $V$, and sampled on the `posteriors` argument of `predict_ct_range` (the outputs of $h$ on the bag); the class order of the posteriors of $h$ is that of `val.classes_`. With `"mlp"`, the validation outputs are cross-fitted on $5$ folds, as QuaPy's `fit` does, in the process of the worker (`n_jobs=1`), and the target outputs come from the MLP trained on all of $V$.
 - **Realised pushforward.** `"realised"` takes $n^t$ from the `posteriors` argument of `predict_ct_range` (the arg-max of the outputs of $h$ on $U$) and applies `methods/baycap.py:realised_tables` to the population draws; the multinomial draws use a NumPy `Generator` seeded from `mcmc_seed`, as in `BayCAP`. The tables stay in the `cap-ml` layout (true classes on rows).
-- **Reproducible MLP:** `BayCAPKDEy` builds `MLPClassifier()` without a `random_state` (work plan Part IV); E3.1 needs a fixed one, so that the population and realised methods of a cell share their prevalence draws and a rerun reproduces them. The fix changes the output of `BayCAPKDEy`, which has no stored results.
+- **Reproducible MLP:** `BayCAPFixed` builds `MLPClassifier(random_state=random_state)` [implemented], so that the population and realised methods of a cell share their prevalence draws and a rerun reproduces them; `BayCAPKDEy` built it without a `random_state` (an item of FIX-3 in the work plan, now solved). The change had no stored results to affect.
 - **Configuration:** BayesKDEy with `kernel="gaussian"`, `bandwidth=0.1`, `shrinkage=0.0`; BayesianMAPLS with QuaPy's defaults (`prior="uniform"`, `exact_train_prev=True`, `mapls_chain_init=True`); for both, `temperature=1`, `num_warmup=500`, `num_samples=1000`, `mcmc_seed` as for `BayesCAP`.
-- **Source prevalence of BayesianMAPLS with `h`:** the outputs of $h$ refer to the prevalences of $L$, on which $h$ was trained, while QuaPy sets $\pi^P$ to those of $V$. Before the card, check that $V$ is a stratified split of the same data as $L$, so that the two are close; if they are not, the card decides whether to keep QuaPy's behaviour.
-- **Methods in `main`:** eight factory entries `BayCAP-<Q>-<s>` and `BayCAP-<Q>-<s>-real` in `experiments/methods.py` (`METHOD_CLASS` and `gen_methods`), run in the BayCAP pool with `BAYES_ENV` (CPU, single-threaded XLA); results only: excluded from the tables, ranks and default plots of `main`, like `BayesCAP-real`.
-- **Tables and plots of E3.1:** a comparison module reusing the paired bootstrap of `tables/pushforward.py`; `tables/displacement.py --method` for the decomposition, with $R_0=0$ for methods with a fixed $\hat C$; the mismatch and the widening factor need, per bag, $n^t$ and the population draws or their moments, which `main` must store for the new methods (or which are recomputed from the stored test posteriors of $h$); the ECE needs the validation outputs of each input classifier, stored at fit time.
+- **Source prevalence of BayesianMAPLS with `h`:** the outputs of $h$ refer to the prevalences of $L$, on which $h$ was trained, while QuaPy sets $\pi^P$ to those of $V$. $L$ and $V$ are the two halves of a stratified split of the same training data (`cap.data.datasets.split_train`), so $\lvert\pi^L_j-\pi^V_j\rvert$ is only the rounding of the class counts, of order $1/\lvert V\rvert$, and QuaPy's behaviour is kept.
+- **Methods in `main`:** eight factory entries `BayCAP-<Q>-<s>` and `BayCAP-<Q>-<s>-real` in `experiments/methods.py` (`FIXED_C_VARIANTS`, `METHOD_CLASS` and `gen_methods`), run in the BayCAP pool with `BAYES_ENV` (CPU, single-threaded XLA; the pool holds the methods of `BAYES_POOL_METHODS`); results only: excluded from the tables, ranks and default plots of `main`, like `BayesCAP-real`. Per bag, `main` stores the NUTS diagnostics of $\pi$ and `prev_mean` ($\bar\pi$), `acc_sd` ($\sigma_p$), `sigma_g` ($\bar\sigma_g$) and `val_ece` (the ECE of the input classifier on its validation outputs).
+- **Tables and plots of E3.1:** `tables/baycap_fixed.py`, reusing the paired bootstrap of `tables/pushforward.py`, and `plots/baycap_fixed.py`; `tables/displacement.py --method` for the decomposition, with $R_0=0$ for the eight methods; `tables/rank.py --include-e31` for the rank table. The mismatch uses $n^t/N^Q$, the predicted margins of the stored realised table (no labels), $\hat C$ rebuilt from the validation counts, and the stored $\bar\pi$; the widening factor uses the stored $\sigma_p$ and $\bar\sigma_g$.
 
 Tests:
 
-- with the defaults, the class reproduces the output of `BayCAPKDEy` for fixed seeds;
+- for the same seed, the draws equal those of QuaPy's `sample_from_posterior`, for both quantifiers, and the copied models have the log-density of §T.3 and §T.4;
 - for each quantifier and input classifier, with the same seeds, both estimands use identical prevalence draws;
 - with `input_classifier="h"`, the quantifier receives exactly the posteriors passed to `fit` and `predict_ct_range`, and no classifier is trained;
 - with `quantifier="emq"`, the source prevalence equals the class proportions of $V$;

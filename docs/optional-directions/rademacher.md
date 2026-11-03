@@ -696,7 +696,7 @@ The statuses of the relevant items must remain distinct:
 | RQBS implementation of SQS-H | Used by current UNCAWE experiments through `cap-ml` |
 | Aitchison-SQS | Research proposal; not implemented |
 | SQS-B | Research proposal; not implemented |
-| BayCAP-KDEy | Research proposal; implemented in UNCAWE (`uncawe.methods.BayCAPKDEy`), not yet evaluated |
+| BayCAP-KDEy | Research proposal; implemented in UNCAWE (`uncawe.methods.BayCAPFixed`, which replaced `BayCAPKDEy`), not yet evaluated |
 | Target-conditioned Rademacher intuition | Work in progress; definition unresolved; not implemented |
 
 This draft is related to the uncertainty-decomposition direction in

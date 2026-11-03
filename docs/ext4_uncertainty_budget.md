@@ -13,7 +13,7 @@ This extension is the common frame for the method extensions: the realised-table
 | SQS-H, SQS-S, BayCAP at $\lvert U\rvert=1000$, scored against the realised accuracy of each bag | [paper] |
 | `RQBS` (SQS-H with a bootstrap of $\hat\pi$, the variant run by `main`), `PrediQuant` (SQS-S), `BayesCAP` (BayCAP, built from `methods/baycap.py:BayCAP`) | [implemented] |
 | `BayesCAP-real` (BayCAP with the realised-table predictive, [[ext2_baycap]] E2.3) | [implemented], evaluated in `main` |
-| `BayCAPKDEy` | [implemented], not evaluated |
+| `BayCAPFixed` (the methods of E3.1 of [[ext3_posterior_propagation]]; it replaces `BayCAPKDEy`) | [implemented], not evaluated |
 | SQS-B and the realised pushforward of BayCAP-KDEy ([[ext3_posterior_propagation]]) | [proposal] |
 | Error split, budget with the pool term, coverage rule and ratios $\eta$, $r$, oracle ladder, SQS-H with $U$ and $V$ resampling | [new hypothesis] |
 | The protocol without replacement and its budget (§T.10) | [new hypothesis] |
