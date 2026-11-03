@@ -10,7 +10,10 @@ columns of $C$ (``c_prior``, §T.9 of ``docs/ext2_baycap.md``), work-plan
 card WP-6 the NUTS diagnostics of each ``predict_ct_range`` call
 (``last_nuts_diagnostics``), and work-plan card WP-10 the hierarchical prior
 on the recalls (``c_prior="hierarchical"``, §T.14 and §T.15) with its
-per-bag posterior summaries (``last_posterior_summaries``).
+per-bag posterior summaries (``last_posterior_summaries``). Work-plan card
+WP-11 adds its variant ``c_prior="hierarchical-f"`` (§T.16): a lighter tail
+on the strength $\\nu$ and a learned concentration $\\kappa$ of the shares of
+the mistakes.
 """
 
 from collections.abc import Callable
@@ -33,7 +36,9 @@ from scipy.special import betaln, digamma, expit, logit
 from sklearn.metrics import confusion_matrix
 
 ESTIMANDS = ("population", "realised")
-C_PRIORS = ("uniform", "empirical-bayes", "hierarchical")
+C_PRIORS = ("uniform", "empirical-bayes", "hierarchical", "hierarchical-f")
+# the priors with a hierarchical prior on the recalls, sampled by NUTS with C and pi (§T.15, §T.16)
+HIERARCHICAL_PRIORS = ("hierarchical", "hierarchical-f")
 
 # per-bag NUTS diagnostics stored by the experiments (``nuts_diagnostics``)
 NUTS_DIAGNOSTICS = ("nuts_divergences", "nuts_max_rhat", "nuts_min_ess")
@@ -50,10 +55,16 @@ HIERARCHICAL_SUMMARIES = (
     "h_pi_mean",
     "h_pi_cov",
 )
+# the posterior summaries of the concentration kappa of the shares of the mistakes, added by "hierarchical-f" (§T.16);
+# NaN with K=2, where there are no shares
+KAPPA_SUMMARIES = ("h_ln_kappa_median", "h_ln_kappa_q05", "h_ln_kappa_q95", "h_p_kappa_below_1")
 
 # sites of the hierarchical prior (§T.15): the centre m, u = 1/sqrt(1+nu), the strength nu, the recalls and the shares
 # of the mistakes of each true class
 H_M, H_U, H_NU, H_RECALLS, H_SHARES = "h_m", "h_u", "h_nu", "h_recalls", "h_shares"
+# sites added by "hierarchical-f" (§T.16): rho = 1/(1+nu), which replaces u, and rho_kappa = 1/(1+kappa), with the
+# concentration kappa of the shares of the mistakes (only for K >= 3)
+H_RHO, H_RHO_KAPPA, H_KAPPA = "h_rho", "h_rho_kappa", "h_kappa"
 
 # bounds of the empirical-Bayes fit (§T.9); the lower bound on nu is only a numerical safeguard
 EB_M_BOUNDS = (1e-3, 1 - 1e-3)
@@ -273,6 +284,16 @@ def nu_from_u(u):
     return 1.0 / u**2 - 1.0
 
 
+def strength_from_rho(rho):
+    r"""Return $1/\rho-1$, the strength $\nu$ (or the concentration $\kappa$) of "hierarchical-f" from
+    $\rho=1/(1+\nu)$ (§T.16).
+
+    With $\rho\sim U(0,1)$, $\nu$ has the density $(1+\nu)^{-2}$ on $(0,\infty)$, with $P(\nu>x)=1/(1+x)$ and median
+    $1$. Works on NumPy and JAX arrays.
+    """
+    return 1.0 / rho - 1.0
+
+
 def off_diagonal_index(n_classes: int) -> np.ndarray:
     """For each class $j$, the other classes in increasing order, shape ``(n_classes, n_classes - 1)``."""
     return np.array([[i for i in range(n_classes) if i != j] for j in range(n_classes)], dtype=int)
@@ -295,14 +316,17 @@ def hierarchical_rates(recalls, shares):
     return jnp.zeros((n_classes, n_classes)).at[rows, cols].set(off).at[diag, diag].set(recalls)
 
 
-def hierarchical_summaries(draws: dict[str, np.ndarray], min_val_count: float) -> dict:
-    r"""Summarise the posterior of the hierarchical prior from the draws of one NUTS run (E2.7).
+def hierarchical_summaries(draws: dict[str, np.ndarray], min_val_count: float, with_kappa: bool = False) -> dict:
+    r"""Summarise the posterior of the hierarchical prior from the draws of one NUTS run (E2.7, E2.8).
 
-    :param draws: the draws of ``H_M``, ``H_NU``, ``H_RECALLS`` and ``P_TEST_Y``, with the draws on the first axis.
+    :param draws: the draws of ``H_M``, ``H_NU``, ``H_RECALLS`` and ``P_TEST_Y``, and of ``H_KAPPA`` for
+        "hierarchical-f" with $K\ge3$, with the draws on the first axis.
     :param min_val_count: $\min_jn_j$, the validation instances of the smallest class.
+    :param with_kappa: add the summaries of $\kappa$ (``KAPPA_SUMMARIES``), NaN when ``draws`` has no ``H_KAPPA``.
     :return: ``nuts_failed`` ($0$); the posterior mean of $m$; the median and the $5\%$ and $95\%$ quantiles of
         $\ln\nu$; $P(\nu>\min_jn_j)$; the posterior mean of the recalls; the posterior mean of $\pi^Q$ and its
-        covariance, flattened row by row.
+        covariance, flattened row by row; with ``with_kappa``, the median and the $5\%$ and $95\%$ quantiles of
+        $\ln\kappa$ and $P(\kappa<1)$.
     """
     ln_nu = np.log(np.asarray(draws[H_NU], dtype=float))
     pi = np.asarray(draws[P_TEST_Y], dtype=float)
@@ -317,10 +341,20 @@ def hierarchical_summaries(draws: dict[str, np.ndarray], min_val_count: float) -
         "h_recall_mean": np.asarray(draws[H_RECALLS], dtype=float).mean(axis=0),
         "h_pi_mean": pi.mean(axis=0),
         "h_pi_cov": np.cov(pi, rowvar=False).ravel(),
-    }
+    } | (kappa_summaries(draws.get(H_KAPPA)) if with_kappa else {})
 
 
-def failed_summaries(n_classes: int) -> dict:
+def kappa_summaries(kappa: np.ndarray | None) -> dict:
+    r"""The median and the $5\%$ and $95\%$ quantiles of $\ln\kappa$ and $P(\kappa<1)$ from the draws of $\kappa$; NaN
+    if there are none ($K=2$)."""
+    if kappa is None:
+        return dict.fromkeys(KAPPA_SUMMARIES, np.nan)
+    kappa = np.asarray(kappa, dtype=float)
+    q05, median, q95 = np.quantile(np.log(kappa), [0.05, 0.5, 0.95])
+    return dict(zip(KAPPA_SUMMARIES, (float(median), float(q05), float(q95), float(np.mean(kappa < 1)))))
+
+
+def failed_summaries(n_classes: int, with_kappa: bool = False) -> dict:
     """The posterior summaries of a bag where NUTS produced no draws: ``nuts_failed`` is $1$, the rest NaN."""
     return {
         **{name: np.nan for name in HIERARCHICAL_SUMMARIES},
@@ -328,7 +362,7 @@ def failed_summaries(n_classes: int) -> dict:
         "h_recall_mean": np.full(n_classes, np.nan),
         "h_pi_mean": np.full(n_classes, np.nan),
         "h_pi_cov": np.full(n_classes * n_classes, np.nan),
-    }
+    } | (dict.fromkeys(KAPPA_SUMMARIES, np.nan) if with_kappa else {})
 
 
 class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
@@ -364,11 +398,20 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
       (:func:`hierarchical_summaries`). If NUTS cannot start (no valid initial
       parameters), the bag gets tables of NaN, NaN diagnostics and
       ``nuts_failed`` equal to $1$, so that the other bags of the pair are kept.
+    - ``"hierarchical-f"`` (§T.16) is ``"hierarchical"`` with two changes:
+      $\rho=1/(1+\nu)\sim U(0,1)$ instead of $u$ (so $p(\nu)=(1+\nu)^{-2}$,
+      a lighter tail), and the shares of the mistakes of each true class
+      $\operatorname{Dir}(\kappa\mathbf 1_{K-1})$ with a common concentration
+      $\kappa$, $1/(1+\kappa)\sim U(0,1)$ (so $p(\kappa)=(1+\kappa)^{-2}$),
+      sampled by NUTS too; with $K=2$ there are no shares and no $\kappa$. Its
+      posterior summaries add those of $\kappa$ (``KAPPA_SUMMARIES``, NaN with
+      $K=2$), and a failed run is handled as for ``"hierarchical"``.
 
     After each ``predict_ct_range`` call, :meth:`last_nuts_diagnostics` returns
     the number of divergent transitions, the largest split-$\hat R$ and the
     smallest effective sample size of that NUTS run, over the entries of
-    $\pi^Q$ and $C$, and also of $m$ and $u$ with the hierarchical prior
+    $\pi^Q$ and $C$, and also of $m$ and $u$ with the hierarchical prior, of
+    $m$, $\rho$ and $1/(1+\kappa)$ with ``"hierarchical-f"``
     (:func:`nuts_diagnostics`). Recording them does not change the draws.
 
     The estimand decides how each posterior draw becomes a contingency table:
@@ -393,7 +436,7 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
     :param acc_fn: a ``cap-ml`` contingency-table performance function.
     :param estimand: ``"population"`` or ``"realised"``.
     :param c_prior: prior on the columns of $C$, ``"uniform"``,
-        ``"empirical-bayes"`` or ``"hierarchical"``.
+        ``"empirical-bayes"``, ``"hierarchical"`` or ``"hierarchical-f"``.
     :param num_warmup: number of NUTS warm-up iterations.
     :param num_samples: number of posterior draws retained after warm-up.
     :param prior: Dirichlet parameter of the prior on $\pi^Q$: ``"uniform"``,
@@ -407,7 +450,7 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         self,
         acc_fn: Callable,
         estimand: Literal["population", "realised"] = "population",
-        c_prior: Literal["uniform", "empirical-bayes", "hierarchical"] = "uniform",
+        c_prior: Literal["uniform", "empirical-bayes", "hierarchical", "hierarchical-f"] = "uniform",
         num_warmup: int = 500,
         num_samples: int = 1000,
         prior: str | Number | np.ndarray = "uniform",
@@ -434,7 +477,7 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
             # cap-ml layout: true classes on rows, so the diagonal holds f_j and the row sums n_j
             self.eb_fit = fit_beta_binomial(np.diag(self.val_ct), self.val_ct.sum(axis=1))
             self.c_alpha = eb_concentration(n_classes, self.eb_fit.m, self.eb_fit.nu)
-        elif self.c_prior == "hierarchical":
+        elif self.c_prior in HIERARCHICAL_PRIORS:
             self.eb_fit = None
             self.c_alpha = None
         else:
@@ -467,14 +510,26 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         numpyro.sample("N_c", dist.Multinomial(jnp.sum(pred_posterior_count), p_c), obs=pred_posterior_count)
 
     def _hierarchical_model(self, n_classes: int):
-        """The hierarchical prior on $C$ (§T.15), centred; returns ``p_c_cond_y`` in the ``cap-ml`` layout."""
+        """The hierarchical prior on $C$ (§T.15, or its variant of §T.16 for ``"hierarchical-f"``), centred; returns
+        ``p_c_cond_y`` in the ``cap-ml`` layout."""
+        light = self.c_prior == "hierarchical-f"
         m = numpyro.sample(H_M, dist.Uniform(0.0, 1.0))
-        u = numpyro.sample(H_U, dist.Uniform(0.0, 1.0))
-        nu = numpyro.deterministic(H_NU, nu_from_u(u))
+        if light:
+            rho = numpyro.sample(H_RHO, dist.Uniform(0.0, 1.0))
+            nu = numpyro.deterministic(H_NU, strength_from_rho(rho))
+        else:
+            u = numpyro.sample(H_U, dist.Uniform(0.0, 1.0))
+            nu = numpyro.deterministic(H_NU, nu_from_u(u))
         with numpyro.plate("classes", n_classes):
             recalls = numpyro.sample(H_RECALLS, dist.Beta(nu * m, nu * (1 - m)))
         if n_classes > 2:
-            shares = numpyro.sample(H_SHARES, dist.Dirichlet(jnp.ones((n_classes, n_classes - 1))))
+            if light:
+                rho_kappa = numpyro.sample(H_RHO_KAPPA, dist.Uniform(0.0, 1.0))
+                kappa = numpyro.deterministic(H_KAPPA, strength_from_rho(rho_kappa))
+                concentration = kappa * jnp.ones((n_classes, n_classes - 1))
+            else:
+                concentration = jnp.ones((n_classes, n_classes - 1))
+            shares = numpyro.sample(H_SHARES, dist.Dirichlet(concentration))
         else:
             shares = jnp.ones((n_classes, 1))
         return numpyro.deterministic(P_C_COND_Y, hierarchical_rates(recalls, shares))
@@ -497,23 +552,32 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         )
         # kept for last_nuts_diagnostics, which is computed on request so that it does not count in the test time
         grouped = mcmc.get_samples(group_by_chain=True)
-        names = (P_TEST_Y, P_C_COND_Y) + ((H_M, H_U) if self.c_prior == "hierarchical" else ())
+        names = (P_TEST_Y, P_C_COND_Y) + self._hyper_sites()
         self._last_nuts = (
             {name: np.asarray(jax.device_get(grouped[name])) for name in names},
             np.asarray(jax.device_get(mcmc.get_extra_fields()["diverging"])),
         )
         samples = mcmc.get_samples()
-        if self.c_prior == "hierarchical":
+        if self.c_prior in HIERARCHICAL_PRIORS:
             # kept for last_posterior_summaries, computed on request as the diagnostics
+            summary_sites = (H_M, H_NU, H_RECALLS, P_TEST_Y) + ((H_KAPPA,) if H_KAPPA in samples else ())
             self._last_summaries = (
-                {name: np.asarray(jax.device_get(samples[name])) for name in (H_M, H_NU, H_RECALLS, P_TEST_Y)},
+                {name: np.asarray(jax.device_get(samples[name])) for name in summary_sites},
                 float(self.val_ct.sum(axis=1).min()),
             )
         return samples
 
+    def _hyper_sites(self) -> tuple[str, ...]:
+        r"""The sampled sites of the hierarchical priors whose convergence is checked with that of $\pi^Q$ and $C$."""
+        if self.c_prior == "hierarchical":
+            return (H_M, H_U)
+        if self.c_prior == "hierarchical-f":
+            return (H_M, H_RHO) + ((H_RHO_KAPPA,) if len(self.classes) > 2 else ())
+        return ()
+
     def last_nuts_diagnostics(self) -> dict[str, float]:
         """Return the NUTS diagnostics (:func:`nuts_diagnostics`) of the last ``sample_posterior`` call; NaN if NUTS
-        could not start (hierarchical prior only)."""
+        could not start (hierarchical priors only)."""
         if getattr(self, "_last_nuts", None) is None:
             raise RuntimeError("No NUTS run yet: call predict_ct_range first")
         if self._last_nuts == "failed":
@@ -521,15 +585,17 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         return nuts_diagnostics(*self._last_nuts)
 
     def last_posterior_summaries(self) -> dict:
-        """Return the posterior summaries of the hierarchical prior (:func:`hierarchical_summaries`) of the last
-        ``sample_posterior`` call, or of a failed run (:func:`failed_summaries`); empty for the other priors."""
-        if self.c_prior != "hierarchical":
+        r"""Return the posterior summaries of the hierarchical priors (:func:`hierarchical_summaries`, with those of
+        $\kappa$ for ``"hierarchical-f"``) of the last ``sample_posterior`` call, or of a failed run
+        (:func:`failed_summaries`); empty for the other priors."""
+        if self.c_prior not in HIERARCHICAL_PRIORS:
             return {}
         if getattr(self, "_last_summaries", None) is None:
             raise RuntimeError("No NUTS run yet: call predict_ct_range first")
+        with_kappa = self.c_prior == "hierarchical-f"
         if self._last_summaries == "failed":
-            return failed_summaries(len(self.classes))
-        return hierarchical_summaries(*self._last_summaries)
+            return failed_summaries(len(self.classes), with_kappa)
+        return hierarchical_summaries(*self._last_summaries, with_kappa=with_kappa)
 
     def _alpha(self) -> np.ndarray:
         n_classes = len(self.classes)
@@ -547,7 +613,7 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         yhat = np.argmax(posteriors, axis=-1)
         posterior_count = qp.functional.counts_from_labels(yhat, self.classes)
 
-        if self.c_prior == "hierarchical":
+        if self.c_prior in HIERARCHICAL_PRIORS:
             try:
                 samples = self.sample_posterior(posterior_count, alpha=self._alpha())
             except RuntimeError as error:

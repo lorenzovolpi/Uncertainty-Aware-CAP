@@ -18,10 +18,12 @@ from uncawe.tables import rank
 from uncawe.tables.common import METHOD_LATEX_LABELS
 from uncawe.tables.displacement import METHOD_LABELS
 
-BAYCAP_METHODS = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real"]
-E2_METHODS = ["BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real"]
+BAYCAP_METHODS = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real", "BayesCAP-Hf-real"]
+E2_METHODS = ["BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real", "BayesCAP-Hf-real"]
 # E2 methods in the tables and ranks of main (user's requests)
 IN_MAIN_TABLES = ["BayesCAP-EB-real", "BayesCAP-H-real"]
+# BayCAP methods in the coverage vs amplitude plot (user's requests); BayesCAP-Hf-real (E2.8) waits for the user
+IN_AVC = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real"]
 
 
 class BayCAPFactoryTest(unittest.TestCase):
@@ -36,6 +38,7 @@ class BayCAPFactoryTest(unittest.TestCase):
             "BayesCAP-EB": ("population", "empirical-bayes"),
             "BayesCAP-EB-real": ("realised", "empirical-bayes"),
             "BayesCAP-H-real": ("realised", "hierarchical"),
+            "BayesCAP-Hf-real": ("realised", "hierarchical-f"),
         }
         self.assertEqual(BAYCAP_VARIANTS, expected)
         for name, (estimand, c_prior) in expected.items():
@@ -64,11 +67,14 @@ class BayCAPFactoryTest(unittest.TestCase):
                     self.assertNotIn(name, rank._methods())
                 self.assertNotIn(name, DEFAULT_METHODS)
 
-    def test_coverage_vs_amplitude_plot_shows_every_baycap_method(self):
+    def test_coverage_vs_amplitude_plot_shows_the_requested_baycap_methods(self):
         self.assertEqual(AVC_METHODS[: len(DEFAULT_METHODS)], DEFAULT_METHODS)
         for name in BAYCAP_METHODS:
             with self.subTest(method=name):
-                self.assertIn(name, AVC_METHODS)
+                if name in IN_AVC:
+                    self.assertIn(name, AVC_METHODS)
+                else:
+                    self.assertNotIn(name, AVC_METHODS)
 
     def test_every_baycap_method_has_labels_and_a_colour(self):
         for name in BAYCAP_METHODS:
