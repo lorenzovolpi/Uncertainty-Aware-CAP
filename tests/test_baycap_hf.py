@@ -51,8 +51,9 @@ def results(method: str, seed: int) -> pd.DataFrame:
                 "estim_acc_ranges": draws,
                 "acc_err": abs(np.trace(estim_ct) - np.trace(true_ct)),
                 "nuts_divergences": 30 * (bag % 2) if dataset == "german" else 0,
-                "nuts_max_rhat": 1.3 if (dataset == "wdbc" and method == hf.H_METHOD) else 1.0,
-                "nuts_min_ess": 400.0,
+                # BayCAP-H does not mix on the first bag of wdbc only
+                "nuts_max_rhat": (1.3 if bag == 0 else 1.02) if (dataset == "wdbc" and method == hf.H_METHOD) else 1.0,
+                "nuts_min_ess": 50.0 if bag == 3 else 400.0,
             }
             if method in hf.HIERARCHICAL:
                 row.update(
@@ -204,12 +205,29 @@ class TableTest(unittest.TestCase):
         # BayCAP-H does not mix on wdbc, BayCAP-Hf does
         self.assertAlmostEqual(wdbc["h_max_rhat"], 1.3)
         self.assertAlmostEqual(wdbc["hf_max_rhat"], 1.0)
+        # the worst case comes from one bag of four: the median and the share of bags above RHAT_HIGH tell it apart
+        self.assertAlmostEqual(wdbc["h_median_rhat"], 1.02)
+        self.assertAlmostEqual(wdbc["h_share_rhat_high"], 0.25)
+        self.assertAlmostEqual(wdbc["hf_share_rhat_high"], 0.0)
+        # the smallest ESS is 50 in the last bag only; on wdbc the failed bag of BayCAP-Hf is left out of the median
+        self.assertAlmostEqual(letter["h_min_ess"], 50.0)
+        self.assertAlmostEqual(letter["h_median_ess"], 400.0)
+        self.assertAlmostEqual(wdbc["hf_median_ess"], 400.0)
         self.assertEqual(wdbc["failure_class"], "")
         self.assertAlmostEqual(letter["hf_ln_kappa_median"], np.log(0.3))
         self.assertTrue(np.isnan(german["hf_ln_kappa_median"]))
         self.assertAlmostEqual(letter["h_ln_nu_median"], 4.0)
         self.assertAlmostEqual(letter["hf_ln_nu_median"], 2.0)
         self.assertAlmostEqual(letter["empty_off_diagonal_share"], 2 / 6)
+
+    def test_mixing_spread(self):
+        df = pd.DataFrame({"nuts_max_rhat": [1.0, 1.2, 1.3, np.nan], "nuts_min_ess": [400.0, 20.0, 10.0, np.nan]})
+        spread = hf.mixing_spread(df, np.array([True, True, True, False]))
+        self.assertAlmostEqual(spread["median_rhat"], 1.2)
+        self.assertAlmostEqual(spread["share_rhat_high"], 2 / 3)
+        self.assertAlmostEqual(spread["median_ess"], 20.0)
+        # results stored without the diagnostics
+        self.assertTrue(all(np.isnan(v) for v in hf.mixing_spread(df[["nuts_min_ess"]], np.ones(4, bool)).values()))
 
     def test_failure_rule_on_the_share_of_divergent_draws(self):
         # every bag divergent but few draws (hand_digits kNN in the pilot): no class; many draws: a class
