@@ -20,7 +20,9 @@ Per pair:
 - the sampler of BayCAP-Hf and BayCAP-H: the share of bags with divergent transitions, the largest split-$\\hat R$ and the
   smallest effective sample size (``tables/eb_prior.py:diagnostics_table``), the mean number of divergent transitions
   per bag and the share of divergent draws (that mean over the ``NUTS_DRAWS`` draws of a bag), both over the bags with
-  draws, and the share of failed bags;
+  draws, and the share of failed bags; over the same bags, the median of the largest split-$\\hat R$ of each bag, the
+  share of bags whose largest split-$\\hat R$ exceeds ``RHAT_HIGH``, and the median of the smallest effective sample size
+  of each bag (``mixing_spread``), which tell a few bad bags from many;
 - the posterior of the runs: means over the bags of the posterior mean of $m$, of the median and the $5\\%$ and $95\\%$
   quantiles of $\\ln\\nu$ and of $P(\\nu>\\min_jn_j)$, for both; of the median and the $5\\%$ and $95\\%$ quantiles of
   $\\ln\\kappa$ and of $P(\\kappa<1)$, for BayCAP-Hf ($K\\ge3$);
@@ -125,6 +127,21 @@ def divergence_load(df: pd.DataFrame, ok: np.ndarray) -> dict:
     return {"mean_divergences": mean, "share_divergent_draws": mean / NUTS_DRAWS}
 
 
+def mixing_spread(df: pd.DataFrame, ok: np.ndarray) -> dict:
+    """Median over the bags in ``ok`` (the bags with draws) of the largest split-$\\hat R$ of each bag
+    (``nuts_max_rhat``) and of its smallest effective sample size (``nuts_min_ess``), and the share of those bags whose
+    largest split-$\\hat R$ exceeds ``RHAT_HIGH``; NaN where the results were stored without the NUTS diagnostics."""
+    if "nuts_max_rhat" not in df or "nuts_min_ess" not in df:
+        return {"median_rhat": np.nan, "share_rhat_high": np.nan, "median_ess": np.nan}
+    rhat = pd.to_numeric(df["nuts_max_rhat"], errors="coerce")[ok].dropna()
+    ess = pd.to_numeric(df["nuts_min_ess"], errors="coerce")[ok].dropna()
+    return {
+        "median_rhat": float(rhat.median()) if len(rhat) else np.nan,
+        "share_rhat_high": float((rhat > RHAT_HIGH).mean()) if len(rhat) else np.nan,
+        "median_ess": float(ess.median()) if len(ess) else np.nan,
+    }
+
+
 def bag_frame(df: pd.DataFrame, method: str) -> pd.DataFrame:
     """One row per bag of one pair (stored order): AE, coverage, amplitude, Winkler score and the true accuracy."""
     bags = pushforward.bag_scores(df, method)
@@ -209,6 +226,7 @@ def pair_row(results: dict[str, pd.DataFrame], val_counts: np.ndarray, key: tupl
         diagnostics = eb_prior.diagnostics_table(df).iloc[0]
         row.update({f"{prefix}_{name}": float(diagnostics[name]) for name in eb_prior.DIAGNOSTICS})
         row.update({f"{prefix}_{name}": value for name, value in divergence_load(df, ok).items()})
+        row.update({f"{prefix}_{name}": value for name, value in mixing_spread(df, ok).items()})
         names = NU_POSTERIOR + (KAPPA_POSTERIOR if method == METHOD else ())
         row.update({f"{prefix}_{name.removeprefix('h_')}": _mean(df, name, ok) for name in names})
 
@@ -341,8 +359,9 @@ COMPARISON_CAPTION = (
 SAMPLER_CAPTION = (
     "Sampler and posterior of BayCAP-Hf-real and BayCAP-H-real on \\texttt{main} (E2.8, vanilla accuracy, $|U|=1000$). "
     "NUTS: share of bags with divergent transitions, mean number of divergent transitions per bag and share of "
-    f"divergent draws (of the {NUTS_DRAWS} draws of a bag), over the bags with draws, largest split-$\\hat R$, share of "
-    "bags without draws (Hf only). Run: "
+    f"divergent draws (of the {NUTS_DRAWS} draws of a bag), over the bags with draws, largest split-$\\hat R$ over "
+    "the bags and, over the bags with draws, median of the largest split-$\\hat R$ of each bag and share of bags where "
+    f"it exceeds {RHAT_HIGH}, share of bags without draws (Hf only). Run: "
     "means over the bags of the median of $\\ln\\nu$ and of $P(\\nu>\\min_jn_j)$, and, for BayCAP-Hf, of the median and "
     "the 90\\% interval of $\\ln\\kappa$ and of $P(\\kappa<1)$. $V$: share of empty off-diagonal cells, classes perfect "
     "or never right. Mean recall and prevalence terms of the shift of BayCAP-Hf, BayCAP-H and BayCAP-EB-real "
@@ -380,6 +399,8 @@ def _sampler_styler(table: pd.DataFrame):
         cols[(f"NUTS {label}", "\\#div.")] = table[f"{prefix}_mean_divergences"].to_numpy()
         cols[(f"NUTS {label}", "draws")] = table[f"{prefix}_share_divergent_draws"].to_numpy()
         cols[(f"NUTS {label}", "$\\hat R$")] = table[f"{prefix}_max_rhat"].to_numpy()
+        cols[(f"NUTS {label}", "med. $\\hat R$")] = table[f"{prefix}_median_rhat"].to_numpy()
+        cols[(f"NUTS {label}", f"$\\hat R>{RHAT_HIGH}$")] = table[f"{prefix}_share_rhat_high"].to_numpy()
     cols[("NUTS Hf", "fail.")] = table["hf_share_failed"].to_numpy()
     for prefix, label in (("hf", "Hf"), ("h", "H")):
         cols[(f"$\\nu$ {label}", "$\\ln\\nu$")] = table[f"{prefix}_ln_nu_median"].to_numpy()
@@ -401,6 +422,7 @@ def _sampler_styler(table: pd.DataFrame):
     styler = out.style.format(precision=2, na_rep="--")
     formats = {("NUTS Hf", "$\\hat R$"): "{:.3f}", ("NUTS H", "$\\hat R$"): "{:.3f}"}
     for label in ("Hf", "H"):
+        formats[(f"NUTS {label}", "med. $\\hat R$")] = "{:.3f}"
         formats[(f"NUTS {label}", "\\#div.")] = "{:.1f}"
         formats[(f"NUTS {label}", "draws")] = "{:.3f}"
     for key, fmt in formats.items():
