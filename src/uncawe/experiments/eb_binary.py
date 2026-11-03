@@ -36,7 +36,7 @@ from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.util import all_results_exist, get_logger
 
 EXPERIMENT = "eb_binary"
-# the BayCAP methods of E2.4; the later ones of BAYCAP_VARIANTS (E2.7, E2.8) are not part of E2.5
+# the BayCAP methods of E2.4; the later ones of BAYCAP_VARIANTS (E2.7, E2.8, E2.9) are not part of E2.5
 METHODS = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real"]
 
 

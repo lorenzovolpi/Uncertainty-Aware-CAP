@@ -9,7 +9,8 @@ from cap.error import vanilla_acc
 from cap.models.confidence import ACC_BayesCAP
 from quapy.data import LabelledCollection
 from scipy.special import gammaln
-from scipy.stats import betabinom
+from scipy.stats import beta as beta_dist
+from scipy.stats import betabinom, kstest
 
 from uncawe.methods import BayCAP, beta_binomial_loglik, eb_concentration, fit_beta_binomial, realised_tables
 from uncawe.methods.baycap import (
@@ -21,6 +22,8 @@ from uncawe.methods.baycap import (
     H_RHO,
     H_RHO_KAPPA,
     H_SHARES,
+    H_SHARES_EXP,
+    H_SHARES_GAMMA,
     HIERARCHICAL_SUMMARIES,
     KAPPA_SUMMARIES,
     NUTS_DIAGNOSTICS,
@@ -30,6 +33,7 @@ from uncawe.methods.baycap import (
     hierarchical_rates,
     hierarchical_summaries,
     kappa_summaries,
+    noncentred_shares,
     nu_from_u,
     nuts_diagnostics,
     strength_from_rho,
@@ -285,6 +289,49 @@ class LightHierarchicalPriorTest(unittest.TestCase):
         self.assertEqual(tuple(hierarchical_summaries(draws, min_val_count=2)), HIERARCHICAL_SUMMARIES)
 
 
+class NoncentredSharesTest(unittest.TestCase):
+    def test_noncentred_shares_have_the_dirichlet_law(self):
+        # E2.9, before any run: under the prior alone, G' ~ Gamma(kappa+1, 1) and e ~ Exp(1) give shares with the law
+        # Dir(kappa 1_{K-1}) (§T.17): mean 1/(K-1), variance (K-2)/((K-1)^2((K-1)kappa+1)), and one share is
+        # Beta(kappa, (K-2)kappa); in float64, so that the tiny shares of a small kappa do not underflow
+        import jax
+
+        n = 20_000
+        for n_classes in (3, 8, 26):
+            for kappa in (0.05, 0.2, 1.0, 5.0):
+                with self.subTest(K=n_classes, kappa=kappa):
+                    rng = np.random.default_rng(1000 * n_classes + int(100 * kappa))
+                    cells = (n, n_classes - 1)
+                    with jax.enable_x64(True):
+                        shares = np.asarray(
+                            noncentred_shares(rng.gamma(kappa + 1.0, 1.0, cells), rng.exponential(1.0, cells), kappa)
+                        )
+                    np.testing.assert_allclose(shares.sum(axis=1), 1.0, rtol=1e-10)
+                    k1 = n_classes - 1
+                    var = (n_classes - 2) / (k1**2 * (k1 * kappa + 1))
+                    # standard errors of the mean and of the variance over n draws, with a margin
+                    self.assertLess(abs(shares[:, 0].mean() - 1 / k1), 5 * np.sqrt(var / n))
+                    self.assertLess(abs(shares[:, 0].var() / var - 1), 0.08)
+                    # KS on the nearer end, t = min(s, 1 - s), with 1 - s the sum of the other shares (no rounding to 1):
+                    # P(t <= x) = P(s <= x) + P(1 - s <= x) for x <= 1/2, with s ~ Beta(a, b) and 1 - s ~ Beta(b, a)
+                    a, b = kappa, (n_classes - 2) * kappa
+                    nearer = np.minimum(shares[:, 0], shares[:, 1:].sum(axis=1))
+                    cdf = lambda x, a=a, b=b: beta_dist(a, b).cdf(x) + beta_dist(b, a).cdf(x)
+                    self.assertGreater(kstest(nearer, cdf).pvalue, 1e-3)
+
+    def test_noncentred_shares_follow_kappa(self):
+        # the same coordinates give sparser shares for a smaller kappa: e enters only through e / kappa
+        gamma, exponential = np.array([[1.0, 2.0, 0.5]]), np.array([[0.2, 1.0, 3.0]])
+        dense = np.asarray(noncentred_shares(gamma, exponential, 5.0))
+        sparse = np.asarray(noncentred_shares(gamma, exponential, 0.1))
+        self.assertGreater(sparse.max(), dense.max())
+        np.testing.assert_allclose(sparse.sum(), 1.0, rtol=1e-6)
+        # with a large kappa the shares tend to those of the Gammas alone
+        np.testing.assert_allclose(
+            np.asarray(noncentred_shares(gamma, exponential, 1e6)), gamma / gamma.sum(), rtol=1e-4
+        )
+
+
 class BayCAPTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -514,6 +561,74 @@ class BayCAPTest(unittest.TestCase):
         out = method.last_posterior_summaries()
         self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES)
         self.assertEqual(out["nuts_failed"], 1)
+
+    def test_noncentred_shares_need_the_light_hierarchical_prior(self):
+        with self.assertRaises(ValueError):
+            BayCAP(vanilla_acc, c_prior="hierarchical", shares="non-centred")
+        with self.assertRaises(ValueError):
+            BayCAP(vanilla_acc, c_prior="hierarchical-f", shares="other")
+        self.assertEqual(BayCAP(vanilla_acc).shares, "centred")
+
+    def test_noncentred_shares_sample_gammas_and_exponentials(self):
+        from numpyro.handlers import seed, trace
+
+        method = self.fit(
+            BayCAP(vanilla_acc, c_prior="hierarchical-f", shares="non-centred", random_state=5, **NUTS_PARAMS)
+        )
+        sites = trace(seed(method.model, rng_seed=0)).get_trace(
+            pred_posterior_count=self.pred_counts,
+            train_class_cond_count=method.val_ct,
+            alpha=np.ones(3),
+            c_alpha=None,
+        )
+        kappa = float(sites[H_KAPPA]["value"])
+        self.assertEqual(sites[H_SHARES]["type"], "deterministic")
+        gamma, exponential = sites[H_SHARES_GAMMA]["value"], sites[H_SHARES_EXP]["value"]
+        self.assertEqual(gamma.shape, (3, 2))
+        np.testing.assert_allclose(
+            np.asarray(sites[H_SHARES_GAMMA]["fn"].base_dist.base_dist.concentration), kappa + 1, rtol=1e-5
+        )
+        np.testing.assert_allclose(
+            np.asarray(sites[H_SHARES]["value"]), np.asarray(noncentred_shares(gamma, exponential, kappa)), rtol=1e-6
+        )
+        np.testing.assert_allclose(np.asarray(sites[H_SHARES]["value"]).sum(axis=1), 1.0, rtol=1e-5)
+
+    def test_noncentred_shares_return_valid_tables_with_the_diagnostics_of_e28(self):
+        def run():
+            method = self.fit(
+                BayCAP(
+                    vanilla_acc,
+                    estimand="realised",
+                    c_prior="hierarchical-f",
+                    shares="non-centred",
+                    random_state=5,
+                    **NUTS_PARAMS,
+                )
+            )
+            return method, method.predict_ct_range(self.X, self.test_posteriors)
+
+        method, cts = run()
+        self.assertTrue(np.all(np.isfinite(cts)) and np.all(cts >= 0))
+        np.testing.assert_allclose(cts.sum(axis=(1, 2)), 1.0, rtol=1e-5)
+        # the diagnostics cover the same quantities as with the centred shares, not the new coordinates
+        draws, _ = method._last_nuts
+        self.assertEqual(set(draws), {P_TEST_Y, P_C_COND_Y, H_M, H_RHO, H_RHO_KAPPA})
+        out = method.last_posterior_summaries()
+        self.assertEqual(tuple(out), HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES)
+        self.assertEqual(out["nuts_failed"], 0)
+        # a fixed seed gives identical draws
+        np.testing.assert_array_equal(cts, run()[1])
+
+    def test_noncentred_shares_change_nothing_with_two_classes(self):
+        val_y = np.repeat([0, 1], 20)
+        val_yhat = np.where(np.arange(40) % 5 == 0, 1 - val_y, val_y)
+        validation = LabelledCollection(np.zeros((40, 1)), val_y, classes=np.arange(2))
+        tables = []
+        for shares in ("centred", "non-centred"):
+            method = BayCAP(vanilla_acc, c_prior="hierarchical-f", shares=shares, random_state=5, **NUTS_PARAMS)
+            method.fit(validation, _one_hot(val_yhat, 2))
+            tables.append(method.predict_ct_range(np.zeros((30, 1)), _one_hot(np.arange(30) % 2, 2)))
+        np.testing.assert_array_equal(*tables)
 
     def test_other_priors_have_no_posterior_summaries(self):
         method = self.fit(BayCAP(vanilla_acc, random_state=5, **NUTS_PARAMS))

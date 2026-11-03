@@ -13,7 +13,8 @@ on the recalls (``c_prior="hierarchical"``, §T.14 and §T.15) with its
 per-bag posterior summaries (``last_posterior_summaries``). Work-plan card
 WP-11 adds its variant ``c_prior="hierarchical-f"`` (§T.16): a lighter tail
 on the strength $\\nu$ and a learned concentration $\\kappa$ of the shares of
-the mistakes.
+the mistakes. Work-plan card WP-12 adds a non-centred form of those shares
+(``shares="non-centred"``, §T.17): the same model, in other coordinates.
 """
 
 from collections.abc import Callable
@@ -39,6 +40,9 @@ ESTIMANDS = ("population", "realised")
 C_PRIORS = ("uniform", "empirical-bayes", "hierarchical", "hierarchical-f")
 # the priors with a hierarchical prior on the recalls, sampled by NUTS with C and pi (§T.15, §T.16)
 HIERARCHICAL_PRIORS = ("hierarchical", "hierarchical-f")
+# coordinates of the shares of the mistakes of "hierarchical-f" (§T.17): the Dirichlet itself, or normalised Gammas
+# built from variables whose law does not depend on kappa
+SHARES_FORMS = ("centred", "non-centred")
 
 # per-bag NUTS diagnostics stored by the experiments (``nuts_diagnostics``)
 NUTS_DIAGNOSTICS = ("nuts_divergences", "nuts_max_rhat", "nuts_min_ess")
@@ -65,6 +69,8 @@ H_M, H_U, H_NU, H_RECALLS, H_SHARES = "h_m", "h_u", "h_nu", "h_recalls", "h_shar
 # sites added by "hierarchical-f" (§T.16): rho = 1/(1+nu), which replaces u, and rho_kappa = 1/(1+kappa), with the
 # concentration kappa of the shares of the mistakes (only for K >= 3)
 H_RHO, H_RHO_KAPPA, H_KAPPA = "h_rho", "h_rho_kappa", "h_kappa"
+# sites of the non-centred shares (§T.17): G' ~ Gamma(kappa + 1, 1) and e ~ Exp(1) in every off-diagonal cell
+H_SHARES_GAMMA, H_SHARES_EXP = "h_shares_gamma", "h_shares_exp"
 
 # bounds of the empirical-Bayes fit (§T.9); the lower bound on nu is only a numerical safeguard
 EB_M_BOUNDS = (1e-3, 1 - 1e-3)
@@ -294,6 +300,23 @@ def strength_from_rho(rho):
     return 1.0 / rho - 1.0
 
 
+def noncentred_shares(gamma, exponential, kappa):
+    r"""The shares of the mistakes from their non-centred coordinates (§T.17).
+
+    With $G'_{ij}\sim\operatorname{Gamma}(\kappa+1,1)$ and $e_{ij}\sim\operatorname{Exp}(1)$ independent,
+    $g_{ij}=G'_{ij}e^{-e_{ij}/\kappa}=G'_{ij}U_{ij}^{1/\kappa}$ (with $U_{ij}=e^{-e_{ij}}$ uniform) is
+    $\operatorname{Gamma}(\kappa,1)$, so the normalised $s_{ij}=g_{ij}/\sum_kg_{kj}$ of each true class are
+    $\operatorname{Dir}(\kappa\mathbf 1_{K-1})$ exactly. The normalisation is a softmax of $\ln G'_{ij}-e_{ij}/\kappa$
+    over the last axis, computed in logs since $e_{ij}/\kappa$ can be large. Works on NumPy and JAX arrays.
+
+    :param gamma: $G'$, shape ``(..., K, K-1)``, positive.
+    :param exponential: $e$, the same shape, non-negative.
+    :param kappa: the concentration $\kappa>0$, broadcast against them.
+    :return: the shares, the same shape, summing to $1$ over the last axis.
+    """
+    return jax.nn.softmax(jnp.log(gamma) - exponential / kappa, axis=-1)
+
+
 def off_diagonal_index(n_classes: int) -> np.ndarray:
     """For each class $j$, the other classes in increasing order, shape ``(n_classes, n_classes - 1)``."""
     return np.array([[i for i in range(n_classes) if i != j] for j in range(n_classes)], dtype=int)
@@ -406,6 +429,15 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
       sampled by NUTS too; with $K=2$ there are no shares and no $\kappa$. Its
       posterior summaries add those of $\kappa$ (``KAPPA_SUMMARIES``, NaN with
       $K=2$), and a failed run is handled as for ``"hierarchical"``.
+      ``shares`` selects the coordinates in which NUTS samples its shares:
+      ``"centred"`` samples the Dirichlet itself; ``"non-centred"`` (§T.17)
+      samples, in every off-diagonal cell, $G'_{ij}\sim\operatorname{Gamma}(\kappa+1,1)$
+      and $e_{ij}\sim\operatorname{Exp}(1)$, and computes the shares from
+      them (:func:`noncentred_shares`), with the same law given $\kappa$: the
+      law of $e_{ij}$ does not depend on $\kappa$, and that of
+      $\ln G'_{ij}$ keeps a left tail of rate at least $1$, so their
+      coordinates do not widen as $\kappa$ falls. The model and the posterior
+      are unchanged, the draws are not.
 
     After each ``predict_ct_range`` call, :meth:`last_nuts_diagnostics` returns
     the number of divergent transitions, the largest split-$\hat R$ and the
@@ -439,6 +471,9 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         ``"empirical-bayes"``, ``"hierarchical"`` or ``"hierarchical-f"``.
     :param num_warmup: number of NUTS warm-up iterations.
     :param num_samples: number of posterior draws retained after warm-up.
+    :param shares: coordinates of the shares of ``"hierarchical-f"``,
+        ``"centred"`` (default) or ``"non-centred"``; only ``"centred"`` is
+        allowed with the other priors, which have no learned concentration.
     :param prior: Dirichlet parameter of the prior on $\pi^Q$: ``"uniform"``,
         a positive scalar repeated for every class, or a vector with one
         value per class.
@@ -455,11 +490,17 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         num_samples: int = 1000,
         prior: str | Number | np.ndarray = "uniform",
         random_state: int | None = None,
+        shares: Literal["centred", "non-centred"] = "centred",
     ):
         if estimand not in ESTIMANDS:
             raise ValueError(f"estimand must be one of {ESTIMANDS}; found {estimand!r}")
         if c_prior not in C_PRIORS:
             raise ValueError(f"c_prior must be one of {C_PRIORS}; found {c_prior!r}")
+        if shares not in SHARES_FORMS:
+            raise ValueError(f"shares must be one of {SHARES_FORMS}; found {shares!r}")
+        if shares != "centred" and c_prior != "hierarchical-f":
+            raise ValueError(f"shares={shares!r} needs c_prior='hierarchical-f'; found {c_prior!r}")
+        self.shares = shares
         CAPContingencyTable.__init__(self, acc_fn)
         self.estimand = estimand
         self.c_prior = c_prior
@@ -510,8 +551,9 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         numpyro.sample("N_c", dist.Multinomial(jnp.sum(pred_posterior_count), p_c), obs=pred_posterior_count)
 
     def _hierarchical_model(self, n_classes: int):
-        """The hierarchical prior on $C$ (§T.15, or its variant of §T.16 for ``"hierarchical-f"``), centred; returns
-        ``p_c_cond_y`` in the ``cap-ml`` layout."""
+        """The hierarchical prior on $C$ (§T.15, or its variant of §T.16 for ``"hierarchical-f"``), with centred
+        recalls and, for ``"hierarchical-f"``, the shares in the form of ``shares`` (§T.17); returns ``p_c_cond_y`` in
+        the ``cap-ml`` layout."""
         light = self.c_prior == "hierarchical-f"
         m = numpyro.sample(H_M, dist.Uniform(0.0, 1.0))
         if light:
@@ -526,10 +568,14 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
             if light:
                 rho_kappa = numpyro.sample(H_RHO_KAPPA, dist.Uniform(0.0, 1.0))
                 kappa = numpyro.deterministic(H_KAPPA, strength_from_rho(rho_kappa))
-                concentration = kappa * jnp.ones((n_classes, n_classes - 1))
+            if light and self.shares == "non-centred":
+                cells = (n_classes, n_classes - 1)
+                gamma = numpyro.sample(H_SHARES_GAMMA, dist.Gamma(kappa + 1.0, 1.0).expand(cells).to_event(2))
+                exponential = numpyro.sample(H_SHARES_EXP, dist.Exponential(1.0).expand(cells).to_event(2))
+                shares = numpyro.deterministic(H_SHARES, noncentred_shares(gamma, exponential, kappa))
             else:
-                concentration = jnp.ones((n_classes, n_classes - 1))
-            shares = numpyro.sample(H_SHARES, dist.Dirichlet(concentration))
+                concentration = (kappa if light else 1.0) * jnp.ones((n_classes, n_classes - 1))
+                shares = numpyro.sample(H_SHARES, dist.Dirichlet(concentration))
         else:
             shares = jnp.ones((n_classes, 1))
         return numpyro.deterministic(P_C_COND_Y, hierarchical_rates(recalls, shares))
