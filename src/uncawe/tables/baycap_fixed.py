@@ -60,6 +60,7 @@ from uncawe.main import EXPERIMENT
 from uncawe.results import Results
 from uncawe.tables import baycap_h, eb_prior, estimand_gap, pushforward
 from uncawe.tables import main as main_tables
+from uncawe.tables.baycap_hf import RHAT_HIGH
 from uncawe.tables.common import METHOD_LATEX_LABELS
 from uncawe.tables.displacement import load_validation_counts, ordered, rate_matrix
 from uncawe.tables.estimand_gap import ACC_NAME, CLASSIFIER_ORDER, SEED, booktabs_clines, pair_rng
@@ -352,7 +353,7 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
     - ``scores``: mean AE, coverage, amplitude and Winkler score of the eleven methods;
     - ``cells``: per cell, the mean and median observed and predicted widening factor, the mean movement of the centre,
-      the mean mismatch, the pairs with divergent bags and with largest split-$\\hat R$ above $1.01$;
+      the mean mismatch, the pairs with divergent bags and with largest split-$\\hat R$ above ``RHAT_HIGH`` ($1.1$, as E2.8);
     - ``tests``: per test, the pairs where the method is significantly (Holm) lower and higher than its reference.
     """
     out = {"scores": [], "cells": [], "tests": []}
@@ -374,7 +375,7 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
                     "centre_move": float(sub[f"{cell}_centre_move"].mean()),
                     "mismatch": float(sub[f"{cell}_mismatch"].mean()),
                     "pairs_divergent": int((sub[f"{cell}_share_divergent"] > 0).sum()),
-                    "pairs_rhat_high": int((sub[f"{cell}_max_rhat"] > 1.01).sum()),
+                    "pairs_rhat_high": int((sub[f"{cell}_max_rhat"] > RHAT_HIGH).sum()),
                 }
             )
         tests = dict(key)

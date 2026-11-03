@@ -143,6 +143,13 @@ class FixedCTablesTest(unittest.TestCase):
         summary = bf.analysis_summary(self.table)
         self.assertEqual(set(summary), {"scores", "cells", "tests"})
         self.assertEqual(summary["scores"].iloc[0]["K"], "all")
+        # the threshold on the largest split-R-hat is that of E2.8
+        self.assertEqual(bf.RHAT_HIGH, 1.1)
+        table = self.table.copy()
+        table["KDEy-h_max_rhat"] = [1.05, 1.2]
+        cells = bf.analysis_summary(table)["cells"]
+        overall = cells.loc[(cells["K"] == "all") & (cells["cell"] == "KDEy-h")].iloc[0]
+        self.assertEqual(overall["pairs_rhat_high"], 1)
         for styler in (bf._realised_styler, bf._population_styler, bf._pushforward_styler, bf._tests_styler):
             latex = styler(self.table).to_latex()
             self.assertIn("wine", latex.lower())
