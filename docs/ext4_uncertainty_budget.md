@@ -111,25 +111,33 @@ with $d^{\text{pool}}_j$, not $d_j$. This is the main protocol of this extension
 
 *Intuition.* Every quantification-based estimate has the form "estimated prevalence times estimated per-class accuracy"; its error is wrong prevalence, plus wrong per-class accuracy, plus the luck of this particular bag.
 
-**Form of the estimate.** The accuracy of a table $T=C\operatorname{diag}(\pi)$ is its trace, $\sum_jC_{jj}\pi_j=d^\top\pi$. Every method considered here estimates accuracy as $\hat A=\sum_j\tilde\pi_j\tilde d_j$, with $\tilde\pi$ an estimate of $\pi^Q$ and $\tilde d$ an estimate of $d$ from $V$:
+**Accuracy as a sum over classes.** The table $T=C\operatorname{diag}(\pi)$ has entries $T_{ij}=C_{ij}\pi_j$: the probability that an instance is of class $\omega_j$ and is predicted as $\omega_i$. Accuracy is the probability that the prediction is right, i.e. the sum of the diagonal entries (the trace): $\sum_jT_{jj}=\sum_jC_{jj}\pi_j=d^\top\pi$. In words: the share of class $\omega_j$ times the accuracy within class $\omega_j$, summed over the classes.
+
+**Form of the estimate.** Every method considered here estimates accuracy as $\hat A=\sum_j\tilde\pi_j\tilde d_j$, with $\tilde\pi$ an estimate of $\pi^Q$ and $\tilde d$ an estimate of $d$ from $V$:
 
 - SQS-H: the mean accuracy of its bags is $\sum_j(n\hat\pi_j/n)\,\tilde d_j$, where $\tilde d_j$ is the fraction of the class-$\omega_j$ instances of $V$ that $h$ classifies correctly;
 - RQBS and SQS-B: the same for each draw $\hat\pi^{(r)}$, averaged over draws;
 - BayCAP and BayCAP-KDEy: $\sum_jC^{(r)}_{jj}\pi^{(r)}_j$ for each posterior draw, averaged over draws.
 
-**Derivation.** Add and subtract $\sum_j\pi^Q_j\tilde d_j$ and $\sum_j\pi^Q_jd_j$:
+**Derivation.** Adding and subtracting the same quantity does not change a value. We add and subtract two intermediate quantities: $\sum_j\pi^Q_j\tilde d_j$, the right prevalence with the estimated recalls, and $\sum_j\pi^Q_jd_j$, the right prevalence with the true recalls:
 
 $$
 \hat A-A(h,U)=\Big(\sum_j\tilde\pi_j\tilde d_j-\sum_j\pi^Q_j\tilde d_j\Big)+\Big(\sum_j\pi^Q_j\tilde d_j-\sum_j\pi^Q_jd_j\Big)+\Big(\sum_j\pi^Q_jd_j-A(h,U)\Big).
 $$
 
-The inner terms cancel, so the identity is exact for every bag:
+Each intermediate quantity appears once with $+$ and once with $-$, so the inner terms cancel and the right-hand side is again $\hat A-A(h,U)$. Collecting terms, the identity is exact for every bag:
 
 $$
 \hat A-A(h,U)=\underbrace{\sum_j(\tilde\pi_j-\pi^Q_j)\,\tilde d_j}_{e_1\ \text{prevalence}}+\underbrace{\sum_j\pi^Q_j(\tilde d_j-d_j)}_{e_2\ \text{rate matrix}}+\underbrace{d^\top\pi^Q-A(h,U)}_{e_3\ \text{finite target}}.
 $$
 
 For methods that average over draws, the identity holds for each draw and therefore for the average. The order of the add-and-subtract steps is a choice: the second-order cross term $\sum_j(\tilde\pi_j-\pi^Q_j)(\tilde d_j-d_j)$ is included in $e_1$ (because $e_1$ uses $\tilde d$, not $d$); the other order would move it into $e_2$.
+
+In words: $e_1$ is the error from the wrong prevalence, weighted by the estimated recalls; $e_2$ is the error from the wrong recalls, weighted by the right prevalence; $e_3$ is the error that remains even with $\pi^Q$ and $d$ known exactly, because the $n$ specific instances of the bag do not have exactly the population accuracy.
+
+**Worked example** (illustrative, computed by hand). Take $\pi^Q=(0.5,0.5)$, $\tilde\pi=(0.45,0.55)$, $d=(0.90,0.70)$, $\tilde d=(0.88,0.73)$ and a realised accuracy $A(h,U)=0.79$. Then $\hat A=0.45\cdot0.88+0.55\cdot0.73=0.7975$ and $\hat A-A(h,U)=0.0075$. The parts are $e_1=(-0.05)(0.88)+(0.05)(0.73)=-0.0075$, $e_2=0.5(-0.02)+0.5(0.03)=0.005$ and $e_3=d^\top\pi^Q-A(h,U)=0.80-0.79=0.01$, and indeed $-0.0075+0.005+0.01=0.0075$.
+
+**What the split does and does not say.** Being an identity, the split holds for every bag and every method whose estimate has the form $\sum_j\tilde\pi_j\tilde d_j$; it cannot be wrong. Its scientific content lies in what follows: the variance and the mean of each part (§T.4, §T.5), which depend on how the method obtains $\tilde\pi$ and $\tilde d$, and which parts each method's interval represents (§T.6, §T.7).
 
 **What is observable.** In an experiment the true prevalence $\pi^Q$ of the bag and the labels of the pool are known, but the population recalls $d$ are not. So $e_1$ is computable, while $e_2$ and $e_3$ are computable only after $d$ is replaced by $d^{\text{pool}}$, which moves part of $e_3$ into $e_2$ (§T.3). This is the basis of the oracle ladder of E4.1.
 
@@ -169,17 +177,29 @@ $e_3=e_P+e_3^b$ is the sampling variability of the **estimand**: it exists even 
 
 ## T.4 Variance of each part
 
-All variances below are first order in the estimation errors (delta method) and assume the paper's protocol: fixed class counts $n_j=n\pi^Q_j$, instances drawn with replacement from the pool. Two properties are used throughout: the variance of a binomial frequency, $\operatorname{Var}(k/m)=p(1-p)/m$ for $k\sim\operatorname{Bin}(m,p)$; and the variance of a weighted sum of independent variables, $\operatorname{Var}(\sum_ja_jX_j)=\sum_ja_j^2\operatorname{Var}(X_j)$.
+All variances below are first order in the estimation errors (delta method) and assume the paper's protocol: fixed class counts $n_j=n\pi^Q_j$, instances drawn with replacement from the pool. Two properties are used throughout; we derive them first.
 
-**$e_3^b$.** Given the pool, $c_j\sim\operatorname{Bin}(n_j,d^{\text{pool}}_j)$, independently across classes (§T.1). Hence
+**Property A: the variance of a frequency.** A Bernoulli variable $B$ equals $1$ with probability $p$ and $0$ otherwise. Its mean is $\mathbb E[B]=p$, and since $B^2=B$, also $\mathbb E[B^2]=p$; so $\operatorname{Var}(B)=\mathbb E[B^2]-\mathbb E[B]^2=p-p^2=p(1-p)$. A count of successes in $m$ independent trials is $k=B_1+\dots+B_m\sim\operatorname{Bin}(m,p)$; the variance of a sum of independent variables is the sum of their variances, so $\operatorname{Var}(k)=m\,p(1-p)$. Multiplying a variable by a constant $a$ multiplies its variance by $a^2$ (from the definition $\operatorname{Var}(X)=\mathbb E[(X-\mathbb E X)^2]$), so the frequency $k/m$ has
 
 $$
-\mathbb E[A(h,U)\mid\text{pool}]=\frac1n\sum_jn_jd^{\text{pool}}_j=\sum_j\pi^Q_jd^{\text{pool}}_j,
+\operatorname{Var}\Big(\frac km\Big)=\frac{m\,p(1-p)}{m^2}=\frac{p(1-p)}m.
+$$
+
+**Property B: the variance of a weighted sum of independent variables.** In general $\operatorname{Var}(\sum_ja_jX_j)=\sum_j\sum_ka_ja_k\operatorname{Cov}(X_j,X_k)$. If the $X_j$ are independent, $\operatorname{Cov}(X_j,X_k)=0$ for $j\ne k$, and $\operatorname{Cov}(X_j,X_j)=\operatorname{Var}(X_j)$, so
+
+$$
+\operatorname{Var}\Big(\sum_ja_jX_j\Big)=\sum_ja_j^2\operatorname{Var}(X_j).
+$$
+
+**$e_3^b$.** Given the pool, $c_j\sim\operatorname{Bin}(n_j,d^{\text{pool}}_j)$, independently across classes (§T.1). The realised accuracy is a weighted sum of the class frequencies: $A(h,U)=\frac1n\sum_jc_j=\sum_j\frac{n_j}n\cdot\frac{c_j}{n_j}=\sum_j\pi^Q_j\frac{c_j}{n_j}$. By linearity of the expectation, $\mathbb E[c_j/n_j\mid\text{pool}]=d^{\text{pool}}_j$, and by Property A, $\operatorname{Var}(c_j/n_j\mid\text{pool})=d^{\text{pool}}_j(1-d^{\text{pool}}_j)/n_j$. Hence, by Property B and $n_j=n\pi^Q_j$,
+
+$$
+\mathbb E[A(h,U)\mid\text{pool}]=\sum_j\pi^Q_jd^{\text{pool}}_j,
 \qquad
-\operatorname{Var}(e_3^b\mid\text{pool})=\frac1{n^2}\sum_jn_jd^{\text{pool}}_j(1-d^{\text{pool}}_j)\approx\frac1n\sum_j\pi^Q_jd_j(1-d_j),
+\operatorname{Var}(e_3^b\mid\text{pool})=\sum_j(\pi^Q_j)^2\frac{d^{\text{pool}}_j(1-d^{\text{pool}}_j)}{n\pi^Q_j}=\frac1n\sum_j\pi^Q_jd^{\text{pool}}_j(1-d^{\text{pool}}_j)\approx\frac1n\sum_j\pi^Q_jd_j(1-d_j),
 $$
 
-where the last step replaces $d^{\text{pool}}_j$ by $d_j$, a second-order change.
+where the last step replaces $d^{\text{pool}}_j$ by $d_j$, a second-order change. One factor $\pi^Q_j$ of the squared weight cancels against the sample size $n_j=n\pi^Q_j$ of the class.
 
 **$e_P$.** The pool's class $\omega_j$ is a random sample of $P_j$ instances of the population's class $\omega_j$, so the number of them that $h$ classifies correctly is $\operatorname{Bin}(P_j,d_j)$ and $d^{\text{pool}}_j$ is its frequency, independently across classes. With the constant weights $\pi^Q_j$,
 
@@ -195,13 +215,19 @@ $$
 
 The first term shrinks with $n$; the second does not. Their ratio for class $\omega_j$ is $n\pi^Q_j/P_j=n_j/P_j$, the number of times each pool instance of that class is used by one bag on average: with $n=1000$, $\pi^Q_j=1/2$ and $P_j=125$ the pool term is four times the bag term (illustrative). Under the paper's protocol, the luck of the pool is the larger part of the luck of the bag on every dataset whose pool is smaller than the bags.
 
-**$e_2$.** $\tilde d_j=k_j/\lvert V_j\rvert$, where $k_j\sim\operatorname{Bin}(\lvert V_j\rvert,d_j)$ is the number of class-$\omega_j$ validation instances that $h$ classifies correctly, independently across classes, so
+**$e_2$.** Model: the class-$\omega_j$ instances of $V$ are $\lvert V_j\rvert$ independent draws from the population of that class, each classified correctly by $h$ with probability $d_j$. Let $k_j$ be the number of them that $h$ classifies correctly; it counts the successes of $\lvert V_j\rvert$ independent trials, so $k_j\sim\operatorname{Bin}(\lvert V_j\rvert,d_j)$, independently across classes. The estimated recall is the frequency $\tilde d_j=k_j/\lvert V_j\rvert$: the count divided by the number of class-$\omega_j$ instances, not $d_j$ divided by a size. The sample size is $\lvert V_j\rvert$, not $\lvert V\rvert$, because a recall is measured only on the instances of its own class. By Property A,
+
+$$
+\mathbb E[\tilde d_j]=d_j,\qquad\operatorname{Var}(\tilde d_j)=\frac{d_j(1-d_j)}{\lvert V_j\rvert},
+$$
+
+and, since $e_2=\sum_j\pi^Q_j(\tilde d_j-d_j)$ with constant weights $\pi^Q_j$ and constant $d_j$, by Property B
 
 $$
 \operatorname{Var}(e_2)=\sum_j(\pi^Q_j)^2\operatorname{Var}(\tilde d_j)=\sum_j\frac{(\pi^Q_j)^2d_j(1-d_j)}{\lvert V_j\rvert}.
 $$
 
-This variance is over draws of $V$; for a given $V$, $e_2$ is a single number. The weights are squared here and in $e_P$, and not in $e_3^b$, because in $e_3^b$ the prevalence enters through the counts $n_j$. $V$ and the pool are independent, so the observable gap of §T.3 has $\operatorname{Var}(e_2+e_P)=\sum_j(\pi^Q_j)^2d_j(1-d_j)\big(1/\lvert V_j\rvert+1/P_j\big)$.
+This is a *sampling* variance: it describes how $\tilde d_j$ would scatter around the fixed $d_j$ if $V$ were drawn again and again; for a given $V$, $e_2$ is a single number. It applies to the methods that use the frequencies $\tilde d_j$ of $V$ directly (the SQS family); a method that obtains its recalls otherwise, as BayCAP does through a posterior, has an $e_2$ with a different mean and variance. The weights are squared here and in $e_P$, and not in $e_3^b$, because in $e_3^b$ the prevalence also enters through the sample sizes $n_j=n\pi^Q_j$, which cancels one factor, while $\lvert V_j\rvert$ and $P_j$ do not depend on $\pi^Q$. $V$ and the pool are independent, so the observable gap of §T.3 has $\operatorname{Var}(e_2+e_P)=\sum_j(\pi^Q_j)^2d_j(1-d_j)\big(1/\lvert V_j\rvert+1/P_j\big)$.
 
 **$e_1$, binary case with ACC.** Prevalence errors sum to zero, so $e_1=(\tilde\pi_1-\pi^Q_1)(\tilde d_1-\tilde d_0)$ and $\operatorname{Var}(e_1)\approx(d_1-d_0)^2\operatorname{Var}(\tilde\pi_1)$; the whole term vanishes when $d=\beta\mathbf 1$, the paper's condition for unbiased cross-validation (Eq. 2). Let the surrogate classifier have rates $S_{10}=P(\hat Y_s=\omega_1\mid Y=\omega_0)$ and $S_{11}$, estimated on $V$ as $\hat S$, and let $\hat p$ be the fraction of $U$ that it predicts as $\omega_1$. ACC returns
 
@@ -225,17 +251,19 @@ $$
 
 $e_1^U$ has the same structure as $e_3^b$ and $e_1^V$ the same structure as $e_2$, with the rates of the surrogate classifier in place of those of $h$, amplified by $1/(S_{11}-S_{10})^2$ (an ill-conditioned surrogate inflates both) and scaled by $(d_1-d_0)^2$. The multiclass case replaces these factors with the inverse of the surrogate's rate matrix and the vector $d$. With replacement, the surrogate's rates on the pool also differ from the population ones, which adds to $e_1^U$ a pool part of the same form as $e_P$; it is left out here, as a second-order effect for the quantifiers that read the surrogate only through $\hat p$.
 
-**Correlations.** Parts driven by different draws ($U$, $V$, the pool) are uncorrelated, because the three draws are independent. Within a group they can be correlated: $e_3^b$ and $e_1^U$ if $h$ and the surrogate tend to misclassify the same target instances, $e_2$ and $e_1^V$ if they tend to misclassify the same validation instances. The toy of Appendix A assumes $h$ and the surrogate conditionally independent given $Y$, which removes both correlations; on real data the oracle ladder measures them.
+**Correlations.** Parts driven by different draws ($U$, $V$, the pool) are uncorrelated, because the three draws are independent. Within a group they can be correlated: $e_3^b$ and $e_1^U$ if $h$ and the surrogate tend to misclassify the same target instances, $e_2$ and $e_1^V$ if they tend to misclassify the same validation instances. The toy of Appendix A assumes $h$ and the surrogate conditionally independent given $Y$, which removes both correlations; on real data the oracle ladder measures them. This assumption is doubtful on real data [new hypothesis]: `main` uses `PACC(MLP())` (`src/uncawe/experiments/methods.py`), whose surrogate is a separate MLP, so when $h$ is itself an MLP the two are likely to misclassify the same instances; and when the surrogate's rates are estimated on the same $V$ as $\tilde d$, $e_2$ and $e_1^V$ are computed from the same validation instances. A covariance of either sign then changes the budget of §T.5 by $2\operatorname{Cov}(e_2,e_1^V)$ (and $2\operatorname{Cov}(e_3^b,e_1^U)$), which can be of the same order as the variances.
 
 ## T.5 The budget
 
-Grouping the parts by source gives
+Two properties give the budget. First, the mean squared error of any error $X$ is its variance plus its squared mean: $\mathbb E[X^2]=\operatorname{Var}(X)+(\mathbb E X)^2$, which follows from the definition $\operatorname{Var}(X)=\mathbb E[X^2]-(\mathbb E X)^2$. Second, the variance of a sum of uncorrelated parts is the sum of their variances (Property B of §T.4 with all weights equal to $1$). Applied to $\hat A-A(h,U)=e_1^U+e_1^V+e_2+e_P+e_3^b$ and grouping the parts by source gives
 
 $$
 \operatorname{MSE}(\hat A)\approx\underbrace{\operatorname{Var}(e_3^b)+\operatorname{Var}(e_1^U)}_{\text{from }U,\ \propto1/n}+\underbrace{\operatorname{Var}(e_2)+\operatorname{Var}(e_1^V)+b_q^2}_{\text{from }V,\ \text{independent of }n}+\underbrace{\operatorname{Var}(e_P)}_{\text{from the pool},\ \text{independent of }n},
 $$
 
-where $b_q$ is the quantifier's systematic bias propagated to accuracy (contained in $e_1^V$, written separately because it does not average out over draws of $V$). The approximation is first order and drops the within-group correlations of §T.4.
+where $b_q$ is the quantifier's systematic bias propagated to accuracy (contained in $e_1^V$, written separately because it does not average out over draws of $V$). The approximation is first order and drops the within-group correlations of §T.4. The point of the budget is the scaling: as $n$ grows, only the first group shrinks.
+
+The form of the budget is general, since it follows from the identity of §T.2; the size and the mean of each part are not. They depend on how the method obtains $\tilde\pi$ and $\tilde d$: the variances above are those of a method that uses the frequencies of $V$ and a quantifier such as ACC; for a method with a prior on $C$ (BayCAP) or a different quantifier, the same parts have other variances and may have a nonzero mean.
 
 ## T.6 Which parts each method represents
 
@@ -271,7 +299,7 @@ $$
 \eta=\frac{\sigma^2_{\text{out}}}{\sigma^2_{\text{in}}},
 $$
 
-with $Z$ standard normal. Checks: $\eta=0$ gives $0.95$; $\eta\to\infty$ gives $0$.
+with $Z$ standard normal. Checks: $\eta=0$ gives $0.95$; $\eta=1$, a missing variance as large as the represented one, gives $2\Phi(1.386)-1\approx0.83$; $\eta\to\infty$ gives $0$.
 
 **Worked example: SQS-H with the true prevalence** (the oracle-$\pi$ reference). Its bags use the true counts, so $e_1=0$; it represents $e_3^b$ and misses $e_2$ and $e_P$. Its interval is approximately $\tilde d^\top\pi^Q\pm1.96\,\sigma_{3b}$: the width is right, the centre is off by $e_2+e_P$, because $\tilde d^\top\pi^Q=d^\top\pi^Q+e_2$ and $A(h,U)=d^\top\pi^Q-e_P-e_3^b$. Without the pool term, as in the toy of Appendix A, $\eta=\operatorname{Var}(e_2)/\operatorname{Var}(e_3^b)=r$, the design ratio
 
@@ -279,7 +307,7 @@ $$
 r=\frac{\sum_j(\pi^Q_j)^2d_j(1-d_j)/\lvert V_j\rvert}{\frac1n\sum_j\pi^Q_jd_j(1-d_j)},
 $$
 
-which reduces to $n\sum_j(\pi^Q_j)^2/\lvert V_j\rvert$ when $d_j(1-d_j)$ and $\lvert V_j\rvert$ are equal across classes. In the toy, the closed form $2\Phi(1.96/\sqrt{1+r})-1$ is close to the simulated coverage of the oracle-$\pi$ reference. With the pool term, $\eta$ gains $\operatorname{Var}(e_P)/\operatorname{Var}(e_3^b)$, which by §T.4 is the analogue of $r$ with $P_j$ in place of $\lvert V_j\rvert$; with $P_j\approx\lvert V_j\rvert$, as in the splits of `main`, the two are about equal and $\eta\approx2r$.
+which reduces to $n\sum_j(\pi^Q_j)^2/\lvert V_j\rvert$ when $d_j(1-d_j)$ and $\lvert V_j\rvert$ are equal across classes. In the toy, the closed form $2\Phi(1.96/\sqrt{1+r})-1$ is close to the simulated coverage of the oracle-$\pi$ reference: there $r=0.5\,n/n_s$, with $n_s$ validation instances per class, so $n=1000$ and $n_s=100$ give $r=5$ and a predicted coverage of $0.58$, against a simulated $0.50$ (flat $d$, Appendix A, toy). With the pool term, $\eta$ gains $\operatorname{Var}(e_P)/\operatorname{Var}(e_3^b)$, which by §T.4 is the analogue of $r$ with $P_j$ in place of $\lvert V_j\rvert$; with $P_j\approx\lvert V_j\rvert$, as in the splits of `main`, the two are about equal and $\eta\approx2r$.
 
 **Conditional on one $V$ and one pool.** The formula averages over draws of $V$ and of the pool. For a given $V$ and pool, $e_2+e_P$ is a constant and the coverage of the same interval is $\Phi(1.96-(e_2+e_P)/\sigma_{3b})-\Phi(-1.96-(e_2+e_P)/\sigma_{3b})$: close to $0.95$ if they happen to give a small offset, close to $0$ if $\lvert e_2+e_P\rvert\gg\sigma_{3b}$. Coverage measured on many bags from a single $V$ and a single pool therefore measures that $V$ and that pool, not the method; experiments must repeat over $V$ seeds, and the pool is shared by all the classifiers of a dataset, so their coverages are correlated.
 
@@ -317,6 +345,9 @@ The toy simulation (Appendix A), which draws its bags from the population and th
 - **Natural sampling.** Under natural (i.i.d.) sampling instead of APP, the class counts are multinomial, which adds a term $\frac1n\operatorname{Var}_{\pi^Q}(d_Y)$ to $e_3^b$. All experiments here keep APP, as in the paper.
 - **Quantifier bias** is not a variance and is represented by no method. If the completed methods still under-cover at large $n$, bias and the pool term are the likely causes; the oracle ladder separates bias from $e_1^V$ by repeating over $V$ seeds, and E4.c1 measures the pool term.
 - **Small $n$.** Rounding $n\pi^Q_j$ can leave classes empty; the conventions of [[ext1_metrics]] for rare and absent classes apply.
+- **"Represents a part" is an assumption** [new hypothesis]. The coverage rule of §T.7 assumes that each represented part is simulated at its true size. For BayCAP the spread along $e_1$ and $e_2$ is a posterior width, not a sampling variance, and it can be displaced by the prior ([[ext2_baycap]]). A failure of the rule can therefore come either from a wrong $\sigma_{\text{in}}$ or from a missing part; telling them apart needs a comparison of each method's own spread with $\sqrt{\sum_{\text{represented}}\sigma_k^2}$ before the comparison of its coverage with $\eta$.
+- **Measuring $e_1^V$ through a large bag from the pool** [new hypothesis]. The approximation of $\pi^\infty(V)$ in E4.1 uses a bag of $10^5$ instances drawn from the pool, which inherits the surrogate's rates on the pool; the measured $e_1^V$ then contains the surrogate's pool part set aside in §T.4, which may not be second order on small pools.
+- **$e_2$ and $e_P$ are not separately identifiable, and $e_P$ is one draw per pool** [new hypothesis]. Only their sum $\sum_j\pi^Q_j(\tilde d_j-d^{\text{pool}}_j)$ is observable; their split relies on the variances of §T.4. Within a dataset $e_P$ is a single realisation, so its variance is seen only across datasets, or across outer seeds if these re-draw the pool (to be checked in the splits of `main`).
 
 ## T.10 A protocol without replacement (background for E4.c2)
 
