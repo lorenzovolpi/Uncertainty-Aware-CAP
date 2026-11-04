@@ -28,7 +28,7 @@ JAX        ?= cpu
 ARGS       ?=
 LOCAL_OUT  ?= ./output
 PULL_DIRS  ?= tables plots
-LOG_LINES  ?= 50
+LOG_LINES  ?= 300
 FOLLOW     ?=
 RESULTS    ?= main binform predist eb_binary
 
