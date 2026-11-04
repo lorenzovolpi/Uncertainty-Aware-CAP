@@ -11,7 +11,7 @@ wheels/
 
 # Project
 output/
-# docs/
+docs/response*.md
 # tools
 # env.json
 # AGENTS.md
