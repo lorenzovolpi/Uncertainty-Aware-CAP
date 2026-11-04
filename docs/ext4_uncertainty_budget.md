@@ -19,14 +19,14 @@ This extension is the common frame for the method extensions: the realised-table
 | The protocol without replacement and its budget (§T.10) | [new hypothesis] |
 | Bound on $e_1$, width floors, variances and prior bias of the BayCAP family, label-free plug-ins (self-diagnosis, break-even $n^*$, completed intervals), finite-sample guaranteed intervals (§T.11–§T.15) | [new hypothesis], no experiment yet |
 | Toy simulation of the budget (`scripts/toys/ext4_budget.py`, Appendix A) | [implemented], run |
-| E4.1 (is the budget right?), E4.2 (does it explain coverage?), E4.3 (can it fix the intervals?), E4.4 (how much is due to the protocol?), with their parts; merged on 2026-11-04 from the former E4.1–E4.3 and candidates E4.c1–E4.c10 (§T.0) | [proposal], not implemented |
-| Candidate experiments | none at present |
+| E4.1 (is the budget right?), E4.2 (does it explain coverage?), E4.3 (can it fix the intervals?), with their parts; merged on 2026-11-04 from the former E4.1–E4.3 and candidates E4.c3–E4.c10 (§T.0) | [proposal], not implemented |
+| Candidate experiments E4.c1, E4.c2 (cause 4, question D of §T.0) | [proposal], not scheduled |
 
 The paper material of earlier versions (contributions, paper outline, figure plan) is in [[optional_extensions]] §9.
 
 # Experiments
 
-On 2026-11-04 the experiments and the candidate experiments of this extension were merged into four experiments, one for each of the four questions of §T.0; each experiment is split into parts, named with a letter. Old numbers map to new ones as follows (E4.1–E4.3 were reused with a new meaning):
+On 2026-11-04 the experiments and the candidate experiments of this extension were merged into experiments that answer the questions of §T.0 (questions A–C here; question D, the protocol, was first experiment E4.4 and is now studied by the candidates E4.c1 and E4.c2); each experiment is split into parts, named with a letter. Old numbers map to new ones as follows (E4.1–E4.3 were reused with a new meaning):
 
 | Old | New | Part |
 |---|---|---|
@@ -41,8 +41,7 @@ On 2026-11-04 the experiments and the candidate experiments of this extension we
 | E4.c7 | E4.2f | break-even bag size |
 | E4.c8 | E4.3a | budget-completed intervals |
 | E4.c10 | E4.3b | intervals with a finite-sample guarantee |
-| E4.c1 | E4.4a | the pool gap on stored results |
-| E4.c2 | E4.4b | with or without replacement |
+| E4.c1, E4.c2 | E4.c1, E4.c2 (E4.4a, E4.4b until demoted) | the pool gap; with or without replacement |
 
 **Settings of the grid study** (E4.1a, E4.2a, E4.2b; new study `target_size`). APP bags drawn with replacement from the test pool, as in `main`; all intervals scored against the realised table of each bag; measures as in the paper (AE, coverage, amplitude, Winkler score at $\alpha=0.05$) plus the error split of §T.2; metrics of [[ext1_metrics]]. Coverage is reported with a standard error clustered by $V$ seed, since bags sharing a $V$ are not independent; bags also share the pool, which is fixed per dataset, so the pool term $e_P$ of §T.3 is a constant offset within a dataset (§T.7). Dataset subset shared with [[ext2_baycap]]: binary and multiclass datasets covering small and large $\lvert V_j\rvert$, well- and ill-conditioned $C$, and one large-$K$ dataset; the pool sizes $P_j$ are recorded for every dataset. Classifiers: LR and RF (all five in the pilot). Grids:
 
@@ -50,9 +49,9 @@ On 2026-11-04 the experiments and the candidate experiments of this extension we
 - $\lvert V\rvert$ levels: the full $V$ and a stratified subsample of $1/4$ (and $1/16$ on the largest datasets), nested ($V_{1/16}\subset V_{1/4}\subset V$) and seeded; the split $L/V$, the classifier $h$, and the allocation $\rho$ used inside SQS-S are unchanged, so Extension 6 stays separate;
 - $S_V=5$ outer seeds for each subsampled $V$ level (for the full $V$, the seed changes the $L/V$ split; $h$ is retrained per seed).
 
-**Settings of the analyses on stored results** (E4.1b on real data, E4.1c, E4.2c, E4.2e, E4.2f, E4.3a, E4.4a). They work on the results of `main` ($\lvert U\rvert=1000$, vanilla accuracy, bags drawn with replacement), score every interval against the realised table of each bag (`true_cts`), and read the predictions and labels of $V$ and of the pool from the pretrain files; $\hat\pi$ and the method's recalls are read from the stored estimated tables (`estim_cts`) where a method stores them. Quantities that use the true prevalence or the labels of the pool are references or analyses, not methods. They share one set of label-free plug-ins (§T.14), computed once per (dataset, classifier) pair and bag.
+**Settings of the analyses on stored results** (E4.1b on real data, E4.1c, E4.2c, E4.2e, E4.2f, E4.3a). They work on the results of `main` ($\lvert U\rvert=1000$, vanilla accuracy, bags drawn with replacement), score every interval against the realised table of each bag (`true_cts`), and read the predictions and labels of $V$ and of the pool from the pretrain files; $\hat\pi$ and the method's recalls are read from the stored estimated tables (`estim_cts`) where a method stores them. Quantities that use the true prevalence or the labels of the pool are references or analyses, not methods. They share one set of label-free plug-ins (§T.14), computed once per (dataset, classifier) pair and bag, and the pool gap $\sum_j\pi^Q_j(\tilde d_j-d^{\text{pool}}_j)$ of each bag (§T.3), computed from the recalls of $h$ on $V$ and on the pool as a reference, which the analyses use to read the gaps that the plug-ins cannot explain.
 
-**Order.** First the analyses on stored results, starting with E4.4a, whose pool gap explains the residuals of the others; then E4.1c, E4.2f, E4.2e, E4.3a, E4.2c; then the toy of E4.1b; then the runs of E4.4b, which can also store the per-bag quantities needed by E4.2d and E4.3b; last the grid study (pilot, then E4.1a, E4.2a, E4.2b).
+**Order.** First the analyses on stored results: E4.1c, E4.2f, E4.2e, E4.3a, E4.2c; then the toy of E4.1b; then the re-run that stores the per-bag quantities needed by E4.2d and E4.3b; last the grid study (pilot, then E4.1a, E4.2a, E4.2b). If the candidates E4.c1 and E4.c2 are promoted, E4.c1 comes first and the runs of E4.c2 can also serve E4.2d and E4.3b.
 
 ## E4.1: Is the budget right?
 
@@ -123,7 +122,7 @@ On 2026-11-04 the experiments and the candidate experiments of this extension we
   - **Scatter, regime map:** coverage against $r$ (log scale), one panel per method, one point per (dataset, classifier, $\lvert U\rvert$, $\lvert V\rvert$), a dashed line at $0.95$.
   - **Scatter, coverage rule:** coverage against each method's $\eta$ (log scale), all methods in one panel, with the curve $2\Phi(1.96/\sqrt{1+\eta})-1$.
   - **Table, ranking:** mean Winkler rank per method, one column block per $\lvert U\rvert$ at the full $V$, oracle references as unranked columns (`tables/rank.py`).
-- **Decision rule (H1, H2, H4 of §T.8).** Three predictions of §T.8. **H1 (SQS-type intervals degrade with $n$):** at fixed $V$ the coverage of RQBS decreases monotonically with $\lvert U\rvert$ on most pairs, faster at the smaller $\lvert V\rvert$ level; if coverage is flat in $\lvert U\rvert$, $e_2$ and $e_1^V$ are negligible on real data. **H2 (BayCAP under-covers at small $n$ and large $V$):** the coverage of BayCAP with the population pushforward increases with $\lvert U\rvert$ at fixed $V$ and decreases with $\lvert V\rvert$ at fixed $\lvert U\rvert$; if it over-covers at every $r$, the fixed class counts of APP bags ([[ext2_baycap]] §T.6) or prior effects dominate. **H4 (completing the budget restores coverage):** the realised-table BayCAP and SQS-H with $U$ and $V$ resampling are within $\pm0.03$ of nominal at every $(\lvert U\rvert,\lvert V\rvert)$ level, while each partial method fails where its missing part dominates; if they fail at large $n$ as well, the quantifier bias $b_q$ or the pool term $e_P$, which no method represents, is the dominant fixed part, and the two are told apart by E4.4a. The cell $\lvert U\rvert=1000$, full $V$, seed of `main` reproduces the paper's setting (comparability check with `main`).
+- **Decision rule (H1, H2, H4 of §T.8).** Three predictions of §T.8. **H1 (SQS-type intervals degrade with $n$):** at fixed $V$ the coverage of RQBS decreases monotonically with $\lvert U\rvert$ on most pairs, faster at the smaller $\lvert V\rvert$ level; if coverage is flat in $\lvert U\rvert$, $e_2$ and $e_1^V$ are negligible on real data. **H2 (BayCAP under-covers at small $n$ and large $V$):** the coverage of BayCAP with the population pushforward increases with $\lvert U\rvert$ at fixed $V$ and decreases with $\lvert V\rvert$ at fixed $\lvert U\rvert$; if it over-covers at every $r$, the fixed class counts of APP bags ([[ext2_baycap]] §T.6) or prior effects dominate. **H4 (completing the budget restores coverage):** the realised-table BayCAP and SQS-H with $U$ and $V$ resampling are within $\pm0.03$ of nominal at every $(\lvert U\rvert,\lvert V\rvert)$ level, while each partial method fails where its missing part dominates; if they fail at large $n$ as well, the quantifier bias $b_q$ or the pool term $e_P$, which no method represents, is the dominant fixed part, and the two are told apart by the pool gap of each bag (settings above; its full study is candidate E4.c1). The cell $\lvert U\rvert=1000$, full $V$, seed of `main` reproduces the paper's setting (comparability check with `main`).
 - **Analysis.** Not run.
 
 ### E4.2b: robustness of the map
@@ -160,11 +159,11 @@ On 2026-11-04 the experiments and the candidate experiments of this extension we
 **Why.** §T.12 predicts that methods using instance-level confidences can have valid intervals narrower than the class-level floor, since $\frac1{n^2}\sum_iq_i(1-q_i)\le\sigma_{3b}^2$. This would explain where confidence-based baselines can beat the paper's methods, above all at small $n$.
 
 - **Design.**
-  - **Inputs:** a re-run of `main` on the pairs of the subset, with the same seeds and bags, that stores per bag $\sum_i\hat q_i(1-\hat q_i)$ and $\sum_i\hat q_i$ computed with the calibrated posteriors of $h$, and the calibration map used; the stored results of the methods; it can share the runs of E4.4b.
-  - **Varied:** dataset, classifier, method (the baselines DoC, O-LEAP, L-CBPE, QuAcc and the paper's methods); bag size, if run within E4.4b.
+  - **Inputs:** a re-run of `main` on the pairs of the subset, with the same seeds and bags, that stores per bag $\sum_i\hat q_i(1-\hat q_i)$ and $\sum_i\hat q_i$ computed with the calibrated posteriors of $h$, and the calibration map used; the stored results of the methods.
+  - **Varied:** dataset, classifier, method (the baselines DoC, O-LEAP, L-CBPE, QuAcc and the paper's methods)
   - **Measures:** per bag, the class-level floor, the instance-level floor, and each method's width and coverage against both; per pair, the ratio of the two floors against the calibration of $h$ (ECE) and the spread of the confidences within classes.
   - **Estimand:** the realised table of each bag; the instance-level floor uses the calibrated confidences, which are available without labels, but their calibration is checked on $V$.
-  - **Cost:** the re-run of the methods of `main` on the subset, or none beyond E4.4b if run within it.
+  - **Cost:** the re-run of the methods of `main` on the subset (shared with E4.3b, and with the runs of candidate E4.c2 if it is promoted).
 - **Representation.**
   - **Scatter:** width against the two floors, per bag, one panel per method.
   - **Scatter:** ratio of the floors against ECE, one point per pair.
@@ -177,12 +176,12 @@ On 2026-11-04 the experiments and the candidate experiments of this extension we
 - **Design.**
   - **Inputs:** the stored intervals of `main`; the plug-ins of $\sigma_{3b}^2$ and $\sigma_2^2$, and of $\sigma_{1U}^2$, $\sigma_{1V}^2$ (delta method for ACC-type quantifiers, or a bootstrap of $V$ for PACC); the predictions and labels of $V$.
   - **Varied:** dataset, classifier, method; for BayCAP on binary datasets, with and without the correlations of §T.13.
-  - **Measures:** per bag and method, $\sigma_{\text{in}}$ (half-width$/1.96$), $\hat\eta$ and the predicted coverage; per method and pair, the predicted coverage averaged over the bags against the observed coverage, the share of pairs where the prediction is above the observed coverage (as the upper bound requires), and the residual gap against the pool gap of E4.4a, which the diagnosis cannot see.
+  - **Measures:** per bag and method, $\sigma_{\text{in}}$ (half-width$/1.96$), $\hat\eta$ and the predicted coverage; per method and pair, the predicted coverage averaged over the bags against the observed coverage, the share of pairs where the prediction is above the observed coverage (as the upper bound requires), and the residual gap against the pool gap of each bag (settings above), which the diagnosis cannot see.
   - **Estimand:** the realised table of each bag.
   - **Cost:** none, except a bootstrap of $V$ if the delta-method plug-ins of $e_1$ are not available for PACC.
 - **Representation.**
   - **Scatter, calibration of the diagnosis:** observed against predicted coverage, one point per pair, one panel per method, with the identity line.
-  - **Scatter:** residual gap (predicted minus observed) against the pool gap of E4.4a.
+  - **Scatter:** residual gap (predicted minus observed) against the pool gap of each bag.
 - **Analysis.** Not run.
 
 ### E4.2f: break-even bag size
@@ -208,9 +207,9 @@ On 2026-11-04 the experiments and the candidate experiments of this extension we
 **Why.** §T.14 proposes widening each interval by the plug-ins of the parts it misses, and moving the centre of BayCAP by its estimated prior bias $-\sum_j\hat\pi_j(\bar d_j-\tilde d_j)$. These cheap post-processings approximate the methods that represent all the parts (SQS-H with $U$ and $V$ resampling, the realised-table BayCAP); if they restore coverage, the plug-ins are adequate, and where they do not, the remaining gap measures $e_P$ and $b_q$.
 
 - **Design.**
-  - **Inputs:** the stored results of `main`; the plug-ins of E4.2e; the pool gap of E4.4a.
+  - **Inputs:** the stored results of `main`; the plug-ins of E4.2e; the pool gap of each bag (settings above).
   - **Varied:** dataset, classifier; method and correction: `RQBS` and `RQBS` $+\hat\sigma_{1V}^2+\hat\sigma_2^2$; `BayesCAP` and `BayesCAP` $+\hat\sigma_{3b}^2$, with and without the bias shift; `BayesCAP-real` as the method that represents the parts by construction.
-  - **Measures:** per method and pair, coverage, amplitude, Winkler score and AE of the original and of the completed intervals; the paired comparison with `BayesCAP-real` (paired bootstrap of the Winkler score, as in [[ext2_baycap]] E2.3); the residual under-coverage against the pool gap of E4.4a and against the pool size $P_j$.
+  - **Measures:** per method and pair, coverage, amplitude, Winkler score and AE of the original and of the completed intervals; the paired comparison with `BayesCAP-real` (paired bootstrap of the Winkler score, as in [[ext2_baycap]] E2.3); the residual under-coverage against the pool gap of each bag and against the pool size $P_j$.
   - **Estimand:** `BayesCAP` targets the population table, its completed version and the other methods the realised table; every interval is scored against the realised table of each bag.
   - **Cost:** none.
 - **Representation.**
@@ -223,8 +222,8 @@ On 2026-11-04 the experiments and the candidate experiments of this extension we
 **Why.** §T.15 builds, for binary ACC, an interval that covers the realised accuracy with probability at least $1-\alpha$ for every sample size, without normality and including the quantifier bias. Its width is the price of a guarantee, and comparing it with the methods' widths shows how much their coverage relies on the normal approximation.
 
 - **Design.**
-  - **Inputs:** per bag, the ACC quantities $\hat p$ (share of the bag predicted as $\omega_1$ by the surrogate) and $\hat S$ on $V$, which `main` does not store: a re-run on the binary pairs that stores them, or a recomputation from the seeded bags and the surrogate's predictions; the runs of E4.4b for the protocol without replacement; the stored results of the methods.
-  - **Varied:** binary dataset, classifier; protocol (with replacement, with the pool terms added as a reference; without replacement, where the guarantee holds as derived); the split of $\alpha$ among the parts.
+  - **Inputs:** per bag, the ACC quantities $\hat p$ (share of the bag predicted as $\omega_1$ by the surrogate) and $\hat S$ on $V$, which `main` does not store: a re-run on the binary pairs that stores them, or a recomputation from the seeded bags and the surrogate's predictions; the stored results of the methods; the runs of candidate E4.c2 for the protocol without replacement, only if it is promoted.
+  - **Varied:** binary dataset, classifier; protocol: with replacement, as in `main`, with the pool terms added as a reference; without replacement, where the guarantee holds as derived, only if candidate E4.c2 is promoted; the split of $\alpha$ among the parts.
   - **Measures:** per pair and protocol, the coverage (expected at least $0.95$) and the width of the guaranteed interval; the ratio of its width to the widths of the methods, notably of SQS-H with $U$ and $V$ resampling.
   - **Estimand:** the realised table of each bag.
   - **Cost:** the re-run or recomputation of the ACC quantities; no NUTS.
@@ -233,43 +232,12 @@ On 2026-11-04 the experiments and the candidate experiments of this extension we
   - **Scatter:** width ratio (guaranteed over method) against coverage of the method, one point per pair and method.
 - **Analysis.** Not run.
 
-## E4.4: How much is due to the protocol?
-
-**Why.** Under the paper's protocol, every bag is re-drawn with replacement from one finite test pool, which adds the pool term $e_P$, shared by all the bags and classifiers of a dataset and represented by no method (§T.3, §T.6). E4.4a measures it on stored results; E4.4b removes it by drawing the bags without replacement (§T.10). The other experiments need it: the gaps that the plug-ins leave (E4.2e, E4.3a) are predicted to be the pool term measured here.
-
-### E4.4a: the pool gap on stored results
-
-**Why.** Extension 2 found on binary datasets a recall error that the prior of BayCAP does not explain, and its toy traces it to the pool (§T.3; [[ext2_baycap]] §T.13, Appendix A.3); the explanation is a hypothesis, and the pool gap $\sum_j\pi^{(b)}_j(\hat d_j-d^{\text{pool}}_j)$ belongs to the (dataset, classifier) pair, not to a method, so it can be measured once and compared with the shift of every method.
-
-- **Design.**
-  - **Inputs:** the stored results of `main` (all its methods, vanilla accuracy, $\lvert U\rvert=1000$) and of E2.5; the predictions and labels of $V$ and of the pool, from the pretrain files; no runs.
-  - **Varied:** dataset, classifier; method, for the comparison of the shifts.
-  - **Measures:** per pair, the pool sizes $P_j$, the plain recalls of $h$ on $V$ and on the pool, the pool gap averaged over the bags and its predicted standard deviation $\sqrt{\sum_j\pi_j^2d_j(1-d_j)(1/\lvert V_j\rvert+1/P_j)}$ (§T.4); per method, the shift (mean over the bags of $\hat A-A$), its correlation and slope against the pool gap across pairs, and a reference coverage of the interval moved by the pool gap of each bag (a reference, since it uses the labels of the pool); for the BayCAP methods, $\overline{R-R_0}$ of [[ext2_baycap]] E2.2 against the pool gap.
-  - **Estimand:** the realised table of each bag for the shifts and the coverage; the pool gap uses the labels of the pool, so it is an analysis and the moved interval a reference.
-  - **Cost:** none.
-- **Representation.**
-  - **Table:** per pair, $P_j$, the recalls on $V$ and on the pool, the pool gap and its predicted standard deviation.
-  - **Scatter:** shift of each method against the pool gap, one point per pair, one panel per method.
-- **Analysis.** Not run.
-
-### E4.4b: with or without replacement
-
-**Why.** Under the paper's protocol the pool term $e_P$ is an error that no method represents; if the bags are drawn without replacement, each bag is an i.i.d. sample of the target distribution and $e_P$ becomes part of a luck of the bag of the right size (§T.10). Comparing the two protocols on the same pools shows how much of each method's miscalibration the protocol creates, and how the error split changes.
-
-- **Design.**
-  - **Inputs:** a check of the pool sizes first; a bag size $N_d$ per dataset, the largest of $\{25,50,100,250,500\}$ not above $\min_jP_j/4$, so that every class fits without replacement at every UPP prevalence and the bags of a pair share at most a quarter of the variance of $e_3$, with the datasets whose $\min_jP_j$ is below $100$ excluded (`mammographic`, with about $124$ instances per class in its pool, stays in with $N_d=25$); UPP bags without replacement, a new option of the sampling of `main`; two runs of the methods of `main` at $N_d$, with and without replacement, with the same pools, $V$, $h$, prevalences and seeds, stored apart from `main`; the stored results of `main` at $N=1000$, which link the run with replacement at $N_d$ to the paper; the pool-gap measures of E4.4a for the run with replacement.
-  - **Varied:** protocol (with or without replacement); dataset, classifier, method; held fixed: pools, $V$, $h$, prevalences and seeds.
-  - **Measures:** per method and pair, coverage, amplitude, Winkler score and AE under both protocols, their differences (paired by bag index, since the bags share their prevalences and seeds), and the error split of §T.2 under both protocols; coverage both per pair and averaged over pairs, since without replacement a share $n_j/P_j$ of the luck of the bag is common to the bags of a pair (§T.10). Predicted (§T.10): the methods that represent $e_2$ and $e_3$ (BayCAP with the realised-table predictive) gain the most, more on small pools; those that miss $e_2$ (SQS-H, RQBS) gain too but stay short; BayCAP with the population pushforward gains where the pool term is large but stays short, since it still misses the luck of the bag; for the baselines (DoC, QuAcc, O-LEAP, L-CBPE) the change is measured, not predicted.
-  - **Estimand:** each method's own estimand (population table for `BayesCAP`, realised table for the others); every interval scored against the realised table of each bag.
-  - **Cost:** two runs of the methods of `main` at the bag size $N_d$ of each dataset, with and without replacement.
-- **Representation.**
-  - **Table:** per method, coverage, amplitude, Winkler score and AE under both protocols and their paired differences, overall and per dataset.
-  - **Scatter:** change of coverage against $n_j/P_j$, one point per pair, one panel per method.
-- **Analysis.** Not run.
-
 # Candidate experiments
 
-None at present: on 2026-11-04 all the candidates were merged into E4.1–E4.4 (see the mapping above). New candidates will be numbered from E4.c11.
+Ideas that came up in the discussions; they are not scheduled and are numbered E4.c<n>. One becomes an experiment of the main section only when the user decides so, and then it gets the next free number E4.<n> and a full specification. The two candidates below study cause 4 of [[ext2_baycap|Extension 2]] (the test pool shared by all bags) for every method and classifier. They formed experiment E4.4 ("How much is due to the protocol?", question D of §T.0) from 2026-11-04 until they were demoted again on the same day; they keep their original numbers, and the number E4.4 is not reused. New candidates are numbered from E4.c11.
+
+- **E4.c1, the pool gap on stored results.** *Why:* Extension 2 found on binary datasets a recall error that the prior of BayCAP does not explain, and its toy traces it to the pool (§T.3; [[ext2_baycap]] §T.13, Appendix A.3); the explanation is a hypothesis, and the pool gap $\sum_j\pi^{(b)}_j(\hat d_j-d^{\text{pool}}_j)$ belongs to the (dataset, classifier) pair, not to a method, so it can be measured once and compared with the shift of every method. *What it would show:* per pair, the pool sizes $P_j$, the plain recalls of $h$ on $V$ and on the pool, the pool gap averaged over the bags and its predicted standard deviation $\sqrt{\sum_j\pi_j^2d_j(1-d_j)(1/\lvert V_j\rvert+1/P_j)}$ (§T.4); per method, the shift (mean over the bags of $\hat A-A$), its correlation and slope against the pool gap across pairs, and a reference coverage of the interval moved by the pool gap of each bag (a reference, since it uses the labels of the pool); for the BayCAP methods, $\overline{R-R_0}$ of [[ext2_baycap]] E2.2 against the pool gap. *Needs:* the stored results of `main` (all its methods, vanilla accuracy, $\lvert U\rvert=1000$) and of E2.5; the predictions and labels of $V$ and of the pool, from the pretrain files; no runs.
+- **E4.c2, with or without replacement.** *Why:* under the paper's protocol the pool term $e_P$ is an error that no method represents; if the bags are drawn without replacement, each bag is an i.i.d. sample of the target distribution and $e_P$ becomes part of a luck of the bag of the right size (§T.10). Comparing the two protocols on the same pools shows how much of each method's miscalibration the protocol creates, and how the error split changes. *What it would show:* per method and pair, coverage, amplitude, Winkler score and AE under both protocols, their differences (paired by bag index, since the bags share their prevalences and seeds), and the error split of §T.2 under both protocols; coverage both per pair and averaged over pairs, since without replacement a share $n_j/P_j$ of the luck of the bag is common to the bags of a pair (§T.10). Predicted (§T.10): the methods that represent $e_2$ and $e_3$ (BayCAP with the realised-table predictive) gain the most, more on small pools; those that miss $e_2$ (SQS-H, RQBS) gain too but stay short; BayCAP with the population pushforward gains where the pool term is large but stays short, since it still misses the luck of the bag; for the baselines (DoC, QuAcc, O-LEAP, L-CBPE) the change is measured, not predicted. *Needs:* a check of the pool sizes first; a bag size $N_d$ per dataset, the largest of $\{25,50,100,250,500\}$ not above $\min_jP_j/4$, so that every class fits without replacement at every UPP prevalence and the bags of a pair share at most a quarter of the variance of $e_3$, with the datasets whose $\min_jP_j$ is below $100$ excluded (`mammographic`, with about $124$ instances per class in its pool, stays in with $N_d=25$); UPP bags without replacement, a new option of the sampling of `main`; two runs of the methods of `main` at $N_d$, with and without replacement, with the same pools, $V$, $h$, prevalences and seeds, stored apart from `main`; the stored results of `main` at $N=1000$, which link the run with replacement at $N_d$ to the paper; the pool-gap measures of E4.c1 for the run with replacement.
 
 # Theory
 
@@ -285,9 +253,9 @@ This part explains what the experiments need, step by step. We follow the notati
 
 **C. Can the budget fix the intervals? (E4.3; theory §T.14, §T.15).** If the missing parts explain the under-coverage, adding them back should restore it. E4.3a widens each interval by the plug-ins of the parts it misses, and moves BayCAP's centre by its estimated prior bias, and compares the results with `BayesCAP-real`, which represents those parts by construction. E4.3b builds intervals with a finite-sample guarantee (binary ACC), the conservative end of the scale: they should cover at least $1-\alpha$ at every size, and their width measures the price of not relying on the normal approximation. What remains after the corrections measures the parts that have no label-free plug-in: the pool term $e_P$ and the quantifier bias $b_q$.
 
-**D. How much is due to the protocol? (E4.4; theory §T.1, §T.3, §T.10).** In the paper's protocol all the bags of a dataset are re-drawn with replacement from one finite test pool, which adds the pool term $e_P$: shared by all bags and classifiers of a dataset, not shrinking with $\lvert U\rvert$, and represented by no method. E4.4a measures the observable pool gap $\sum_j\pi^Q_j(\tilde d_j-d^{\text{pool}}_j)$ on stored results and compares it with the shift of every method (cause 4 of [[ext2_baycap|Extension 2]]). E4.4b compares the protocols with and without replacement on the same pools: without replacement, the pool term becomes part of the luck of a fresh bag, so the methods that represent all the other parts should become calibrated. D is needed to read A–C: the gaps left by the plug-ins in B and C are predicted to be the pool term measured here.
+**D. How much is due to the protocol? (candidates E4.c1, E4.c2; theory §T.1, §T.3, §T.10).** This question is not scheduled: it was experiment E4.4 and was demoted to candidates on 2026-11-04. In the paper's protocol all the bags of a dataset are re-drawn with replacement from one finite test pool, which adds the pool term $e_P$: shared by all bags and classifiers of a dataset, not shrinking with $\lvert U\rvert$, and represented by no method. Candidate E4.c1 would measure the observable pool gap $\sum_j\pi^Q_j(\tilde d_j-d^{\text{pool}}_j)$ on stored results and compare it with the shift of every method (cause 4 of [[ext2_baycap|Extension 2]]); candidate E4.c2 would compare the protocols with and without replacement on the same pools: without replacement, the pool term becomes part of the luck of a fresh bag, so the methods that represent all the other parts should become calibrated. Without D, A–C still read the gaps left by the plug-ins through the pool gap of each bag, computed as a reference in the analyses on stored results; D would study it in full.
 
-**How they depend on each other.** E4.4a comes first, since its pool gap explains the residuals of every other analysis. E4.1c, E4.2c, E4.2e, E4.2f and E4.3a then run on the stored results of `main`, with one shared set of plug-ins. E4.1b needs a toy simulation. The runs of E4.4b can also store the per-bag quantities that E4.2d (confidence summaries) and E4.3b (ACC quantities) need. The grid study of E4.1a, E4.2a and E4.2b is the most expensive and comes last, informed by the earlier results.
+**How they depend on each other.** E4.1c, E4.2c, E4.2e, E4.2f and E4.3a run first, on the stored results of `main`, with one shared set of plug-ins and the pool gap of each bag as a reference. E4.1b needs a toy simulation. E4.2d (confidence summaries) and E4.3b (ACC quantities) need a re-run that stores per-bag quantities; if candidate E4.c2 is promoted, its runs can store them. The grid study of E4.1a, E4.2a and E4.2b is the most expensive and comes last, informed by the earlier results.
 
 ## T.1 Setting, protocol and estimand
 
@@ -578,14 +546,14 @@ The toy simulation (Appendix A), which draws its bags from the population and th
 - **$\pi^Q$ and $C$ are dependent in BayCAP's posterior**, through the observed target predictions $n^t\approx n\,C\pi^Q$. The budget ignores this covariance; the oracle ladder measures it implicitly.
 - **Nonlinear metrics.** For macro-F1 the split of §T.2 does not hold exactly and the budget holds only to first order (delta method). For macro-K, which depends on $\pi^Q$ only weakly ([[ext1_metrics]]), $e_1$ should be small and $e_2$, $e_P$, $e_3^b$ should dominate; this is a sharp test of the budget.
 - **Natural sampling.** Under natural (i.i.d.) sampling instead of APP, the class counts are multinomial, which adds a term $\frac1n\operatorname{Var}_{\pi^Q}(d_Y)$ to $e_3^b$. All experiments here keep APP, as in the paper.
-- **Quantifier bias** is not a variance and is represented by no method. If the completed methods still under-cover at large $n$, bias and the pool term are the likely causes; the oracle ladder separates bias from $e_1^V$ by repeating over $V$ seeds, and E4.4a measures the pool term.
+- **Quantifier bias** is not a variance and is represented by no method. If the completed methods still under-cover at large $n$, bias and the pool term are the likely causes; the oracle ladder separates bias from $e_1^V$ by repeating over $V$ seeds, and E4.c1 measures the pool term.
 - **Small $n$.** Rounding $n\pi^Q_j$ can leave classes empty; the conventions of [[ext1_metrics]] for rare and absent classes apply.
 - **When first order fails.** The first-order approximation of §T.4 (Property C) needs small errors. It can fail with small $\lvert V_j\rvert$, $n$ or $P_j$ (rare classes), where the dropped products are no longer negligible; with an ill-conditioned surrogate, where $S_{11}-S_{10}$ is close to $0$, ACC is strongly curved and $\hat\pi$ can have heavy tails that the delta method underestimates; and near the vertices of the simplex, where quantifiers clip $\hat\pi$, which is not a smooth operation. In the toy of Appendix A the coverage rule is least accurate at large $r$, where the normal approximation for $e_2$ is coarsest.
 - **"Represents a part" is an assumption** [new hypothesis]. The coverage rule of §T.7 assumes that each represented part is simulated at its true size. For BayCAP the spread along $e_1$ and $e_2$ is a posterior width, not a sampling variance, and it can be displaced by the prior ([[ext2_baycap]]). A failure of the rule can therefore come either from a wrong $\sigma_{\text{in}}$ or from a missing part; telling them apart needs a comparison of each method's own spread with $\sqrt{\sum_{\text{represented}}\sigma_k^2}$ before the comparison of its coverage with $\eta$.
 - **Measuring $e_1^V$ through a large bag from the pool** [new hypothesis]. The approximation of $\pi^\infty(V)$ in E4.1a uses a bag of $10^5$ instances drawn from the pool, which inherits the surrogate's rates on the pool; the measured $e_1^V$ then contains the surrogate's pool part set aside in §T.4, which may not be second order on small pools.
 - **$e_2$ and $e_P$ are not separately identifiable, and $e_P$ is one draw per pool** [new hypothesis]. Only their sum $\sum_j\pi^Q_j(\tilde d_j-d^{\text{pool}}_j)$ is observable; their split relies on the variances of §T.4. Within a dataset $e_P$ is a single realisation, so its variance is seen only across datasets, or across outer seeds if these re-draw the pool (to be checked in the splits of `main`).
 
-## T.10 A protocol without replacement (background for E4.4b)
+## T.10 A protocol without replacement (background for E4.c2)
 
 *Intuition:* a bag re-drawn with replacement from a small pool repeats the pool's peculiarities in every bag. If each bag instead takes distinct instances of the pool, chosen at random, then the bag is just a random sample of the population, as a deployment sample would be: the pool's luck does not disappear, but it becomes part of the bag's own luck, at the size every method that simulates a bag already assumes.
 
@@ -607,7 +575,7 @@ $$
 
 Adding the variance $d_j(1-d_j)/P_j$ of the pool's recall (§T.4), by the law of total variance, gives $d_j(1-d_j)/n_j$: the two terms $\pm1/P_j$ cancel, and the total is the variance of a fresh bag, as the argument above showed. So without replacement the pool term is still there, but it no longer adds to the luck of the bag: it is a share $n_j/P_j$ of it. With replacement, by contrast, the bag part is $d_j(1-d_j)/n_j$ and the pool part adds $d_j(1-d_j)/P_j$ on top (§T.4).
 
-**What this predicts for the methods** (new hypotheses, for E4.4b). Every method that represents the luck of the bag at the binomial size (§T.6) now represents $e_P$ as well, because it is part of that luck:
+**What this predicts for the methods** (new hypotheses, for E4.c2). Every method that represents the luck of the bag at the binomial size (§T.6) now represents $e_P$ as well, because it is part of that luck:
 
 - the methods that represent $e_3^b$, $e_1$ and $e_2$ (realised-table BayCAP, SQS-H with $U$ and $V$ resampling) have $\eta=0$ and should be near nominal; with replacement they miss $e_P$, so the gain should be largest where $n_j/P_j$ is large, on small pools;
 - the methods that represent $e_3^b$ but not $e_2$ (SQS-H, RQBS) lose the $\sigma_P^2$ term of their $\eta$ and gain coverage, but still miss $e_2$ and $e_1^V$;
@@ -894,12 +862,12 @@ What the toy shows:
 - the realised-table BayCAP and SQS-H with $U$ and $V$ resampling stay between $0.88$ and $0.98$ in every row (H4 of E4.2a); the realised-table BayCAP dips to $0.88$–$0.92$ at $n_s=100$ and large $n$ with flat $d$, a residual not investigated here;
 - the paper's SQS-H runs at $n=1000$; in the toy, the regime of $r$ where SQS-H covers well ($r\lesssim0.2$) needs about five validation instances per class for every target instance of that class.
 
-What is not known: whether real quantifiers (PACC with a cross-validated surrogate), multiclass problems and real validation sizes reproduce these trends, how large the quantifier bias $b_q$ is, and how much the pool term, absent from the toy, adds on the datasets of `main`. The paper's datasets have $\lvert V\rvert$ equal to $35\%$ of the dataset and pools of $30\%$, so $r$ and $n/P_j$ at $\lvert U\rvert=1000$ vary widely across them; E4.2a measures where each dataset falls, and E4.4a the pool term.
+What is not known: whether real quantifiers (PACC with a cross-validated surrogate), multiclass problems and real validation sizes reproduce these trends, how large the quantifier bias $b_q$ is, and how much the pool term, absent from the toy, adds on the datasets of `main`. The paper's datasets have $\lvert V\rvert$ equal to $35\%$ of the dataset and pools of $30\%$, so $r$ and $n/P_j$ at $\lvert U\rvert=1000$ vary widely across them; E4.2a measures where each dataset falls, and E4.c1 the pool term.
 
 ## B. Relation to other extensions
 
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics; macro-K is a sharp test of the budget (small $e_1$).
-- **[[ext2_baycap|Extension 2]]**: its estimand gap is the term $e_3$; its realised-table predictive is one of the completed methods (`BayesCAP-real`). Its cause 4 is the pool term $e_P$ of §T.3: Extension 2 explains it for BayCAP (§T.13 and Appendix A.3 there), and its study across methods (E4.4a, E4.4b, §T.10) is here. Both studies share the dataset subset and the BayCAP draws.
+- **[[ext2_baycap|Extension 2]]**: its estimand gap is the term $e_3$; its realised-table predictive is one of the completed methods (`BayesCAP-real`). Its cause 4 is the pool term $e_P$ of §T.3: Extension 2 explains it for BayCAP (§T.13 and Appendix A.3 there), and its study across methods (E4.c1, E4.c2, §T.10) is here. Both studies share the dataset subset and the BayCAP draws.
 - **Extension 6** ([[extensions]] §6): varies the allocation $\rho$ at fixed $\lvert V\rvert$; here $\lvert V\rvert$ is subsampled at fixed allocation. A factorial $\rho\times\lvert V\rvert$ is out of scope.
 - **[[ext3_posterior_propagation|Extension 3]]**: its methods (SQS-B, BayCAP-KDEy in both pushforwards) are placed in the table of §T.6 and enter E4.2a with the same implementations; Extension 3 itself evaluates them only on the protocol of `main`, so their coverage there includes the pool term.
 - **[[extensions_to_evaluate]] A**: promoted into this extension (§T.2–§T.5).

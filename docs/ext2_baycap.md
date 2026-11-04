@@ -23,7 +23,7 @@ BayCAP's interval describes the accuracy that the classifier has *on average* ov
 | E2.9, BayCAP-Hfn: BayCAP-Hf with the shares of the mistakes sampled in a non-centred form, the same model, realised pushforward, on the pairs of `main` (§T.17; work-plan card WP-12; `shares="non-centred"` of `methods/baycap.py`, `tables/baycap_hfn.py`, `plots/baycap_hfn.py`) | [run], pilot only ($4$ pairs; full run not done, user decision), analysis below |
 | Candidate experiments E2.c1, E2.c2, E2.c7 | [proposal], not scheduled |
 | The three candidate causes of the displacement (prior on $C$, conditioning of $C$, difficulty of the problem) | [new hypothesis], examined by E2.2 |
-| Cause 4, a difference between $V$ and the test pool shared by all bags | [new hypothesis], explained in §T.13 and reproduced by a toy (Appendix A.3); its study across all methods is in [[ext4_uncertainty_budget|Extension 4]] (§T.3, §T.10, candidates E4.4a and E4.4b) |
+| Cause 4, a difference between $V$ and the test pool shared by all bags | [new hypothesis], explained in §T.13 and reproduced by a toy (Appendix A.3); its study across all methods is in [[ext4_uncertainty_budget|Extension 4]] (§T.3, §T.10, candidates E4.c1 and E4.c2) |
 
 The paper-related material of earlier versions (contributions, hypotheses, paper outline, figure plan) has been removed for now; the last version that contains it is commit `62d3ca0`.
 
@@ -906,7 +906,7 @@ illustrative $0.024$ at $\pi=(1/2,1/2)$ and $0.034$ at $\pi=(1,0)$ for $r_j=0.83
 
 **What the toy shows** (Appendix A.3). With the uniform prior, the realised coverage falls from $0.96$ for an infinite pool to $0.85$ for a pool of the size of `mammographic` and $0.62$ for $25$ instances per class; a reference interval that adds the pool's own sampling error, $g_j\sim\operatorname{Binomial}(P_j,r_j)/P_j$, which BayCAP cannot compute since it does not know $P_j$, restores $0.94$–$0.95$ at every pool size. The spread of the pair-level shift matches $\sqrt{\sum_j\frac14r_j(1-r_j)(1/n_j+1/P_j)}$, and the shift follows the gap $\overline{\sum_j\pi_j(\tilde r_j-g_j)}$ with correlation $0.98$–$0.99$. Shifts of the same sign on all the classifiers of a dataset are more frequent than for independent classifiers, but they appear also with an infinite pool, because $V$ is shared as well: they show that one shared sample is atypical, not which one.
 
-**Where it is studied.** The pool term affects every method that learns the rates of $h$ from $V$, not only BayCAP, so it is studied in [[ext4_uncertainty_budget|Extension 4]] (moved there on 2026-10-29): the term $e_P$ of its uncertainty budget (§T.3–§T.4 there), the two readings of cause 4 (a protocol artefact, or a finite-pool estimand), a protocol that draws the bags without replacement and makes each bag a fresh sample (§T.10 there), a check of the pool gap on stored results (E4.4a) and a comparison of the two protocols (E4.4b).
+**Where it is studied.** The pool term affects every method that learns the rates of $h$ from $V$, not only BayCAP, so it is studied in [[ext4_uncertainty_budget|Extension 4]] (moved there on 2026-10-29): the term $e_P$ of its uncertainty budget (§T.3–§T.4 there), the two readings of cause 4 (a protocol artefact, or a finite-pool estimand), a protocol that draws the bags without replacement and makes each bag a fresh sample (§T.10 there), a check of the pool gap on stored results (E4.c1) and a comparison of the two protocols (E4.c2).
 
 ## T.14 The hierarchical prior and its screens (E2.6)
 
@@ -1282,7 +1282,7 @@ Limits: the prevalences of the bags are known, so the toy does not include the e
 
 - **[[ext5_baycap_priors_tempering|Extension 5]]**: priors (on $\pi^Q$ and on $C$) and tempering of BayCAP (temperature $\tau$); it compares tempering with the realised-table predictive and studies priors on $C$ that avoid the shift of §T.5, such as $\operatorname{Dir}(1/K)$; the empirical-Bayes prior of E2.4 is tested here, because it is the fix suggested by E2.2.
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics.
-- **[[ext4_uncertainty_budget|Extension 4]]**: the estimand gap is its finite-target term $e_3$, and cause 4 its pool term $e_P$, studied there for all methods (§T.10, E4.4a, E4.4b); its regime map varies $\lvert U\rvert$ and $\lvert V\rvert$.
+- **[[ext4_uncertainty_budget|Extension 4]]**: the estimand gap is its finite-target term $e_3$, and cause 4 its pool term $e_P$, studied there for all methods (§T.10, E4.c1, E4.c2); its regime map varies $\lvert U\rvert$ and $\lvert V\rvert$.
 - **[[extensions_to_evaluate#B. Transductive BayCAP and the link to CBPE [new]|Proposal B]]**: keeps the soft-posterior (CBPE mixture) variant of the realised-table predictive.
 - **[[ext3_posterior_propagation|Extension 3]]**: BayCAP-KDEy also targets a population table, so the estimand gap applies to it; Extension 3 applies the realised-table predictive of §T.3 to it (E3.1).
 - **[[optional_extensions]]**: §1 covers post-hoc interval rescaling.
