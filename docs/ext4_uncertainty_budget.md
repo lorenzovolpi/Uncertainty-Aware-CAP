@@ -17,6 +17,7 @@ This extension is the common frame for the method extensions: the realised-table
 | SQS-B and the realised pushforward of BayCAP-KDEy ([[ext3_posterior_propagation]]) | [proposal] |
 | Error split, budget with the pool term, coverage rule and ratios $\eta$, $r$, oracle ladder, SQS-H with $U$ and $V$ resampling | [new hypothesis] |
 | The protocol without replacement and its budget (§T.10) | [new hypothesis] |
+| Bound on $e_1$, width floors, variances and prior bias of the BayCAP family, label-free plug-ins (self-diagnosis, break-even $n^*$, completed intervals), finite-sample guaranteed intervals (§T.11–§T.15) | [new hypothesis], no experiment yet |
 | Toy simulation of the budget (`scripts/toys/ext4_budget.py`, Appendix A) | [implemented], run |
 | E4.1 budget validation, E4.2 regime map, E4.3 robustness (study `target_size`) | [proposal], not implemented |
 | Candidate experiments E4.c1, E4.c2 (cause 4) | [proposal], not scheduled |
@@ -300,7 +301,7 @@ The form of the budget is general, since it follows from the identity of §T.2; 
 **What is general and what depends on the method.** The budget is a common frame, but only its structure is shared by all methods:
 
 - **General.** For every method, adding and subtracting $d^\top\pi^Q$ gives $\hat A-A(h,U)=(\hat A-d^\top\pi^Q)+e_3$, and $e_3=e_P+e_3^b$ depends only on the estimand and the protocol, not on the method. For the methods of the form $\hat A=\sum_j\tilde\pi_j\tilde d_j$ (the SQS family and the BayCAP family), the estimator error splits further into $e_1^U+e_1^V+e_2$ (§T.2, §T.3). The baselines of the paper (DoC, QuAcc, O-LEAP, L-CBPE) produce no $\tilde\pi$ and $\tilde d$, so for them only the two-part split exists. The split is exact for vanilla accuracy, which is linear in the table, and first order for nonlinear metrics (§T.9).
-- **Depends on how the accuracy is estimated.** The variances of the parts: those of §T.4 are those of a method that uses the frequencies of $V$ and a quantifier such as ACC; BayCAP obtains its recalls from a posterior, and each quantifier (ACC on a surrogate, BayesianCC on $h$, KDEy) has its own $\operatorname{Var}(e_1^U)$ and $\operatorname{Var}(e_1^V)$. The means of the parts: the quantifier bias $b_q$, and a prior on $C$, which can give $e_2$ a nonzero mean that does not average out over draws of $V$. The within-source correlations of §T.4, which depend on whether the quantifier and $h$ share predictions and validation instances.
+- **Depends on how the accuracy is estimated.** The variances of the parts: those of §T.4 are those of a method that uses the frequencies of $V$ and a quantifier such as ACC; BayCAP obtains its recalls from a posterior, and each quantifier (ACC on a surrogate, BayesianCC on $h$, KDEy) has its own $\operatorname{Var}(e_1^U)$ and $\operatorname{Var}(e_1^V)$. The means of the parts: the quantifier bias $b_q$, and a prior on $C$, which can give $e_2$ a nonzero mean that does not average out over draws of $V$ (§T.13). The within-source correlations of §T.4, which depend on whether the quantifier and $h$ share predictions and validation instances.
 - **Depends on the interval.** Which parts the method's samples simulate (the table below). Two methods with the same point estimate, hence the same split, can have different coverage, as BayCAP and the realised-table BayCAP do.
 - **Depends on the protocol, for all methods alike.** With replacement, $e_P$ adds to $e_3^b$; without replacement, it is part of the luck of a fresh bag (§T.10).
 
@@ -419,6 +420,204 @@ Adding the variance $d_j(1-d_j)/P_j$ of the pool's recall (§T.4), by the law of
 **Coverage per pair and over pairs.** Without replacement, the bags of a pair are calibrated on average over the draws of the pool, but given the pool they share the part $e_P$ of their luck, a share $n_j/P_j$ of its variance. Coverage measured on the $100$ bags of one pair is therefore still partly one test of the pool, as it is one test of $V$ (§T.7); it is an unbiased estimate of nominal coverage only when averaged over pairs with different pools, and per pair it is closer to nominal the smaller $n_j/P_j$ is. Choosing $n\le\min_jP_j/4$ keeps this share below a quarter for every class.
 
 **Two readings of cause 4.** If target bags are fresh samples, as in a deployment, the pool term belongs to the evaluation protocol, which re-draws many large bags from a small pool; the protocol without replacement removes it as a separate error. If the deployment really is many bags from one finite pool, the estimand is the pool's own table, whose uncertainty given $C$ a method cannot know without $P_j$: a reference that adds the pool's sampling error, $d^{\text{pool}}_j\sim\operatorname{Bin}(P_j,r_j)/P_j$ for each draw $r_j$ of a recall, restores coverage in the toy of [[ext2_baycap]] Appendix A.3, but needs $P_j$ and the knowledge that the bags come from a pool, so it is a reference, not a method. A further effect, a new hypothesis not checked: with replacement, the target likelihood of BayCAP treats the $n$ instances of a bag as independent while they are repetitions of $P_j$ instances, so it overstates the information of the bag; [[ext2_baycap]] E2.4 found that the target bag barely moves $C$, so the effect would be mostly on $\pi^Q$.
+
+## T.11 A bound on the prevalence part
+
+§T.11–§T.15 come from a discussion of what the budget can be used for (2026-11-04), not from an experiment of the main section. All their results are new hypotheses; candidate experiments will be attached to them.
+
+*Intuition.* A wrong prevalence changes the estimated accuracy only because the classes have different recalls: giving too much weight to a class matters only if that class is easier or harder for $h$ than the others. So the damage is at most "how much weight was moved" times "how different the recalls are".
+
+**Claim.** Let $\tilde\pi$ and $\pi^Q$ be two prevalence vectors (non-negative entries summing to $1$) and $\tilde d$ a vector of recalls. Write $\lVert u\rVert_1=\sum_j\lvert u_j\rvert$ for the $L_1$ norm of a vector $u$. Then
+
+$$
+\lvert e_1\rvert=\Big\lvert\sum_j(\tilde\pi_j-\pi^Q_j)\tilde d_j\Big\rvert\le\tfrac12\lVert\tilde\pi-\pi^Q\rVert_1\cdot\Big(\max_j\tilde d_j-\min_j\tilde d_j\Big).
+$$
+
+**Derivation.**
+
+1. Write $u_j=\tilde\pi_j-\pi^Q_j$. Both vectors sum to $1$, so $\sum_ju_j=1-1=0$.
+2. Split the classes into those with $u_j>0$ and those with $u_j<0$. Since the $u_j$ sum to $0$, the positive ones and the negative ones have the same total size: $\sum_{u_j>0}u_j=\sum_{u_j<0}\lvert u_j\rvert$. The two totals add up to $\lVert u\rVert_1$, so each is $\frac12\lVert u\rVert_1$.
+3. Then $e_1=\sum_ju_j\tilde d_j=\sum_{u_j>0}u_j\tilde d_j-\sum_{u_j<0}\lvert u_j\rvert\tilde d_j$.
+4. In the first sum every $\tilde d_j$ is at most $\max\tilde d$; in the second every $\tilde d_j$ is at least $\min\tilde d$. Replacing them can only increase the first sum and decrease what is subtracted, so $e_1\le\frac12\lVert u\rVert_1\max\tilde d-\frac12\lVert u\rVert_1\min\tilde d$.
+5. Exchanging the roles of $\max$ and $\min$ gives $e_1\ge-\frac12\lVert u\rVert_1(\max\tilde d-\min\tilde d)$. Together, the claim.
+
+The bound is tight: equality holds when all the prevalence error moves weight from the class with the lowest recall to the class with the highest. In the binary case $\frac12\lVert u\rVert_1=\lvert\tilde\pi_1-\pi^Q_1\rvert$ and the bound is the identity $e_1=(\tilde\pi_1-\pi^Q_1)(\tilde d_1-\tilde d_0)$ of §T.4 in absolute value, so it is an equality. The same derivation bounds the difference between the accuracies of any two prevalence vectors $\pi,\pi'$ with the same recalls: $\lvert\sum_j(\pi_j-\pi'_j)\tilde d_j\rvert\le\frac12\lVert\pi-\pi'\rVert_1(\max\tilde d-\min\tilde d)$.
+
+**Which methods it applies to.** The derivation uses only two facts: the method's estimate has the form $\sum_j\tilde\pi_j\tilde d_j$, and $\tilde\pi$ is a prevalence vector. So it holds for both families of the paper:
+
+- **SQS-H** with a point estimate $\hat\pi$: its bags have the counts $n_j$ obtained by rounding $n\hat\pi_j$, so $\tilde\pi_j=n_j/n$, a prevalence vector. Its point estimate is the mean accuracy of $m$ simulated bags, whose expectation given $V$ is $\sum_j\tilde\pi_j\tilde d_j$; the bound applies to that expectation. The Monte Carlo deviation of the mean of $m$ bags, of order $\sigma_{3b}/\sqrt m$, is not covered.
+- **Methods that average over draws** (RQBS, SQS-B, BayCAP and its variants): each draw $r$ has a prevalence vector $\pi^{(r)}$ and recalls $d^{(r)}$, and $e_1$ is the average over the $m$ draws of $e_1^{(r)}=\sum_j(\pi^{(r)}_j-\pi^Q_j)d^{(r)}_j$. The bound holds for each draw, and the absolute value of an average is at most the average of the absolute values (triangle inequality), so
+
+$$
+\lvert e_1\rvert\le\frac1m\sum_{r=1}^m\tfrac12\lVert\pi^{(r)}-\pi^Q\rVert_1\Big(\max_jd^{(r)}_j-\min_jd^{(r)}_j\Big).
+$$
+
+  For BayCAP the $d^{(r)}$ are posterior draws of the recalls.
+- **The baselines** (DoC, QuAcc, O-LEAP, L-CBPE) produce no $\tilde\pi$ and $\tilde d$, so the bound does not apply.
+
+**What it is for.** It translates the error of the quantifier into an error of accuracy. The quantification literature reports the absolute error $\mathrm{AE}=\lVert\tilde\pi-\pi^Q\rVert_1/K$, so $\lvert e_1\rvert\le\frac K2\,\mathrm{AE}\,(\max\tilde d-\min\tilde d)$; the second factor is computable from $V$ for every (dataset, classifier) pair. It recovers the paper's condition of Eq. 2: if all recalls are equal, prevalence errors cost nothing. Per bag it is not computable without labels, since $\pi^Q$ is unknown, but combined with a bound on $\lVert\tilde\pi-\pi^Q\rVert_1$ it becomes one (§T.15), and applied to two prevalence vectors of a method's set of plausible prevalences it bounds the spread of the accuracy interval along $e_1$.
+
+## T.12 The shortest interval, and floors on the width
+
+*Intuition.* Even someone who knows $\pi^Q$ and $C$ exactly cannot predict the realised accuracy of a bag exactly, because which instances $h$ gets right is random. An interval shorter than this unavoidable spread must miss more often than it should.
+
+**Step 1: the shortest interval of a normal variable.** Let $X\sim N(\mu,\sigma^2)$, with density $f$. Two properties of $f$ are used: it is symmetric about $\mu$ ($f(\mu+x)=f(\mu-x)$), and it decreases as one moves away from $\mu$ on either side. Fix a length $L$ and consider the intervals $[a,a+L]$. Their probability is $G(a)=\int_a^{a+L}f(x)\,dx$, and by the fundamental theorem of calculus its derivative is $G'(a)=f(a+L)-f(a)$.
+
+- If the interval lies more to the left than the centred one ($a<\mu-L/2$), its right end is closer to $\mu$ than its left end, so $f(a+L)>f(a)$ and $G'(a)>0$: moving it right increases its probability. If it lies more to the right, $G'(a)<0$ and moving it left increases its probability.
+- So among intervals of length $L$, the centred one $[\mu-L/2,\mu+L/2]$ has the largest probability. Standardising with $Z=(X-\mu)/\sigma$, a standard normal with distribution function $\Phi$, that probability is $\Phi\big(\tfrac L{2\sigma}\big)-\Phi\big(-\tfrac L{2\sigma}\big)=2\Phi\big(\tfrac L{2\sigma}\big)-1$, using the symmetry $\Phi(-z)=1-\Phi(z)$.
+- Now take any interval of length $L$ with probability at least $0.95$. The centred interval of the same length has at least that probability, so $2\Phi(L/(2\sigma))-1\ge0.95$, i.e. $\Phi(L/(2\sigma))\ge0.975$. Since $\Phi$ increases and $\Phi(1.96)=0.975$, this means $L/(2\sigma)\ge1.96$, i.e.
+
+$$
+L\ge2\cdot1.96\,\sigma,
+$$
+
+  with equality for the centred interval $\mu\pm1.96\,\sigma$. This is the shortest interval with probability $0.95$.
+
+**Step 2: what an oracle knows.** Write $\theta$ for the unknowns $(\pi^Q,C)$. Given $\theta$ and the pool, the realised accuracy is $A(h,U)=\frac1n\sum_jc_j$ with independent $c_j\sim\operatorname{Bin}(n_j,d^{\text{pool}}_j)$ (§T.1): a sum of many independent terms, hence approximately normal by the central limit theorem, with variance $\sigma_{3b}^2=\frac1n\sum_j\pi^Q_jd_j(1-d_j)$ (§T.4). By Step 1, an oracle that knows $\theta$ and $d^{\text{pool}}$, and nothing else about the bag, has a shortest $95\%$ interval of length $2\cdot1.96\,\sigma_{3b}$. An oracle that knows $\theta$ but not the pool faces the variance $\sigma_{3b}^2+\sigma_P^2$ (law of total variance, §T.4), so its shortest interval has length $2\cdot1.96\sqrt{\sigma_{3b}^2+\sigma_P^2}$.
+
+**Step 3: a method knows less about $\theta$, which can only widen.** Let $D$ be the data a method sees ($V$ and the unlabelled bag). The law of total variance (§T.4), applied given $D$ with $\theta$ as the second variable, says
+
+$$
+\operatorname{Var}(A\mid D)=\mathbb E\big[\operatorname{Var}(A\mid D,\theta)\mid D\big]+\operatorname{Var}\big(\mathbb E[A\mid D,\theta]\mid D\big)\ge\mathbb E\big[\operatorname{Var}(A\mid D,\theta)\mid D\big],
+$$
+
+because a variance is never negative. If $D$ tells nothing about which instances of the bag $h$ gets right beyond what $\theta$ tells, then $\operatorname{Var}(A\mid D,\theta)=\sigma_{3b}^2$ (with the pool known), so $\operatorname{Var}(A\mid D)\ge\sigma_{3b}^2$ and, by Step 1, no such method has a $95\%$ interval shorter than about $2\cdot1.96\,\sigma_{3b}$.
+
+**Step 4: what a method can learn about the bag itself.** Two kinds of data do tell something about which instances $h$ gets right, and lower the floor.
+
+- *The predicted counts of the bag* (used by every quantifier, and by BayCAP's target likelihood). In the binary case, let $c_0$ and $c_1$ be the correct predictions in classes $\omega_0$ and $\omega_1$, with variances $v_j=n_jd_j(1-d_j)$. The number of instances predicted as $\omega_1$ is $c_1+(n_0-c_0)$; given $\theta$, $n_0$ is known, so the predicted counts reveal $S=c_1-c_0$, while $A=(c_0+c_1)/n$. To find the variance of $A$ once $S$ is known, write $A=\beta S+R$ with $\beta=\operatorname{Cov}(A,S)/\operatorname{Var}(S)$. This choice makes $R$ uncorrelated with $S$, because $\operatorname{Cov}(R,S)=\operatorname{Cov}(A,S)-\beta\operatorname{Var}(S)=0$; for jointly normal variables (the normal approximation of the binomials) uncorrelated means independent, so knowing $S$ leaves only the variance of $R$. Since $A=\beta S+R$ with uncorrelated parts, $\operatorname{Var}(A)=\beta^2\operatorname{Var}(S)+\operatorname{Var}(R)$, hence $\operatorname{Var}(A\mid S)=\operatorname{Var}(R)=\operatorname{Var}(A)-\operatorname{Cov}(A,S)^2/\operatorname{Var}(S)$. With $c_0$ and $c_1$ independent: $\operatorname{Var}(A)=(v_0+v_1)/n^2$, $\operatorname{Var}(S)=v_0+v_1$, and $\operatorname{Cov}(A,S)=\operatorname{Cov}(c_0+c_1,c_1-c_0)/n=(v_1-v_0)/n$. So
+
+$$
+\operatorname{Var}(A\mid S,\theta)=\frac{(v_0+v_1)^2-(v_1-v_0)^2}{n^2(v_0+v_1)}=\frac{4v_0v_1}{n^2(v_0+v_1)}=\rho\,\sigma_{3b}^2,\qquad\rho=\frac{4v_0v_1}{(v_0+v_1)^2}.
+$$
+
+  Since $(v_0+v_1)^2-4v_0v_1=(v_0-v_1)^2\ge0$, $\rho\le1$, with $\rho=1$ when $v_0=v_1$: then $A$ and $S$ are uncorrelated and the predicted counts tell nothing about the accuracy. The floor becomes $2\cdot1.96\sqrt\rho\,\sigma_{3b}$.
+- *Instance-level confidences* (used by the baselines DoC, O-LEAP and L-CBPE, through the posteriors of $h$). Let $q_i=P(h\text{ correct}\mid x_i)$ be the probability that $h$ classifies instance $i$ correctly given its features. Given the features of the bag, the $n$ outcomes are independent Bernoulli variables with probabilities $q_i$, so $\operatorname{Var}(A\mid X_U)=\frac1{n^2}\sum_iq_i(1-q_i)$. Within class $\omega_j$ the average of $q$ is $d_j$, and since the variance of $q$ is non-negative, $\mathbb E[q^2]\ge d_j^2$, so $\mathbb E[q(1-q)]=d_j-\mathbb E[q^2]\le d_j-d_j^2=d_j(1-d_j)$. The instance-level floor is therefore at most the class-level one, with equality only if $h$ is equally likely to be right on every instance of a class.
+
+**Step 5: conditional and average coverage.** The floors hold for coverage *conditional on the data*: $95\%$ for every value of $D$. Coverage averaged over many bags can be reached by intervals that are shorter on some bags and longer on others, so the floors constrain the typical width, not the width on every bag.
+
+**What it is for** [new hypothesis]. A label-free check: a population-pushforward BayCAP interval shorter than the plug-in floor $2\cdot1.96\sqrt{\hat\rho}\,\hat\sigma_{3b}$ (§T.14) cannot reach $95\%$ conditional coverage of the realised accuracy. And it places the baselines in the frame: the paper's methods see the bag only through class-level quantities and cannot go below the class-level floor, while confidence-based baselines with well-calibrated confidences can, in principle, have valid intervals that are narrower, above all at small $n$. Testing this needs per-bag summaries of the confidences ($\sum_iq_i(1-q_i)$ with the calibrated posteriors of $h$), which `main` does not store and would have to be added to a re-run.
+
+## T.13 The variances for the two families, and the bias of BayCAP's prior
+
+*Intuition.* The split of §T.2 is the same for every method, but the size and the mean of its parts depend on how $\tilde\pi$ and $\tilde d$ are obtained: frequencies of $V$ and a surrogate quantifier (SQS family), or a posterior with a prior and $h$ itself as quantifier (BayCAP family).
+
+**What is the same for every method.** $e_3^b$ and $e_P$ depend only on the estimand and the protocol (§T.3), so their variances of §T.4 hold for every method.
+
+**SQS family.** $e_2$ uses the frequencies $\tilde d_j=k_j/\lvert V_j\rvert$, with mean $d_j$ and variance $d_j(1-d_j)/\lvert V_j\rvert$ (§T.4). $e_1$ comes from the surrogate's rates $S$ through the quantifier (binary ACC: §T.4).
+
+**BayCAP family, the recalls.** With the `"uniform"` prior, each column of $C$ has the prior $\operatorname{Dir}(\mathbf 1_K)$. Two properties are used.
+
+- *Conjugacy.* The class-$\omega_j$ instances of $V$ have predictions with multinomial counts of probabilities $C_{\cdot j}$; a Dirichlet prior times a multinomial likelihood gives a Dirichlet posterior whose parameters are the prior parameters plus the counts. Ignoring the information that the target bag adds (small, by [[ext2_baycap]] E2.4), $C_{\cdot j}\mid V\sim\operatorname{Dir}(\mathbf 1+\text{counts of column }j)$.
+- *Aggregation.* If $(X_1,\dots,X_K)\sim\operatorname{Dir}(\alpha_1,\dots,\alpha_K)$, merging components adds their parameters; a two-component Dirichlet is a Beta distribution. Merging all the components but $C_{jj}$:
+
+$$
+d_j\mid V\sim\operatorname{Beta}(a_j,b_j),\qquad a_j=k_j+1,\qquad b_j=(\lvert V_j\rvert-k_j)+(K-1):
+$$
+
+the $k_j$ correct predictions plus one prior pseudo-count, and the $\lvert V_j\rvert-k_j$ wrong ones plus $K-1$ pseudo-counts.
+
+A $\operatorname{Beta}(a,b)$ has mean $a/(a+b)$ and variance $\mu(1-\mu)/(a+b+1)$, with $\mu$ its mean. Here $a_j+b_j=\lvert V_j\rvert+K$, so
+
+$$
+\bar d_j=\mathbb E[d_j\mid V]=\frac{k_j+1}{\lvert V_j\rvert+K},\qquad\operatorname{Var}(d_j\mid V)=\frac{\bar d_j(1-\bar d_j)}{\lvert V_j\rvert+K+1}.
+$$
+
+- *Spread.* When $\lvert V_j\rvert\gg K$, $\bar d_j\approx\tilde d_j$ and the posterior variance is about $\tilde d_j(1-\tilde d_j)/\lvert V_j\rvert$, the sampling variance of the SQS family with $\tilde d_j$ in place of $d_j$. The meaning differs: the posterior variance is the uncertainty on $d_j$ given this $V$, the sampling variance the scatter of $\tilde d_j$ over draws of $V$. For large samples the two agree (Bernstein–von Mises theorem), so a posterior interval for $d_j$ covers it in about $95\%$ of the draws of $V$: this is the sense in which BayCAP represents $e_2$ (§T.6).
+- *Mean: the bias of the prior.* For BayCAP, $e_2$ averaged over the draws is $\sum_j\pi^Q_j(\bar d_j-d_j)$. By linearity of the expectation and $\mathbb E[k_j]=\lvert V_j\rvert d_j$,
+
+$$
+\mathbb E[\bar d_j]-d_j=\frac{\lvert V_j\rvert d_j+1}{\lvert V_j\rvert+K}-d_j=\frac{\lvert V_j\rvert d_j+1-\lvert V_j\rvert d_j-Kd_j}{\lvert V_j\rvert+K}=\frac{1-Kd_j}{\lvert V_j\rvert+K}.
+$$
+
+  This bias does not average out over draws of $V$, and the posterior does not widen for it. It is small for $K=2$ and grows with $K$ and with small $\lvert V_j\rvert$, as the large-$K$ displacement found in [[ext2_baycap]]. Over draws of $V$, $\bar d_j$ has variance $\operatorname{Var}(k_j)/(\lvert V_j\rvert+K)^2=\lvert V_j\rvert d_j(1-d_j)/(\lvert V_j\rvert+K)^2$, slightly smaller than that of $\tilde d_j$: the prior trades variance for bias. So, for BayCAP, $\mathbb E[e_2]=\sum_j\pi^Q_j(1-Kd_j)/(\lvert V_j\rvert+K)$ and $\operatorname{Var}(e_2)=\sum_j(\pi^Q_j)^2\lvert V_j\rvert d_j(1-d_j)/(\lvert V_j\rvert+K)^2$.
+- *Other priors.* With a prior $\operatorname{Dir}(\alpha_{\cdot j})$ on column $j$ (the `"empirical-bayes"` prior of `methods/baycap.py`), the same steps give $\operatorname{Beta}(k_j+\alpha_{jj},\lvert V_j\rvert-k_j+\alpha_{\text{off},j})$ with $\alpha_{\text{off},j}=\sum_{i\ne j}\alpha_{ij}$, and, writing $\alpha_{\cdot j}=\alpha_{jj}+\alpha_{\text{off},j}$, the bias $(\alpha_{jj}-d_j\alpha_{\cdot j})/(\lvert V_j\rvert+\alpha_{\cdot j})$. It vanishes when the prior mean $\alpha_{jj}/\alpha_{\cdot j}$ equals $d_j$, which is what a prior centred on the typical recall aims at. The hierarchical priors learn their parameters and are not covered by this closed form.
+
+**BayCAP family, the prevalence part (binary).** BayCAP estimates $\pi^Q$ from the predictions of $h$ itself, so its $e_1$ is that of ACC with $h$ as the surrogate: $S_{10}=C_{10}=1-d_0$ and $S_{11}=C_{11}=d_1$, hence $S_{11}-S_{10}=d_1+d_0-1$. Write $g=(d_1-d_0)/(d_1+d_0-1)$ and $\kappa=g^2$. To first order (§T.4, Property C), and ignoring the priors:
+
+- *From $U$.* The share of the bag predicted as $\omega_1$ is $\hat p=(c_1+n_0-c_0)/n$ and its expectation is $p=(n_1d_1+n_0(1-d_0))/n$, so $\hat p-p=\big[(c_1-n_1d_1)-(c_0-n_0d_0)\big]/n$, with variance $(v_0+v_1)/n^2=\sigma_{3b}^2$. Since $e_1^U=g(\hat p-p)$ (the derivative of ACC with respect to $\hat p$, times $d_1-d_0$),
+
+$$
+\operatorname{Var}(e_1^U)\approx\kappa\,\sigma_{3b}^2.
+$$
+
+  The same correct and wrong predictions drive $e_3^b=-\big[(c_0-n_0d_0)+(c_1-n_1d_1)\big]/n$, so the two are correlated: $\operatorname{Cov}(e_1^U,e_3^b)=-g\,(v_1-v_0)/n^2$, by the covariance of sums of independent terms. They are uncorrelated only when $v_0=v_1$.
+- *From $V$.* Write $\delta_j=\tilde d_j-d_j$; then the error of $\hat C_{10}=1-\tilde d_0$ is $-\delta_0$ and that of $\hat C_{11}$ is $\delta_1$. With the derivatives of ACC of §T.4, $\partial\hat\pi_1/\partial S_{10}=-\pi^Q_0/(d_1+d_0-1)$ and $\partial\hat\pi_1/\partial S_{11}=-\pi^Q_1/(d_1+d_0-1)$, the $V$-part of the prevalence error is $(\pi^Q_0\delta_0-\pi^Q_1\delta_1)/(d_1+d_0-1)$, so $e_1^V=g(\pi^Q_0\delta_0-\pi^Q_1\delta_1)$ and, by Property B,
+
+$$
+\operatorname{Var}(e_1^V)\approx\kappa\big[(\pi^Q_0)^2\operatorname{Var}(\delta_0)+(\pi^Q_1)^2\operatorname{Var}(\delta_1)\big]=\kappa\operatorname{Var}(e_2),
+$$
+
+  with $\operatorname{Cov}(e_1^V,e_2)=g\big[(\pi^Q_0)^2\operatorname{Var}(\delta_0)-(\pi^Q_1)^2\operatorname{Var}(\delta_1)\big]$, because $e_2=\pi^Q_0\delta_0+\pi^Q_1\delta_1$ uses the same $\delta_j$.
+
+So for BayCAP the prevalence part is the luck of the bag and the error of $V$, scaled by $\kappa$: it vanishes when $d_1=d_0$ and grows without limit as $d_1+d_0\to1$, i.e. as $h$ approaches a random classifier. The within-source correlations of §T.4, which the budget drops, are here structural, because the quantifier and the classifier are the same. These are frequentist variances of BayCAP's estimate to first order; the priors and the information of the target bag on $C$ change them.
+
+## T.14 Label-free plug-ins, self-diagnosis and completed intervals
+
+*Intuition.* The variances of §T.4 and §T.13 contain unknown quantities ($d$, $\pi^Q$). Replacing them by their estimates gives numbers that can be computed without the labels of the target bag, and hence by the methods themselves.
+
+**The plug-in principle.** Replace every unknown in a formula by its estimate. If the estimate approaches the true value as the samples grow and the formula is a continuous function of it, the plug-in approaches the true quantity; by Property C its error is of first order in the estimation errors, a relative error of order $1/\sqrt m$ for samples of size $m$.
+
+**A small bias, and its correction.** The plug-in of $d_j(1-d_j)$ is $\tilde d_j(1-\tilde d_j)$. Its expectation follows from $\mathbb E[\tilde d_j]=d_j$ and $\mathbb E[\tilde d_j^2]=\operatorname{Var}(\tilde d_j)+d_j^2=d_j(1-d_j)/\lvert V_j\rvert+d_j^2$:
+
+$$
+\mathbb E\big[\tilde d_j(1-\tilde d_j)\big]=d_j-\frac{d_j(1-d_j)}{\lvert V_j\rvert}-d_j^2=d_j(1-d_j)\Big(1-\frac1{\lvert V_j\rvert}\Big),
+$$
+
+so $\frac{\lvert V_j\rvert}{\lvert V_j\rvert-1}\tilde d_j(1-\tilde d_j)$ is unbiased. The correction matters only for small classes.
+
+**Plug-ins for the SQS family.** With $\hat\pi$ the quantifier's estimate in place of $\pi^Q$:
+
+$$
+\hat\sigma_{3b}^2=\frac1n\sum_j\hat\pi_j\tilde d_j(1-\tilde d_j),\qquad
+\hat\sigma_2^2=\sum_j\hat\pi_j^2\frac{\tilde d_j(1-\tilde d_j)}{\lvert V_j\rvert-1},
+$$
+
+and $\hat\sigma_{1U}^2$, $\hat\sigma_{1V}^2$ from the formulas of §T.4 with $\hat S$, $\tilde d$, $\hat\pi$ plugged in (binary ACC), or from a bootstrap of $U$ and of $V$. $\hat\pi$ is itself noisy, which adds a first-order error to every plug-in; the error is small where the prevalence term is small (§T.11).
+
+**Plug-ins for the BayCAP family.** The plug-ins become averages over the posterior draws, which also account for the uncertainty on $(\pi^Q,C)$: $\hat\sigma_{3b}^2=\frac1m\sum_r\frac1n\sum_j\pi^{(r)}_jd^{(r)}_j(1-d^{(r)}_j)$, which is the variance that the realised-table predictive adds by sampling a table for each draw. The spread along $e_2$ is already in the posterior (§T.13); its prior bias is not, but its plug-in is simple: $\frac{1-K\tilde d_j}{\lvert V_j\rvert+K}=\frac{k_j+1}{\lvert V_j\rvert+K}-\frac{k_j}{\lvert V_j\rvert}=\bar d_j-\tilde d_j$ (to check, bring both fractions to the denominator $\lvert V_j\rvert(\lvert V_j\rvert+K)$: the numerator is $\lvert V_j\rvert(k_j+1)-k_j(\lvert V_j\rvert+K)=\lvert V_j\rvert-Kk_j$). The estimated bias is the gap between the posterior mean and the frequency of $V$. For $e_1$, the binary formulas of §T.13 with $\bar d$ plugged in.
+
+**Self-diagnosis: each method's coverage, without labels.** A method's interval gives its own $\sigma_{\text{in}}\approx$ half-width$/1.96$ (§T.7). The missing parts that have a plug-in give an estimate $\hat\eta=\hat\sigma^2_{\text{missing}}/\sigma_{\text{in}}^2$, and the coverage rule of §T.7 a predicted coverage $2\Phi(1.96/\sqrt{1+\hat\eta})-1$. Per method: SQS-H misses $e_1^U$, $e_1^V$, $e_2$, all with plug-ins; RQBS misses $e_1^V$ and $e_2$; the population-pushforward BayCAP misses $e_3^b$; the realised-table BayCAP misses none of the estimable parts. The parts without a plug-in, $e_P$ (it needs $P_j$ and the knowledge of the pool) and $b_q^2$ (a bias that variances cannot reveal), are non-negative additions to $\sigma^2_{\text{out}}$; since the coverage rule decreases as $\eta$ grows, the predicted coverage is then an *upper bound* on the coverage, to first order and as long as the within-source correlations, which can have either sign, are negligible. For BayCAP they are not (§T.13), and the prediction must include them.
+
+**Break-even bag size.** SQS-H represents $e_3^b$ and misses $e_2$, so it is reliable only while $\hat\sigma_2^2$ is small compared with $\hat\sigma_{3b}^2$. Setting the two plug-ins equal and solving for $n$:
+
+$$
+\frac1n\sum_j\hat\pi_j\tilde d_j(1-\tilde d_j)=\sum_j\hat\pi_j^2\frac{\tilde d_j(1-\tilde d_j)}{\lvert V_j\rvert}
+\quad\Longrightarrow\quad
+n^*=\frac{\sum_j\hat\pi_j\tilde d_j(1-\tilde d_j)}{\sum_j\hat\pi_j^2\tilde d_j(1-\tilde d_j)/\lvert V_j\rvert}.
+$$
+
+This is the bag size at which the design ratio $r$ of §T.7 equals $1$, estimated without labels; at $n=n^*$ the oracle-$\pi$ SQS-H has coverage about $2\Phi(1.96/\sqrt2)-1\approx0.83$. It gives a practical rule: SQS-type intervals are not to be trusted for bags much larger than $n^*$.
+
+**Budget-completed intervals.** The same plug-ins correct an interval for the parts it misses: $\hat A\pm1.96\sqrt{\sigma_{\text{in}}^2+\hat\sigma^2_{\text{missing}}}$, for example RQBS widened by $\hat\sigma_{1V}^2+\hat\sigma_2^2$, a closed-form approximation of SQS-H with $U$ and $V$ resampling (§T.8), and the population-pushforward BayCAP widened by $\hat\sigma_{3b}^2$, a closed-form approximation of the realised-table BayCAP. For BayCAP the centre can also be moved by the estimated prior bias, $-\sum_j\hat\pi_j(\bar d_j-\tilde d_j)$. These corrections are post-processing of stored outputs. They do not represent $e_P$ and $b_q$, so under the paper's protocol they should still under-cover on small pools, which is itself a test of the pool term.
+
+## T.15 Intervals with a finite-sample guarantee
+
+*Intuition.* The normal approximations of §T.7 and §T.12 hold for large samples. Probability inequalities give intervals whose coverage is guaranteed for every sample size and without assuming normality, at the price of a larger width.
+
+**Tools.**
+
+- *Markov's inequality.* For $X\ge0$ and $t>0$, $P(X\ge t)\le\mathbb E[X]/t$. Derivation: let $\mathbb 1\{X\ge t\}$ be $1$ when $X\ge t$ and $0$ otherwise; then $X\ge t\,\mathbb 1\{X\ge t\}$ always (if $X\ge t$ the right side is $t\le X$, otherwise it is $0\le X$), and taking expectations gives $\mathbb E[X]\ge t\,P(X\ge t)$.
+- *Chebyshev's inequality.* Markov applied to $(X-\mu)^2$ and $t^2$: $P(\lvert X-\mu\rvert\ge t)=P((X-\mu)^2\ge t^2)\le\operatorname{Var}(X)/t^2$.
+- *Hoeffding's inequality* (stated, not derived). If $\bar X$ is the average of $m$ independent variables with values in $[0,1]$, $P(\lvert\bar X-\mathbb E\bar X\rvert\ge t)\le2e^{-2mt^2}$. It is much tighter than Chebyshev for small probabilities, because it uses that the variables are bounded, not only their variance; it allows the variables to have different means. Setting the right side equal to a level $\alpha'$ and solving for $t$: $\lvert\bar X-\mathbb E\bar X\rvert\le t(m,\alpha')=\sqrt{\ln(2/\alpha')/(2m)}$ with probability at least $1-\alpha'$.
+- *Union bound.* The probability that at least one of several events happens is at most the sum of their probabilities. So if each of several bounds fails with probability at most $\alpha_k$, all of them hold together with probability at least $1-\sum_k\alpha_k$, whatever the dependence between them.
+
+**Each part, binary case, SQS-H with ACC.** Take the closed-form estimate $\hat A=\sum_j\tilde\pi_j\tilde d_j$ (no Monte Carlo bags) and split the level $\alpha$ into $\alpha_3+\alpha_2+\alpha_1$.
+
+- *$e_3^b$.* Given $\theta$ and the pool, $A(h,U)$ is the average of $n$ independent Bernoulli variables (§T.1), so $\lvert e_3^b\rvert\le t(n,\alpha_3)$.
+- *$e_2$.* For each class, $\tilde d_j$ is the average of $\lvert V_j\rvert$ independent Bernoulli variables, so $\lvert\delta_j\rvert\le t(\lvert V_j\rvert,\alpha_2/2)$. A weighted average of numbers is at most the largest of them, so $\lvert e_2\rvert\le\sum_j\pi^Q_j\lvert\delta_j\rvert\le\max_jt(\lvert V_j\rvert,\alpha_2/2)$, without knowing $\pi^Q$.
+- *$e_1$.* ACC has an exact error formula. By the law of total probability the expected share predicted as $\omega_1$ is $p=\pi^Q_0S_{10}+\pi^Q_1S_{11}$. Write $\varepsilon_{1j}=\hat S_{1j}-S_{1j}$. Then the numerator of ACC minus $\pi^Q_1$ times its denominator is $\hat p-\hat S_{10}-\pi^Q_1(\hat S_{11}-\hat S_{10})=(\hat p-p)+\big(p-\pi^Q_0\hat S_{10}-\pi^Q_1\hat S_{11}\big)=(\hat p-p)-\pi^Q_0\varepsilon_{10}-\pi^Q_1\varepsilon_{11}$, using $\pi^Q_0+\pi^Q_1=1$. Dividing by the denominator,
+
+$$
+\hat\pi_1-\pi^Q_1=\frac{(\hat p-p)-\pi^Q_0\varepsilon_{10}-\pi^Q_1\varepsilon_{11}}{\hat S_{11}-\hat S_{10}},
+$$
+
+  exactly, with an observed denominator. $\hat p$ is an average of $n$ independent Bernoulli variables, and $\hat S_{1j}$ of $\lvert V_j\rvert$, so with Hoeffding at levels $\alpha_1/3$ each, and the weighted-average argument above, $\lvert\hat\pi_1-\pi^Q_1\rvert\le B_\pi=\big[t(n,\alpha_1/3)+\max_jt(\lvert V_j\rvert,\alpha_1/3)\big]/\lvert\hat S_{11}-\hat S_{10}\rvert$. Quantifiers clip $\hat\pi_1$ to $[0,1]$; since $\pi^Q_1\in[0,1]$, clipping can only move $\hat\pi_1$ closer to it, so the bound still holds. Then $\lvert e_1\rvert\le B_\pi\lvert\tilde d_1-\tilde d_0\rvert$ by the binary case of §T.11, which is exact and includes the cross term.
+- *Together.* By the triangle inequality, $\lvert\hat A-A\rvert\le\lvert e_1\rvert+\lvert e_2\rvert+\lvert e_3^b\rvert$, and by the union bound all the bounds hold together with probability at least $1-\alpha$. So the interval $\hat A\pm\big(B_\pi\lvert\tilde d_1-\tilde d_0\rvert+\max_jt(\lvert V_j\rvert,\alpha_2/2)+t(n,\alpha_3)\big)$ covers the realised accuracy with probability at least $1-\alpha$, for every $n$ and $\lvert V_j\rvert$, without normality, and including the quantifier's bias, since the error formula of ACC is exact under PPS.
+
+**Where it holds.** The derivation assumes that the bag's instances are independent draws with the population rates. That is true without replacement (§T.10, where the bag is an i.i.d. sample of the population). Under the paper's protocol the bag is drawn from the pool, so $A$ and $\hat p$ fluctuate around the pool's rates: the guarantee then needs two more terms of the same form with $P_j$ (one for $e_P$, one for the surrogate's rates on the pool), which require knowing the pool, as in §T.10.
+
+**The price of the guarantee.** For one part, the ratio of the Hoeffding half-width to the normal one is $t(m,\alpha')/(1.96\sqrt{p(1-p)/m})=\sqrt{\ln(2/\alpha')/2}\,/\,\big(1.96\sqrt{p(1-p)}\big)$: it does not depend on $m$, it is larger than $1$ because Hoeffding assumes the worst variance $1/4$ and $\alpha'<\alpha$, and it grows as $p$ approaches $0$ or $1$. Adding the bounds of the parts, rather than adding their variances, widens further. The guaranteed interval is therefore a conservative reference: any method whose interval is wider is wider than needed for $1-\alpha$ coverage, and the gap between a method's width and the guaranteed one measures how much its coverage relies on the normal approximation. In the multiclass case the error formula involves the inverse of $\hat S$, and the bound on $\lVert\hat\pi-\pi^Q\rVert_1$ grows with its norm, so the guarantee becomes loose for ill-conditioned surrogates.
 
 # Implementation
 
