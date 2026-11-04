@@ -467,7 +467,7 @@ This is BayCAP's posterior on the column from $V$ alone, with the prior $\operat
 
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics; macro-F1 and macro-K have no closed form under the fixed $\hat C$ (§T.5).
 - **[[ext2_baycap|Extension 2]]**: supplies the realised-table predictive (§T.7), the decomposition of the shift and the paired Winkler test (E2.2, E2.3), and the finding that the prior on $C$ displaces BayCAP on large-$K$ datasets, which P3 tests from the other side.
-- **[[ext4_uncertainty_budget|Extension 4]]**: supplies the budget of §T.9; its regime map (E4.2) includes the methods of this extension, with the same implementations, so this extension does not vary $\lvert U\rvert$ or $\lvert V\rvert$.
+- **[[ext4_uncertainty_budget|Extension 4]]**: supplies the budget of §T.9; its regime map (E4.2a) includes the methods of this extension, with the same implementations, so this extension does not vary $\lvert U\rvert$ or $\lvert V\rvert$.
 - **[[ext5_baycap_priors_tempering|Extension 5]]**: tempering, including the temperatures of BayesKDEy and BayesianMAPLS.
 - **Extension 7** ([[extensions]] §7): tuning of the MLP input classifier and of the hyperparameters of BayesKDEy (kernel, $b$, $\lambda$) beyond the configuration fixed for E3.1.
 - **[[optional_extensions]]**: §3 keeps Aitchison-SQS; §8 keeps the material set aside from the former Extensions 8 and 9.
