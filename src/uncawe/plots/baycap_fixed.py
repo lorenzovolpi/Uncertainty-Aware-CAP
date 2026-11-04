@@ -8,6 +8,8 @@ target the population table, ``BayCAP-<Q>-<s>-real`` the realised table; all are
 
 - ``coverage``: coverage of each realised method against that of ``BayesCAP-real``, coloured by $K$, lines at $0.95$;
 - ``coverage_population``: the same for the population methods against ``BayesCAP``;
+- ``coverage_hf``: the same for the realised methods against ``BayesCAP-Hf-real``, the best BayCAP prior of E2.8 (all
+  pairs, also those where NUTS is unreliable for it, with no flag);
 - ``width``: observed against predicted widening factor of the realised interval (§T.8), log scales, line $y=x$,
   coloured by the label-free mismatch $\\lVert n^t/N^Q-\\hat C\\bar\\pi\\rVert_1$;
 - ``centre``: movement of the centre (realised minus population point estimate) against the mismatch, coloured by $K$;
@@ -42,6 +44,7 @@ from uncawe.plots.common import (
 )
 from uncawe.tables.baycap_fixed import (
     CELLS,
+    HF,
     PUSHFORWARDS,
     QUANTIFIER_LABELS,
     REFERENCES,
@@ -51,7 +54,7 @@ from uncawe.tables.baycap_fixed import (
 )
 
 PLOT_NAME = "baycap_fixed"
-FIGURES = ("coverage", "coverage_population", "width", "centre", "calibration", "min_prev")
+FIGURES = ("coverage", "coverage_population", "coverage_hf", "width", "centre", "calibration", "min_prev")
 NOMINAL = 0.95
 REFERENCE_LINE = {"color": "#8c8c8c", "linewidth": 0.8, "zorder": 1}
 IDENTITY_LINE = {"color": "#595959", "linewidth": 1.2, "linestyle": "--", "zorder": 1}
@@ -98,8 +101,8 @@ def _finish(fig, axes, sc, table: pd.DataFrame, label: str, title: str):
     fig.suptitle(title, fontsize=font_size(12))
 
 
-def _coverage(table: pd.DataFrame, pushforward_name: str):
-    reference = REFERENCES[pushforward_name]
+def _coverage(table: pd.DataFrame, pushforward_name: str, reference: str | None = None):
+    reference = reference or REFERENCES[pushforward_name]
     fig, axes, cells = _cell_axes(sharex=True, sharey=True)
     sc = None
     x = f"{reference}_coverage"
@@ -125,6 +128,11 @@ def plot_coverage(table: pd.DataFrame):
 def plot_coverage_population(table: pd.DataFrame):
     """Coverage of the population methods against ``BayesCAP``."""
     return _coverage(table, "population")
+
+
+def plot_coverage_hf(table: pd.DataFrame):
+    """Coverage of the realised methods against ``BayesCAP-Hf-real``."""
+    return _coverage(table, "realised", HF)
 
 
 def plot_width(table: pd.DataFrame):
@@ -223,6 +231,7 @@ def plot_min_prev(min_prev: pd.DataFrame):
 PLOTTERS = {
     "coverage": plot_coverage,
     "coverage_population": plot_coverage_population,
+    "coverage_hf": plot_coverage_hf,
     "width": plot_width,
     "centre": plot_centre,
     "calibration": plot_calibration,

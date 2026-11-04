@@ -5,13 +5,13 @@ The eight methods ``BayCAP-<Q>-<s>`` and ``BayCAP-<Q>-<s>-real`` (``methods/bayc
 $Q\\in\\{$KDEy, EMQ$\\}$, input classifier $s\\in\\{h$, mlp$\\}$) push the posterior draws $\\pi^{(r)}$ of a Bayesian
 quantifier through the rate matrix $\\hat C$ of $h$ on $V$: the four without ``-real`` target the population table
 $\\hat C\\operatorname{diag}(\\pi^Q)$, the four with ``-real`` the realised table of the target bag. All are scored against
-the realised table of each bag (``true_cts``), next to the stored ``BayesCAP``, ``BayesCAP-real`` and ``RQBS``. Vanilla
-accuracy, $|U|=1000$, the pairs where the eight methods and the three references have stored results (so it also works
-on the pilot).
+the realised table of each bag (``true_cts``), next to the stored ``BayesCAP``, ``BayesCAP-real``, ``BayesCAP-Hf-real``
+(E2.8) and ``RQBS``. Vanilla accuracy, $|U|=1000$, the pairs where the eight methods and the four references have
+stored results (so it also works on the pilot).
 
 Per pair (``compute_table``, one row per pair, every column in the CSV):
 
-- AE, coverage, amplitude and Winkler score of the eleven methods, means over the bags;
+- AE, coverage, amplitude and Winkler score of the twelve methods, means over the bags;
 - for each cell (a quantifier and an input classifier): the observed widening factor, the median over the bags of the
   amplitude of the realised method divided by that of the population method, and the predicted one, the median over the
   bags of $\\sqrt{1+(\\bar\\sigma_g/\\sigma_p)^2}$ from the stored ``sigma_g`` and ``acc_sd`` (§T.8); the movement of the
@@ -23,10 +23,11 @@ Per pair (``compute_table``, one row per pair, every column in the CSV):
   the realised one);
 - the top-label ECE of the two input classifiers on the validation outputs the quantifier is fitted on (``val_ece``);
   the spread of the recalls of $h$ on $V$, $\\operatorname{sd}_j(\\hat C_{jj})$;
-- twelve paired bootstrap tests of the mean per-bag Winkler difference (``tables/pushforward.py:bootstrap_mean_test``,
+- sixteen paired bootstrap tests of the mean per-bag Winkler difference (``tables/pushforward.py:bootstrap_mean_test``,
   $10{,}000$ resamples), each Holm-adjusted over the pairs on its own: in each cell, the realised method minus the
-  population one and minus ``BayesCAP-real``; among the realised methods, ``h`` minus ``mlp`` for each quantifier and
-  ``KDEy`` minus ``EMQ`` for each input classifier.
+  population one, minus ``BayesCAP-real`` and minus ``BayesCAP-Hf-real``; among the realised methods, ``h`` minus
+  ``mlp`` for each quantifier and ``KDEy`` minus ``EMQ`` for each input classifier. All pairs are reported, also those
+  where NUTS is unreliable for BayCAP-Hf in E2.8, with no flag.
 
 Also:
 
@@ -73,6 +74,8 @@ SOURCES = ("h", "mlp")
 CELLS = tuple(f"{label}-{source}" for label in QUANTIFIER_LABELS.values() for source in SOURCES)
 PUSHFORWARDS = ("population", "realised")
 REFERENCES = {"population": "BayesCAP", "realised": "BayesCAP-real"}
+# the best BayCAP prior of E2.8, realised only
+HF = "BayesCAP-Hf-real"
 RQBS = "RQBS"
 SCORES = ("ae", "coverage", "amplitude", "winkler")
 SCORE_LABELS = {"ae": "AE"} | {score: main_tables.metrics_map[score] for score in SCORES[1:]}
@@ -88,11 +91,12 @@ def method_name(cell: str, pushforward_name: str) -> str:
 
 FIXED_METHODS = [method_name(cell, p) for cell in CELLS for p in PUSHFORWARDS]
 assert sorted(FIXED_METHODS) == sorted(FIXED_C_VARIANTS)
-METHODS = FIXED_METHODS + list(REFERENCES.values()) + [RQBS]
+METHODS = FIXED_METHODS + list(REFERENCES.values()) + [HF, RQBS]
 
 
 def _tests() -> dict[str, tuple[str, str]]:
-    """The twelve tests, name -> (method, reference): the per-bag difference is method minus reference."""
+    """The sixteen tests, name -> (method, reference): the per-bag difference is method minus reference. The tests
+    against BayCAP-Hf come last, so the generators of the other twelve do not depend on them."""
     tests = {}
     for cell in CELLS:
         real = method_name(cell, "realised")
@@ -105,6 +109,8 @@ def _tests() -> dict[str, tuple[str, str]]:
             method_name(f"KDEy-{source}", "realised"),
             method_name(f"EMQ-{source}", "realised"),
         )
+    for cell in CELLS:
+        tests[f"{cell}_real_vs_hf"] = (method_name(cell, "realised"), HF)
     return tests
 
 
@@ -192,7 +198,7 @@ def cell_columns(real_df: pd.DataFrame, bags: dict[str, pd.DataFrame], cell: str
 
 
 def pair_tests(bags: dict[str, pd.DataFrame], key: tuple[str, str]) -> dict:
-    """The twelve tests of one pair, without the Holm adjustment; the generator of each test depends only on the seed,
+    """The sixteen tests of one pair, without the Holm adjustment; the generator of each test depends only on the seed,
     the pair and the test."""
     row = {}
     for index, (name, (method, reference)) in enumerate(TESTS.items()):
@@ -270,7 +276,7 @@ def load_all(acc_name: str = ACC_NAME, methods=None) -> tuple[dict[str, pd.DataF
 
 
 def compute_table() -> pd.DataFrame:
-    """Load the stored results of the eleven methods and the validation counts, and return the ordered table."""
+    """Load the stored results of the twelve methods and the validation counts, and return the ordered table."""
     results, pairs = load_all()
     return pair_table(results, load_validation_counts(pairs, domain=DOMAIN))
 
@@ -351,7 +357,7 @@ def design_summary(acc_names=None) -> pd.DataFrame:
 def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Reduce the per-pair table to the summaries of the Analysis of E3.1, over all pairs and per group of $K$.
 
-    - ``scores``: mean AE, coverage, amplitude and Winkler score of the eleven methods;
+    - ``scores``: mean AE, coverage, amplitude and Winkler score of the twelve methods;
     - ``cells``: per cell, the mean and median observed and predicted widening factor, the mean movement of the centre,
       the mean mismatch, the pairs with divergent bags and with largest split-$\\hat R$ above ``RHAT_HIGH`` ($1.1$, as E2.8);
     - ``tests``: per test, the pairs where the method is significantly (Holm) lower and higher than its reference.
@@ -405,7 +411,7 @@ def _scores_styler(table: pd.DataFrame, methods: list[str], extra: dict[tuple[st
 
 
 def _realised_styler(table: pd.DataFrame):
-    methods = [method_name(cell, "realised") for cell in CELLS] + [REFERENCES["realised"], RQBS]
+    methods = [method_name(cell, "realised") for cell in CELLS] + [REFERENCES["realised"], HF, RQBS]
     extra = {("ECE", "$h$"): "h_val_ece", ("ECE", "mlp"): "mlp_val_ece"}
     return _scores_styler(table, methods, extra)
 
@@ -436,13 +442,14 @@ def _pushforward_styler(table: pd.DataFrame):
 TEST_LABELS = (
     {f"{cell}_real_vs_pop": (CELL_LABELS[cell], "real$-$pop") for cell in CELLS}
     | {f"{cell}_real_vs_bcap": (CELL_LABELS[cell], "real$-$\\bcap{}-real") for cell in CELLS}
+    | {f"{cell}_real_vs_hf": (CELL_LABELS[cell], "real$-$\\bcap{}-Hf-real") for cell in CELLS}
     | {f"{label}_h_vs_mlp": (label, "$h-$mlp") for label in QUANTIFIER_LABELS.values()}
     | {f"{source}_kdey_vs_emq": (source, "KDEy$-$EMQ") for source in SOURCES}
 )
 
 
 def _tests_styler(table: pd.DataFrame):
-    """The mean Winkler differences of the twelve tests, in bold where the Holm-adjusted p-value is below 0.05."""
+    """The mean Winkler differences of the sixteen tests, in bold where the Holm-adjusted p-value is below 0.05."""
     cols = {}
     for name in TESTS:
         cols[TEST_LABELS[name]] = [
@@ -480,7 +487,7 @@ COMMON_CAPTION = (
 )
 CAPTIONS = {
     "realised": COMMON_CAPTION
-    + "Realised methods, \\bcap{}-real and SQS-H: coverage $\\mathcal{C}$, amplitude $\\mathcal{A}$, Winkler score "
+    + "Realised methods, \\bcap{}-real, \\bcap{}-Hf-real and SQS-H: coverage $\\mathcal{C}$, amplitude $\\mathcal{A}$, Winkler score "
     "$\\mathcal{W}$; ECE: top-label calibration error (15 bins) of the input classifier on its validation outputs.",
     "population": COMMON_CAPTION
     + "Population methods, \\bcap{} and SQS-H; $\\operatorname{sd}_j\\hat C_{jj}$: spread of the recalls of $h$ on $V$.",

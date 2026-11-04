@@ -78,7 +78,12 @@ class FixedCTablesTest(unittest.TestCase):
 
     def test_methods_and_tests(self):
         self.assertEqual(len(bf.FIXED_METHODS), 8)
-        self.assertEqual(len(bf.TESTS), 12)
+        self.assertEqual(len(bf.TESTS), 16)
+        self.assertIn(bf.HF, bf.METHODS)
+        for cell in bf.CELLS:
+            self.assertEqual(bf.TESTS[f"{cell}_real_vs_hf"], (bf.method_name(cell, "realised"), bf.HF))
+        # the tests against BayCAP-Hf come last, so the generators of the other twelve are unchanged
+        self.assertTrue(all(name.endswith("_real_vs_hf") for name in list(bf.TESTS)[12:]))
         for method, reference in bf.TESTS.values():
             self.assertIn(method, bf.METHODS)
             self.assertIn(reference, bf.METHODS)
