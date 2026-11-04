@@ -267,6 +267,13 @@ The form of the budget is general, since it follows from the identity of §T.2; 
 
 ## T.6 Which parts each method represents
 
+**What is general and what depends on the method.** The budget is a common frame, but only its structure is shared by all methods:
+
+- **General.** For every method, adding and subtracting $d^\top\pi^Q$ gives $\hat A-A(h,U)=(\hat A-d^\top\pi^Q)+e_3$, and $e_3=e_P+e_3^b$ depends only on the estimand and the protocol, not on the method. For the methods of the form $\hat A=\sum_j\tilde\pi_j\tilde d_j$ (the SQS family and the BayCAP family), the estimator error splits further into $e_1^U+e_1^V+e_2$ (§T.2, §T.3). The baselines of the paper (DoC, QuAcc, O-LEAP, L-CBPE) produce no $\tilde\pi$ and $\tilde d$, so for them only the two-part split exists. The split is exact for vanilla accuracy, which is linear in the table, and first order for nonlinear metrics (§T.9).
+- **Depends on how the accuracy is estimated.** The variances of the parts: those of §T.4 are those of a method that uses the frequencies of $V$ and a quantifier such as ACC; BayCAP obtains its recalls from a posterior, and each quantifier (ACC on a surrogate, BayesianCC on $h$, KDEy) has its own $\operatorname{Var}(e_1^U)$ and $\operatorname{Var}(e_1^V)$. The means of the parts: the quantifier bias $b_q$, and a prior on $C$, which can give $e_2$ a nonzero mean that does not average out over draws of $V$. The within-source correlations of §T.4, which depend on whether the quantifier and $h$ share predictions and validation instances.
+- **Depends on the interval.** Which parts the method's samples simulate (the table below). Two methods with the same point estimate, hence the same split, can have different coverage, as BayCAP and the realised-table BayCAP do.
+- **Depends on the protocol, for all methods alike.** With replacement, $e_P$ adds to $e_3^b$; without replacement, it is part of the luck of a fresh bag (§T.10).
+
 *Intuition.* A method's samples vary only along the sources it simulates; the other sources move the centre of its interval without widening it.
 
 | Method | Status | Spread comes from | $e_3^b$ | $e_P$ | $e_1^U$ | $e_1^V$ | $e_2$ |
