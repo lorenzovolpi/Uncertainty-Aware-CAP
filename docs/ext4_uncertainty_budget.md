@@ -177,7 +177,7 @@ $e_3=e_P+e_3^b$ is the sampling variability of the **estimand**: it exists even 
 
 ## T.4 Variance of each part
 
-All variances below are first order in the estimation errors (delta method) and assume the paper's protocol: fixed class counts $n_j=n\pi^Q_j$, instances drawn with replacement from the pool. Two properties are used throughout; we derive them first.
+All variances below are first order in the estimation errors (Property C) and assume the paper's protocol: fixed class counts $n_j=n\pi^Q_j$, instances drawn with replacement from the pool. Three properties are used throughout; we derive them first.
 
 **Property A: the variance of a frequency.** A Bernoulli variable $B$ equals $1$ with probability $p$ and $0$ otherwise. Its mean is $\mathbb E[B]=p$, and since $B^2=B$, also $\mathbb E[B^2]=p$; so $\operatorname{Var}(B)=\mathbb E[B^2]-\mathbb E[B]^2=p-p^2=p(1-p)$. A count of successes in $m$ independent trials is $k=B_1+\dots+B_m\sim\operatorname{Bin}(m,p)$; the variance of a sum of independent variables is the sum of their variances, so $\operatorname{Var}(k)=m\,p(1-p)$. Multiplying a variable by a constant $a$ multiplies its variance by $a^2$ (from the definition $\operatorname{Var}(X)=\mathbb E[(X-\mathbb E X)^2]$), so the frequency $k/m$ has
 
@@ -191,6 +191,20 @@ $$
 \operatorname{Var}\Big(\sum_ja_jX_j\Big)=\sum_ja_j^2\operatorname{Var}(X_j).
 $$
 
+**Property C: first order and the delta method.** "First order" means that every estimation error is treated as a small number $\varepsilon$, and every term that is a product of two small errors (or a square, $\varepsilon^2$) is dropped. It comes from the Taylor expansion of a smooth function $f$ around a point $\mu$:
+
+$$
+f(\mu+\varepsilon)=f(\mu)+f'(\mu)\,\varepsilon+\tfrac12f''(\mu)\,\varepsilon^2+\dots
+$$
+
+The first-order approximation keeps $f(\mu)+f'(\mu)\varepsilon$: near $\mu$, the curve is replaced by its tangent line. The dropped terms are small because the errors here are sampling errors: an error from a sample of size $m$ (here $n$, $\lvert V_j\rvert$ or $P_j$) has a standard deviation proportional to $1/\sqrt m$ (Property A), so $\varepsilon^2$ and products of two errors are of order $1/m$, smaller than $\varepsilon$ by a factor of order $1/\sqrt m$; the larger the samples, the smaller their share. The *delta method* uses this to compute variances. Let $X$ be random with mean $\mu$ and small spread. To first order, $f(X)\approx f(\mu)+f'(\mu)(X-\mu)$; $f(\mu)$ and $f'(\mu)$ are constants, a constant added to a variable does not change its variance, and a constant factor multiplies it by its square, so
+
+$$
+\operatorname{Var}\big(f(X)\big)\approx f'(\mu)^2\operatorname{Var}(X).
+$$
+
+With several independent variables $X_1,\dots,X_k$, the tangent line becomes $f(\mu)+\sum_i\frac{\partial f}{\partial x_i}(X_i-\mu_i)$, and Property B gives $\operatorname{Var}(f)\approx\sum_i\big(\frac{\partial f}{\partial x_i}\big)^2\operatorname{Var}(X_i)$, with the partial derivatives taken at the means. First order is used in three places below: the cross term inside $e_1$, the nonlinear formula of the quantifier, and the replacement of $d^{\text{pool}}$ by $d$ inside a variance. The independence of the parts within a source, assumed in §T.5, is a separate approximation (see Correlations below): unlike the first-order terms, a correlation does not become negligible as the samples grow.
+
 **$e_3^b$.** Given the pool, $c_j\sim\operatorname{Bin}(n_j,d^{\text{pool}}_j)$, independently across classes (§T.1). The realised accuracy is a weighted sum of the class frequencies: $A(h,U)=\frac1n\sum_jc_j=\sum_j\frac{n_j}n\cdot\frac{c_j}{n_j}=\sum_j\pi^Q_j\frac{c_j}{n_j}$. By linearity of the expectation, $\mathbb E[c_j/n_j\mid\text{pool}]=d^{\text{pool}}_j$, and by Property A, $\operatorname{Var}(c_j/n_j\mid\text{pool})=d^{\text{pool}}_j(1-d^{\text{pool}}_j)/n_j$. Hence, by Property B and $n_j=n\pi^Q_j$,
 
 $$
@@ -199,7 +213,7 @@ $$
 \operatorname{Var}(e_3^b\mid\text{pool})=\sum_j(\pi^Q_j)^2\frac{d^{\text{pool}}_j(1-d^{\text{pool}}_j)}{n\pi^Q_j}=\frac1n\sum_j\pi^Q_jd^{\text{pool}}_j(1-d^{\text{pool}}_j)\approx\frac1n\sum_j\pi^Q_jd_j(1-d_j),
 $$
 
-where the last step replaces $d^{\text{pool}}_j$ by $d_j$, a second-order change. One factor $\pi^Q_j$ of the squared weight cancels against the sample size $n_j=n\pi^Q_j$ of the class.
+where the last step replaces $d^{\text{pool}}_j$ by $d_j$, a second-order change: it changes $d^{\text{pool}}_j(1-d^{\text{pool}}_j)$ by an amount proportional to $d^{\text{pool}}_j-d_j$, of order $1/\sqrt{P_j}$, and this change is then multiplied by $1/n$, so it is smaller than the term itself by a factor of order $1/\sqrt{P_j}$. One factor $\pi^Q_j$ of the squared weight cancels against the sample size $n_j=n\pi^Q_j$ of the class.
 
 **$e_P$.** The pool's class $\omega_j$ is a random sample of $P_j$ instances of the population's class $\omega_j$, so the number of them that $h$ classifies correctly is $\operatorname{Bin}(P_j,d_j)$ and $d^{\text{pool}}_j$ is its frequency, independently across classes. With the constant weights $\pi^Q_j$,
 
@@ -229,13 +243,29 @@ $$
 
 This is a *sampling* variance: it describes how $\tilde d_j$ would scatter around the fixed $d_j$ if $V$ were drawn again and again; for a given $V$, $e_2$ is a single number. It applies to the methods that use the frequencies $\tilde d_j$ of $V$ directly (the SQS family); a method that obtains its recalls otherwise, as BayCAP does through a posterior, has an $e_2$ with a different mean and variance. The weights are squared here and in $e_P$, and not in $e_3^b$, because in $e_3^b$ the prevalence also enters through the sample sizes $n_j=n\pi^Q_j$, which cancels one factor, while $\lvert V_j\rvert$ and $P_j$ do not depend on $\pi^Q$. $V$ and the pool are independent, so the observable gap of §T.3 has $\operatorname{Var}(e_2+e_P)=\sum_j(\pi^Q_j)^2d_j(1-d_j)\big(1/\lvert V_j\rvert+1/P_j\big)$.
 
-**$e_1$, binary case with ACC.** Prevalence errors sum to zero, so $e_1=(\tilde\pi_1-\pi^Q_1)(\tilde d_1-\tilde d_0)$ and $\operatorname{Var}(e_1)\approx(d_1-d_0)^2\operatorname{Var}(\tilde\pi_1)$; the whole term vanishes when $d=\beta\mathbf 1$, the paper's condition for unbiased cross-validation (Eq. 2). Let the surrogate classifier have rates $S_{10}=P(\hat Y_s=\omega_1\mid Y=\omega_0)$ and $S_{11}$, estimated on $V$ as $\hat S$, and let $\hat p$ be the fraction of $U$ that it predicts as $\omega_1$. ACC returns
+**$e_1$, the cross term.** Write the error of the recalls as $\delta_j=\tilde d_j-d_j$, so that $\tilde d_j=d_j+\delta_j$. Then
+
+$$
+e_1=\sum_j(\tilde\pi_j-\pi^Q_j)\tilde d_j=\underbrace{\sum_j(\tilde\pi_j-\pi^Q_j)\,d_j}_{\text{first order}}+\underbrace{\sum_j(\tilde\pi_j-\pi^Q_j)\,\delta_j}_{\text{product of two errors}},
+$$
+
+and, by Property C, the variance of $e_1$ is computed from the first part only, with the true $d$ in place of $\tilde d$.
+
+**$e_1$, binary case with ACC.** Prevalence errors sum to zero, $\tilde\pi_0-\pi^Q_0=-(\tilde\pi_1-\pi^Q_1)$, so the first part is $(\tilde\pi_1-\pi^Q_1)(d_1-d_0)$; $d_1-d_0$ is a constant, so $\operatorname{Var}(e_1)\approx(d_1-d_0)^2\operatorname{Var}(\tilde\pi_1)$. The whole term vanishes when $d=\beta\mathbf 1$, the paper's condition for unbiased cross-validation (Eq. 2). Let the surrogate classifier have rates $S_{10}=P(\hat Y_s=\omega_1\mid Y=\omega_0)$ and $S_{11}$, estimated on $V$ as $\hat S$, and let $\hat p$ be the fraction of $U$ that it predicts as $\omega_1$. ACC returns
 
 $$
 \hat\pi_1=\frac{\hat p-\hat S_{10}}{\hat S_{11}-\hat S_{10}}.
 $$
 
-Two independent sources of noise enter it:
+$\hat\pi_1$ is a nonlinear function of $\hat p$, $\hat S_{10}$ and $\hat S_{11}$ (the estimated rates are in the denominator), so its variance is computed with the delta method (Property C). Its partial derivatives, at the true values $p$, $S_{10}$, $S_{11}$, follow from the quotient rule and from $(p-S_{10})/(S_{11}-S_{10})=\pi^Q_1$:
+
+$$
+\frac{\partial\hat\pi_1}{\partial\hat p}=\frac1{S_{11}-S_{10}},\qquad
+\frac{\partial\hat\pi_1}{\partial\hat S_{10}}=\frac{-(S_{11}-S_{10})+(p-S_{10})}{(S_{11}-S_{10})^2}=\frac{\pi^Q_1-1}{S_{11}-S_{10}}=-\frac{\pi^Q_0}{S_{11}-S_{10}},\qquad
+\frac{\partial\hat\pi_1}{\partial\hat S_{11}}=-\frac{p-S_{10}}{(S_{11}-S_{10})^2}=-\frac{\pi^Q_1}{S_{11}-S_{10}}.
+$$
+
+Each squared derivative multiplies the variance of the corresponding input. Two independent sources of noise enter it:
 
 - **from $U$** ($e_1^U$): with fixed class counts, $\operatorname{Var}(\hat p)=\frac1n\big[\pi^Q_0S_{10}(1-S_{10})+\pi^Q_1S_{11}(1-S_{11})\big]$, so
 
@@ -243,7 +273,7 @@ $$
 \operatorname{Var}(e_1^U)\approx\frac{(d_1-d_0)^2}{(S_{11}-S_{10})^2}\cdot\frac{\pi^Q_0S_{10}(1-S_{10})+\pi^Q_1S_{11}(1-S_{11})}{n};
 $$
 
-- **from $V$** ($e_1^V$): $\partial\hat\pi_1/\partial S_{10}=-\pi^Q_0/(S_{11}-S_{10})$ and $\partial\hat\pi_1/\partial S_{11}=-\pi^Q_1/(S_{11}-S_{10})$, with $\operatorname{Var}(\hat S_{1j})=S_{1j}(1-S_{1j})/\lvert V_j\rvert$, so
+- **from $V$** ($e_1^V$): the derivatives with respect to $\hat S_{10}$ and $\hat S_{11}$ above, with $\operatorname{Var}(\hat S_{1j})=S_{1j}(1-S_{1j})/\lvert V_j\rvert$, so
 
 $$
 \operatorname{Var}(e_1^V)\approx\frac{(d_1-d_0)^2}{(S_{11}-S_{10})^2}\left[\frac{(\pi^Q_0)^2S_{10}(1-S_{10})}{\lvert V_0\rvert}+\frac{(\pi^Q_1)^2S_{11}(1-S_{11})}{\lvert V_1\rvert}\right].
@@ -352,6 +382,7 @@ The toy simulation (Appendix A), which draws its bags from the population and th
 - **Natural sampling.** Under natural (i.i.d.) sampling instead of APP, the class counts are multinomial, which adds a term $\frac1n\operatorname{Var}_{\pi^Q}(d_Y)$ to $e_3^b$. All experiments here keep APP, as in the paper.
 - **Quantifier bias** is not a variance and is represented by no method. If the completed methods still under-cover at large $n$, bias and the pool term are the likely causes; the oracle ladder separates bias from $e_1^V$ by repeating over $V$ seeds, and E4.c1 measures the pool term.
 - **Small $n$.** Rounding $n\pi^Q_j$ can leave classes empty; the conventions of [[ext1_metrics]] for rare and absent classes apply.
+- **When first order fails.** The first-order approximation of §T.4 (Property C) needs small errors. It can fail with small $\lvert V_j\rvert$, $n$ or $P_j$ (rare classes), where the dropped products are no longer negligible; with an ill-conditioned surrogate, where $S_{11}-S_{10}$ is close to $0$, ACC is strongly curved and $\hat\pi$ can have heavy tails that the delta method underestimates; and near the vertices of the simplex, where quantifiers clip $\hat\pi$, which is not a smooth operation. In the toy of Appendix A the coverage rule is least accurate at large $r$, where the normal approximation for $e_2$ is coarsest.
 - **"Represents a part" is an assumption** [new hypothesis]. The coverage rule of §T.7 assumes that each represented part is simulated at its true size. For BayCAP the spread along $e_1$ and $e_2$ is a posterior width, not a sampling variance, and it can be displaced by the prior ([[ext2_baycap]]). A failure of the rule can therefore come either from a wrong $\sigma_{\text{in}}$ or from a missing part; telling them apart needs a comparison of each method's own spread with $\sqrt{\sum_{\text{represented}}\sigma_k^2}$ before the comparison of its coverage with $\eta$.
 - **Measuring $e_1^V$ through a large bag from the pool** [new hypothesis]. The approximation of $\pi^\infty(V)$ in E4.1 uses a bag of $10^5$ instances drawn from the pool, which inherits the surrogate's rates on the pool; the measured $e_1^V$ then contains the surrogate's pool part set aside in §T.4, which may not be second order on small pools.
 - **$e_2$ and $e_P$ are not separately identifiable, and $e_P$ is one draw per pool** [new hypothesis]. Only their sum $\sum_j\pi^Q_j(\tilde d_j-d^{\text{pool}}_j)$ is observable; their split relies on the variances of §T.4. Within a dataset $e_P$ is a single realisation, so its variance is seen only across datasets, or across outer seeds if these re-draw the pool (to be checked in the splits of `main`).
