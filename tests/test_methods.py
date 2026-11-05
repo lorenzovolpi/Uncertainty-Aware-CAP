@@ -31,13 +31,12 @@ E2_METHODS = [
     "BayesCAP-Hfn-real",
 ]
 BAYCAP_METHODS = ["BayesCAP", *E2_METHODS]
-# E2 methods in the tables of main (user's requests)
-IN_MAIN_TABLES = ["BayesCAP-EB-real", "BayesCAP-H-real"]
-# E2 methods in the ranks of main (user's request of 2026-11-05)
+# E2 and E3.1 methods in the tables of main (user's request of 2026-11-05)
+IN_MAIN_TABLES = ["BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
+# E2 and E3.1 methods in the ranks of main (user's request of 2026-11-05)
 IN_RANKS = ["BayesCAP-Hf-real"]
-# BayCAP methods in the coverage vs amplitude plot (user's requests); BayesCAP-Hf-real (E2.8) and BayesCAP-Hfn-real
-# (E2.9) wait for the user
-IN_AVC = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real"]
+# BayCAP methods in the coverage vs amplitude plot (user's request of 2026-11-05)
+IN_AVC = ["BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
 # the eight methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md)
 E31_METHODS = [f"BayCAP-{q}-{s}{x}" for q in ("KDEy", "EMQ") for s in ("h", "mlp") for x in ("", "-real")]
 
@@ -115,14 +114,14 @@ class BayCAPFactoryTest(unittest.TestCase):
                 self.assertNotIn(name, DEFAULT_METHODS)
         for name in E31_METHODS:
             with self.subTest(method=name):
-                self.assertNotIn(name, main_tables.table_method_names())
+                if name not in IN_MAIN_TABLES:
+                    self.assertNotIn(name, main_tables.table_method_names())
                 self.assertNotIn(name, rank._methods())
                 self.assertNotIn(name, DEFAULT_METHODS)
-                self.assertNotIn(name, AVC_METHODS)
 
     def test_coverage_vs_amplitude_plot_shows_the_requested_baycap_methods(self):
         self.assertEqual(AVC_METHODS[: len(DEFAULT_METHODS)], DEFAULT_METHODS)
-        for name in BAYCAP_METHODS:
+        for name in BAYCAP_METHODS + E31_METHODS:
             with self.subTest(method=name):
                 if name in IN_AVC:
                     self.assertIn(name, AVC_METHODS)

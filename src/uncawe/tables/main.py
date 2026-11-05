@@ -77,11 +77,15 @@ metrics_map = {
 }
 
 
-# methods stored in main but left out of its tables and ranks: the BayCAP variants are used only by the E2 analyses;
-# BayesCAP-EB-real and BayesCAP-H-real are in the tables and ranks (user's requests); BayesCAP-Hf-real (E2.8) and
-# BayesCAP-Hfn-real (E2.9) are not, until the user decides; the eight methods with a fixed rate matrix of E3.1
-# (docs/ext3_posterior_propagation.md) are used only by the E3.1 analyses
-EXCLUDED_METHODS = {"BayesCAP-real", "BayesCAP-EB", "BayesCAP-Hf-real", "BayesCAP-Hfn-real"} | set(FIXED_C_VARIANTS)
+# methods stored in main but left out of its tables: the BayCAP variants of the E2 analyses, except BayesCAP-Hf-real
+# (E2.8), and the methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md), except the two
+# realised BayCAP-KDEy methods (user's request of 2026-11-05; before, the tables showed BayesCAP-EB-real and
+# BayesCAP-H-real and none of these three)
+IN_TABLES = {"BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"}
+EXCLUDED_METHODS = (
+    {"BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real", "BayesCAP-Hf-real", "BayesCAP-Hfn-real"}
+    | set(FIXED_C_VARIANTS)
+) - IN_TABLES
 
 
 def table_method_names() -> list[str]:
