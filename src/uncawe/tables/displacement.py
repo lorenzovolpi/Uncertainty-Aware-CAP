@@ -85,6 +85,10 @@ def error_terms(estim_ct: np.ndarray, true_ct: np.ndarray) -> dict:
     }
 
 
+# the methods ``--method`` accepts: the BayCAP methods of ``main``, whose prior on the columns of $C$ is known
+METHOD_CHOICES = tuple(BAYCAP_VARIANTS) + tuple(FIXED_C_VARIANTS)
+
+
 def method_c_prior(method: str) -> str:
     """Return the prior on the columns of $C$ of a BayCAP method of ``main``: ``"none"`` for the methods with a fixed
     rate matrix of E3.1 (``FIXED_C_VARIANTS``), ``"uniform"`` for any name that is not a BayCAP method."""
@@ -432,7 +436,12 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--tables", action="store_true", help="Generate tables")
     parser.add_argument("-p", "--pdf", action="store_true", help="Generate PDF from tables")
     parser.add_argument("-a", "--all", action="store_true", help="Generate both tables and PDF")
-    parser.add_argument("--method", default=METHOD, help="Method of main to analyse (default: %(default)s)")
+    parser.add_argument(
+        "--method",
+        default=METHOD,
+        choices=METHOD_CHOICES,
+        help="BayCAP method of main to analyse (default: %(default)s)",
+    )
     parser.add_argument(
         "--table-dir",
         "--output-dir",
