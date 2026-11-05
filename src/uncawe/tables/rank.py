@@ -15,7 +15,11 @@ from uncawe.tables import main as main_tables
 
 METRICS = ("acc_err", "winkler")
 LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
-EXCLUDED_METHODS = {"L-CBPE"} | main_tables.EXCLUDED_METHODS
+# the rank tables leave out the methods of the main tables listed here and add BayesCAP-Hf-real, the best BayCAP prior of
+# E2.8 (user's request of 2026-11-05); the main tables keep BayesCAP-EB-real and BayesCAP-H-real
+RANK_ONLY_EXCLUDED = {"L-CBPE", "BayesCAP-EB-real", "BayesCAP-H-real"}
+RANK_ONLY_INCLUDED = {"BayesCAP-Hf-real"}
+EXCLUDED_METHODS = (RANK_ONLY_EXCLUDED | main_tables.EXCLUDED_METHODS) - RANK_ONLY_INCLUDED
 BEST_RGB = (138, 154, 91)
 # BEST_RGB = (172, 207, 173)
 WHITE_RGB = (255, 255, 255)

@@ -31,8 +31,10 @@ E2_METHODS = [
     "BayesCAP-Hfn-real",
 ]
 BAYCAP_METHODS = ["BayesCAP", *E2_METHODS]
-# E2 methods in the tables and ranks of main (user's requests)
+# E2 methods in the tables of main (user's requests)
 IN_MAIN_TABLES = ["BayesCAP-EB-real", "BayesCAP-H-real"]
+# E2 methods in the ranks of main (user's request of 2026-11-05)
+IN_RANKS = ["BayesCAP-Hf-real"]
 # BayCAP methods in the coverage vs amplitude plot (user's requests); BayesCAP-Hf-real (E2.8) and BayesCAP-Hfn-real
 # (E2.9) wait for the user
 IN_AVC = ["BayesCAP", "BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real"]
@@ -101,12 +103,14 @@ class BayCAPFactoryTest(unittest.TestCase):
     def test_main_tables_ranks_and_plots_exclude_the_e2_methods(self):
         for name in ("BayesCAP", *IN_MAIN_TABLES):
             self.assertIn(name, main_tables.table_method_names())
+        for name in ("BayesCAP", *IN_RANKS):
             self.assertIn(name, rank._methods())
         self.assertNotIn("L-CBPE", rank._methods())
         for name in E2_METHODS:
             with self.subTest(method=name):
                 if name not in IN_MAIN_TABLES:
                     self.assertNotIn(name, main_tables.table_method_names())
+                if name not in IN_RANKS:
                     self.assertNotIn(name, rank._methods())
                 self.assertNotIn(name, DEFAULT_METHODS)
         for name in E31_METHODS:
