@@ -161,10 +161,15 @@ class FixedCTablesTest(unittest.TestCase):
 
     def test_every_figure_draws_from_the_csv(self):
         table = pd.read_csv(pd.io.common.StringIO(self.table.to_csv(index=False)))
+        # draw each figure, so that the mathtext of every label is parsed
         for name, plotter in plots.PLOTTERS.items():
             with self.subTest(figure=name):
-                plt.close(plotter(table))
-        plt.close(plots.plot_min_prev(bf.min_prev_table(self.results)))
+                fig = plotter(table)
+                fig.canvas.draw()
+                plt.close(fig)
+        fig = plots.plot_min_prev(bf.min_prev_table(self.results))
+        fig.canvas.draw()
+        plt.close(fig)
 
     def test_fixed_methods_have_no_prior_part(self):
         counts = self.val_counts[("wine", "LR")]

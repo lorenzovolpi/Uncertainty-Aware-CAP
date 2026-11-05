@@ -57,6 +57,8 @@ PLOT_NAME = "baycap_fixed"
 FIGURES = ("coverage", "coverage_population", "coverage_hf", "width", "centre", "calibration", "min_prev")
 NOMINAL = 0.95
 REFERENCE_LINE = {"color": "#8c8c8c", "linewidth": 0.8, "zorder": 1}
+# matplotlib's mathtext has no \\lVert, \\rVert
+MISMATCH_LABEL = "mismatch $\\Vert n^t/N^Q-\\hat C\\bar\\pi\\Vert_1$"
 IDENTITY_LINE = {"color": "#595959", "linewidth": 1.2, "linestyle": "--", "zorder": 1}
 
 
@@ -162,7 +164,7 @@ def plot_width(table: pd.DataFrame):
         axes,
         sc,
         table,
-        "mismatch $\\lVert n^t/N^Q-\\hat C\\bar\\pi\\rVert_1$",
+        MISMATCH_LABEL,
         "widening of the realised interval" + suffix,
     )
     return fig
@@ -177,9 +179,7 @@ def plot_centre(table: pd.DataFrame):
             ax, table, f"{cell}_mismatch", f"{cell}_centre_move", "n_classes", SEQUENTIAL_CMAP, _k_norm(table)
         )
         ax.axhline(0.0, **REFERENCE_LINE)
-        style_scatter_axes(
-            ax, "mismatch $\\lVert n^t/N^Q-\\hat C\\bar\\pi\\rVert_1$", "realised $-$ population estimate"
-        )
+        style_scatter_axes(ax, MISMATCH_LABEL, "realised $-$ population estimate")
     _finish(fig, axes, sc, table, "$K$", "movement of the centre by the realised pushforward")
     return fig
 
