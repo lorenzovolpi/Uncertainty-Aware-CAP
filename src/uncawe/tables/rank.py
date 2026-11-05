@@ -215,10 +215,16 @@ def _wilcoxon_not_significantly_different(best_ranks: pd.Series, method_ranks: p
     return bool(np.isfinite(pvalue) and pvalue >= WILCOXON_ALPHA)
 
 
-def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS) -> str:
+def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, methods: list[str] | None = None) -> str:
+    """The rank table of ``df``; ``methods`` gives the columns and their order (default ``_methods()``), and must
+    include every method of ``df``, since all of them are ranked."""
     dataset_ranks = _dataset_rank_values(df, metrics)
     mean_rank = _rank_mean_values(dataset_ranks)
-    methods = [method for method in _methods() if method in mean_rank.columns.get_level_values("method")]
+    ranked = mean_rank.columns.get_level_values("method")
+    methods = [method for method in (_methods() if methods is None else methods) if method in ranked]
+    missing = sorted(set(ranked) - set(methods))
+    if missing:
+        raise ValueError(f"Ranked methods without a column: {', '.join(missing)}")
     columns = main_tables._ordered_columns(methods, metrics)
     rows = pd.Index(
         [classifier for classifier in main_tables.CLASSIFIER_FILTER if classifier in mean_rank.index],
@@ -248,6 +254,16 @@ def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS) -> s
     return _hide_latex_header_names(latex, methods, metrics, show_metric_names=len(metrics) > 1)
 
 
+def _metric_cmidrules(n_methods: int, n_metrics: int) -> str:
+    """One ``\\cmidrule`` under each metric of the header, over its ``n_methods`` columns."""
+    rules = []
+    for idx in range(n_metrics):
+        first = 2 + idx * n_methods
+        trim = "r" if idx < n_metrics - 1 else "l"
+        rules.append(f"\\cmidrule({trim}){{{first}-{first + n_methods - 1}}}")
+    return "".join(rules)
+
+
 def _hide_latex_header_names(
     latex: str,
     methods: list[str],
@@ -265,7 +281,7 @@ def _hide_latex_header_names(
                     main_tables._format_metric_header_separators(line.replace("metric & ", " & ", 1), len(metrics))
                 )
                 # formatted.append("\\midrule")
-                formatted.append("\\cmidrule(r){2-7}\\cmidrule(l){8-13}")
+                formatted.append(_metric_cmidrules(len(methods), len(metrics)))
             skip_classifier_header = False
         elif line.startswith("method & "):
             formatted.append(_protect_method_header_cells(line.replace("method & ", " & ", 1), 1, methods, metrics))
@@ -399,7 +415,7 @@ def gen_tables(pargs):
             continue
 
         name = f"{EXPERIMENT}_{domain}_{acc_name}_rank"
-        table = _rank_latex_table(df, metrics)
+        table = _rank_latex_table(df, metrics, methods)
         tabular_filename = f"{name}.tex"
         with open(os.path.join(tabular_dir, tabular_filename), "w") as f:
             f.write(table)
