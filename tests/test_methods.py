@@ -34,7 +34,7 @@ BAYCAP_METHODS = ["BayesCAP", *E2_METHODS]
 # E2 and E3.1 methods in the tables of main (user's request of 2026-11-05)
 IN_MAIN_TABLES = ["BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
 # E2 and E3.1 methods in the ranks of main (user's request of 2026-11-05)
-IN_RANKS = ["BayesCAP-Hf-real"]
+IN_RANKS = ["BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
 # BayCAP methods in the coverage vs amplitude plot (user's request of 2026-11-05)
 IN_AVC = ["BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
 # the eight methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md)
@@ -116,7 +116,8 @@ class BayCAPFactoryTest(unittest.TestCase):
             with self.subTest(method=name):
                 if name not in IN_MAIN_TABLES:
                     self.assertNotIn(name, main_tables.table_method_names())
-                self.assertNotIn(name, rank._methods())
+                if name not in IN_RANKS:
+                    self.assertNotIn(name, rank._methods())
                 self.assertNotIn(name, DEFAULT_METHODS)
 
     def test_coverage_vs_amplitude_plot_shows_the_requested_baycap_methods(self):
