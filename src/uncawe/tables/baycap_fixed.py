@@ -577,11 +577,16 @@ def _stem(name: str) -> str:
     return f"{TABLE_NAME}_{name}"
 
 
-def _latex_document(longtable_path: str) -> str:
-    return eb_prior._latex_document(longtable_path).replace(
+# the score tables have 28 score columns: their standalone documents are typeset on A3, the others on A4
+A3_TABLES = ("realised", "population")
+
+
+def _latex_document(longtable_path: str, a3: bool = False) -> str:
+    document = eb_prior._latex_document(longtable_path).replace(
         "\\begin{document}",
         "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\newcommand{\\rqbs}{SQS-H}\n\\begin{document}",
     )
+    return document.replace("[a4paper,", "[a3paper,") if a3 else document
 
 
 def gen_tables(pargs):
@@ -610,7 +615,7 @@ def gen_tables(pargs):
         with open(os.path.join(tabular_dir, f"{_stem(name)}_long.tex"), "w") as f:
             f.write(eb_prior._latex_longtable(styler, CAPTIONS[name], label))
         with open(os.path.join(out_dir, f"{_stem(name)}_doc.tex"), "w") as f:
-            f.write(_latex_document(f"tabular/{_stem(name)}_long.tex"))
+            f.write(_latex_document(f"tabular/{_stem(name)}_long.tex", a3=name in A3_TABLES))
 
     with pd.option_context("display.width", 200, "display.max_columns", None, "display.precision", 3):
         for name, summary in analysis_summary(table).items():
