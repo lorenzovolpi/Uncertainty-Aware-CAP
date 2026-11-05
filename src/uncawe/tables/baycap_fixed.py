@@ -64,7 +64,6 @@ from uncawe.results import Results
 from uncawe.tables import baycap_h, eb_prior, estimand_gap, pushforward
 from uncawe.tables import main as main_tables
 from uncawe.tables.baycap_hf import RHAT_HIGH
-from uncawe.tables.common import METHOD_LATEX_LABELS
 from uncawe.tables.displacement import load_validation_counts, ordered, rate_matrix
 from uncawe.tables.estimand_gap import ACC_NAME, CLASSIFIER_ORDER, SEED, booktabs_clines, pair_rng
 
@@ -402,6 +401,14 @@ SOURCE_LATEX = {"h": "$s=h$", "mlp": "$s=$ mlp"}
 
 # the score groups of the realised and population tables, in this order; within each group, one column per method
 TABLE_SCORES = ("ae", "amplitude", "coverage", "winkler")
+# short column labels of the methods in those tables (28 score columns must fit a landscape page); the pushforward is
+# that of the table, and the captions explain the labels
+SHORT_LABELS = {method_name(cell, p): CELL_LABELS[cell] for cell in CELLS for p in PUSHFORWARDS} | {
+    "BayesCAP": "\\bcap{}",
+    "BayesCAP-real": "unif.",
+    HF: "Hf",
+    RQBS: "SQS-H",
+}
 
 
 def _score_quality(values: np.ndarray, score: str) -> np.ndarray:
@@ -439,7 +446,7 @@ def _scores_styler(table: pd.DataFrame, methods: list[str], extra: dict[tuple[st
     cols = {}
     for score in TABLE_SCORES:
         for method in methods:
-            cols[(labels[score], METHOD_LATEX_LABELS.get(method, method))] = table[f"{method}_{score}"].to_numpy()
+            cols[(labels[score], SHORT_LABELS.get(method, method))] = table[f"{method}_{score}"].to_numpy()
     for label, column in extra.items():
         cols[label] = table[column].to_numpy()
     out = pd.DataFrame(cols)
@@ -535,10 +542,13 @@ COMMON_CAPTION = (
 )
 CAPTIONS = {
     "realised": COMMON_CAPTION
-    + "Realised methods, \\bcap{}-real, \\bcap{}-Hf-real and SQS-H, grouped by score: AE, amplitude $\\mathcal{A}$, "
+    + "Realised methods (columns: quantifier and input classifier of each cell), unif.\\ (\\bcap{}-real), Hf "
+    "(\\bcap{}-Hf-real) and SQS-H, grouped by score: AE, amplitude $\\mathcal{A}$, "
     "coverage $\\mathcal{C}$, Winkler score $\\mathcal{W}$; ECE: top-label calibration error (15 bins) of the input "
     "classifier on its validation outputs. " + SCORE_HIGHLIGHT,
-    "population": COMMON_CAPTION + "Population methods, \\bcap{} and SQS-H, grouped by score as in the realised table; "
+    "population": COMMON_CAPTION
+    + "Population methods (columns: quantifier and input classifier of each cell), \\bcap{} and SQS-H, grouped by "
+    "score as in the realised table; "
     "$\\operatorname{sd}_j\\hat C_{jj}$: spread of the recalls of $h$ on $V$. " + SCORE_HIGHLIGHT,
     "pushforward": COMMON_CAPTION
     + "Per cell: observed widening factor (median over bags of the amplitude ratio realised/population), predicted "
