@@ -43,6 +43,8 @@ the ECE use no target labels. The split of the shift of E2.2 is ``tables/displac
 prior part $R_0=0$ for these methods. Outputs, under ``<OUT_DIR>/uncawe/tables/baycap_fixed/``: the per-pair CSV, which
 ``plots/baycap_fixed.py`` reads, the CSVs of the two other summaries, and five tables (realised; population;
 pushforward; tests; design), each as a LaTeX tabular fragment, a longtable and a standalone landscape document.
+The realised and population tables group their columns by score, then by method, and highlight each row within each
+score group (``_score_cell_styles``).
 Validation counts and tables follow the ``cap-ml`` layout (true classes on rows); $\\hat C$ of ``rate_matrix`` is in the
 paper's layout.
 """
@@ -55,7 +57,7 @@ import numpy as np
 import pandas as pd
 
 from uncawe import env
-from uncawe.config import acc_from_ct, get_acc_names
+from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names
 from uncawe.experiments.methods import FIXED_C_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.results import Results
@@ -398,17 +400,53 @@ CELL_LABELS = {cell: cell.replace("-", " ") for cell in CELLS}
 SOURCE_LATEX = {"h": "$s=h$", "mlp": "$s=$ mlp"}
 
 
+# the score groups of the realised and population tables, in this order; within each group, one column per method
+TABLE_SCORES = ("ae", "amplitude", "coverage", "winkler")
+
+
+def _score_quality(values: np.ndarray, score: str) -> np.ndarray:
+    """Higher is better: AE, amplitude and Winkler score lower, coverage closer to the nominal level."""
+    if score == "coverage":
+        return -np.abs(values - CONFIDENCE_LEVEL)
+    return -values
+
+
+def _score_cell_styles(out: pd.DataFrame, labels: dict[str, str]) -> pd.DataFrame:
+    """For each row and each score group: a colour scale from the worst (red) to the best (green) value of the row in
+    that group, as ``tables/main.py:_minmax_gradient_colors``, and the best value in bold."""
+    styles = pd.DataFrame("", index=out.index, columns=out.columns)
+    for score, label in labels.items():
+        group = [column for column in out.columns if column[0] == label]
+        for row in range(len(out)):
+            quality = _score_quality(out[group].iloc[row].to_numpy(dtype=float), score)
+            if np.all(np.isnan(quality)):
+                continue
+            best, worst = np.nanmax(quality), np.nanmin(quality)
+            for column, value in zip(group, quality):
+                if np.isnan(value):
+                    continue
+                color = main_tables._gradient_hex(value, worst, best).lstrip("#").upper()
+                style = f"cellcolor:[HTML]{{{color}}};"
+                if np.isclose(value, best):
+                    style += " bfseries: ;"
+                styles.iloc[row, out.columns.get_loc(column)] = style
+    return styles
+
+
 def _scores_styler(table: pd.DataFrame, methods: list[str], extra: dict[tuple[str, str], str]):
+    """Columns grouped by score (``TABLE_SCORES``), then by method; ``extra`` columns last, not highlighted."""
+    labels = {score: SCORE_LABELS[score] for score in TABLE_SCORES}
     cols = {}
-    for method in methods:
-        for score in ("coverage", "amplitude", "winkler"):
-            cols[(METHOD_LATEX_LABELS.get(method, method), SCORE_LABELS[score])] = table[f"{method}_{score}"].to_numpy()
+    for score in TABLE_SCORES:
+        for method in methods:
+            cols[(labels[score], METHOD_LATEX_LABELS.get(method, method))] = table[f"{method}_{score}"].to_numpy()
     for label, column in extra.items():
         cols[label] = table[column].to_numpy()
     out = pd.DataFrame(cols)
     out.columns = pd.MultiIndex.from_tuples(out.columns)
     out.index = baycap_h._index(table)
-    return out.style.format(precision=3, na_rep="--")
+    styles = _score_cell_styles(out, labels)
+    return out.style.format(precision=3, na_rep="--").apply(lambda _: styles, axis=None)
 
 
 def _realised_styler(table: pd.DataFrame):
@@ -487,16 +525,21 @@ def _design_styler(summary: pd.DataFrame):
     return out.style.format(precision=3, na_rep="--")
 
 
+SCORE_HIGHLIGHT = (
+    "In each row and score group, colours run from the worst (red) to the best (green) value and the best is in bold; "
+    "lower is better for AE, $\\mathcal{A}$ and $\\mathcal{W}$, closer to $0.95$ for $\\mathcal{C}$."
+)
 COMMON_CAPTION = (
     "BayCAP with a fixed $\\hat C$ on \\texttt{main} (E3.1; vanilla accuracy, $|U|=1000$); means over the 100 bags, "
     "scored against the realised table. "
 )
 CAPTIONS = {
     "realised": COMMON_CAPTION
-    + "Realised methods, \\bcap{}-real, \\bcap{}-Hf-real and SQS-H: coverage $\\mathcal{C}$, amplitude $\\mathcal{A}$, Winkler score "
-    "$\\mathcal{W}$; ECE: top-label calibration error (15 bins) of the input classifier on its validation outputs.",
-    "population": COMMON_CAPTION
-    + "Population methods, \\bcap{} and SQS-H; $\\operatorname{sd}_j\\hat C_{jj}$: spread of the recalls of $h$ on $V$.",
+    + "Realised methods, \\bcap{}-real, \\bcap{}-Hf-real and SQS-H, grouped by score: AE, amplitude $\\mathcal{A}$, "
+    "coverage $\\mathcal{C}$, Winkler score $\\mathcal{W}$; ECE: top-label calibration error (15 bins) of the input "
+    "classifier on its validation outputs. " + SCORE_HIGHLIGHT,
+    "population": COMMON_CAPTION + "Population methods, \\bcap{} and SQS-H, grouped by score as in the realised table; "
+    "$\\operatorname{sd}_j\\hat C_{jj}$: spread of the recalls of $h$ on $V$. " + SCORE_HIGHLIGHT,
     "pushforward": COMMON_CAPTION
     + "Per cell: observed widening factor (median over bags of the amplitude ratio realised/population), predicted "
     "factor $\\sqrt{1+(\\bar\\sigma_g/\\sigma_p)^2}$ (median over bags), movement of the centre (realised minus "
@@ -526,7 +569,8 @@ def _stem(name: str) -> str:
 
 def _latex_document(longtable_path: str) -> str:
     return eb_prior._latex_document(longtable_path).replace(
-        "\\begin{document}", "\\newcommand{\\bcap}{BayCAP}\n\\newcommand{\\rqbs}{SQS-H}\n\\begin{document}"
+        "\\begin{document}",
+        "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\newcommand{\\rqbs}{SQS-H}\n\\begin{document}",
     )
 
 

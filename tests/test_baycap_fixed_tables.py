@@ -163,6 +163,28 @@ class FixedCTablesTest(unittest.TestCase):
             latex = styler(self.table).to_latex()
             self.assertIn("wine", latex.lower())
 
+    def test_score_tables_are_grouped_by_score_and_highlighted_by_row(self):
+        styler = bf._realised_styler(self.table)
+        groups = list(dict.fromkeys(column[0] for column in styler.data.columns))
+        self.assertEqual(groups[:4], [bf.SCORE_LABELS[score] for score in bf.TABLE_SCORES])
+        styles = bf._score_cell_styles(styler.data, {score: bf.SCORE_LABELS[score] for score in bf.TABLE_SCORES})
+        for score in bf.TABLE_SCORES:
+            group = [column for column in styler.data.columns if column[0] == bf.SCORE_LABELS[score]]
+            for row in range(len(styler.data)):
+                values = styler.data[group].iloc[row].to_numpy(dtype=float)
+                bold = [i for i, column in enumerate(group) if "bfseries" in styles[column].iloc[row]]
+                best = bf._score_quality(values, score)
+                self.assertEqual(bold, list(np.flatnonzero(np.isclose(best, np.nanmax(best)))))
+        # the extra columns are not highlighted
+        self.assertTrue((styles[("ECE", "mlp")] == "").all())
+        latex = styler.to_latex()
+        self.assertIn("\\cellcolor[HTML]", latex)
+        self.assertIn("\\bfseries", latex)
+
+    def test_coverage_is_best_closest_to_the_nominal_level(self):
+        quality = bf._score_quality(np.array([0.99, 0.94, 0.5]), "coverage")
+        self.assertEqual(int(np.argmax(quality)), 1)
+
     def test_every_figure_draws_from_the_csv(self):
         table = pd.read_csv(pd.io.common.StringIO(self.table.to_csv(index=False)))
         # draw each figure, so that the mathtext of every label is parsed
