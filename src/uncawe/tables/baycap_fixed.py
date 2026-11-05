@@ -395,6 +395,7 @@ def analysis_summary(table: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 
 CELL_LABELS = {cell: cell.replace("-", " ") for cell in CELLS}
+SOURCE_LATEX = {"h": "$s=h$", "mlp": "$s=$ mlp"}
 
 
 def _scores_styler(table: pd.DataFrame, methods: list[str], extra: dict[tuple[str, str], str]):
@@ -462,19 +463,24 @@ def _tests_styler(table: pd.DataFrame):
     return out.style
 
 
+def metric_label(acc_name: str) -> str:
+    """The name of a metric of ``main`` for LaTeX: underscores are special characters there."""
+    return acc_name.replace("_", " ")
+
+
 def _design_styler(summary: pd.DataFrame):
     part = summary.loc[summary["classifier"] == "all"]
     cols = {}
     index = []
     for (acc_name, p, label), rows in part.groupby(["acc_name", "pushforward", "quantifier"], sort=False):
-        index.append((acc_name, p, label))
+        index.append((metric_label(acc_name), p, label))
         for _, row in rows.iterrows():
             for column, header in (
                 ("winkler_rank", "rank"),
                 ("coverage", "$\\mathcal{C}$"),
                 ("amplitude", "$\\mathcal{A}$"),
             ):
-                cols.setdefault((f"$s={row['input_classifier']}$", header), []).append(row[column])
+                cols.setdefault((SOURCE_LATEX[row["input_classifier"]], header), []).append(row[column])
     out = pd.DataFrame(cols)
     out.columns = pd.MultiIndex.from_tuples(out.columns)
     out.index = pd.MultiIndex.from_tuples(index, names=["metric", "pushforward", "quantifier"])

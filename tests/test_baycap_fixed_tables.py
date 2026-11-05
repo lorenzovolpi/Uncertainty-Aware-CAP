@@ -142,7 +142,11 @@ class FixedCTablesTest(unittest.TestCase):
         self.assertEqual(len(rows), 8)
         for _, part in rows.groupby("pushforward"):
             self.assertAlmostEqual(part["winkler_rank"].sum(), 1 + 2 + 3 + 4)
-        self.assertIn("rank", bf._design_styler(rows).to_latex())
+        latex = bf._design_styler(rows).to_latex()
+        self.assertIn("rank", latex)
+        # the metric name has no underscore, which LaTeX would reject outside math
+        self.assertIn("vanilla accuracy", latex)
+        self.assertNotIn("_", latex)
 
     def test_summary_and_stylers(self):
         summary = bf.analysis_summary(self.table)
