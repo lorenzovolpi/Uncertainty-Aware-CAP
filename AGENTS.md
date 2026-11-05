@@ -98,3 +98,4 @@ In Markdown documents, do not hard-wrap text: write each paragraph and each list
 
 - A user message that starts with "[guideline]" states a general guideline: add it to this file, in the section where it belongs.
 - When the user asks about something or opens a discussion, answer only: do not edit the repository (documents, code, work plan) until the user explicitly says to proceed. Propose changes in prose. Decisions taken during a discussion are not an instruction to write them; wait for that instruction.
+- When a topic on an extension is concluded (e.g. an experiment is analysed and its card closed), propose to write a handoff so that the next step starts in a new session, or wait for the user to ask to close the topic and switch session. The handoff states where the extension stands, the decisions taken, the open items and the files to read first.
