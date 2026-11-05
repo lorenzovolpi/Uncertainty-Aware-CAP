@@ -46,7 +46,7 @@ from sklearn.metrics import confusion_matrix
 
 from uncawe import env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct
-from uncawe.experiments.methods import BAYCAP_VARIANTS
+from uncawe.experiments.methods import BAYCAP_VARIANTS, FIXED_C_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.methods.baycap import fit_beta_binomial
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
@@ -85,8 +85,15 @@ def error_terms(estim_ct: np.ndarray, true_ct: np.ndarray) -> dict:
     }
 
 
+# the methods ``--method`` accepts: the BayCAP methods of ``main``, whose prior on the columns of $C$ is known
+METHOD_CHOICES = tuple(BAYCAP_VARIANTS) + tuple(FIXED_C_VARIANTS)
+
+
 def method_c_prior(method: str) -> str:
-    """Return the prior on the columns of $C$ of a BayCAP method of ``main`` (``"uniform"`` for any other name)."""
+    """Return the prior on the columns of $C$ of a BayCAP method of ``main``: ``"none"`` for the methods with a fixed
+    rate matrix of E3.1 (``FIXED_C_VARIANTS``), ``"uniform"`` for any name that is not a BayCAP method."""
+    if method in FIXED_C_VARIANTS:
+        return "none"
     return BAYCAP_VARIANTS.get(method, ("population", "uniform"))[1]
 
 
@@ -101,13 +108,16 @@ def smoothed_recalls(val_counts: np.ndarray, c_prior: str = "uniform") -> np.nda
     """Return the posterior means of the recalls given $V$ under the prior ``c_prior`` on the columns of $C$.
 
     ``"uniform"``: $\\frac{f_{jj}+1}{n^s_j+K}$; ``"empirical-bayes"``: $\\frac{f_{jj}+\\hat\\nu\\hat m}{n^s_j+\\hat\\nu}$,
-    with $(\\hat m,\\hat\\nu)$ fitted on the same counts as ``BayCAP.fit`` does (``fit_beta_binomial``).
+    with $(\\hat m,\\hat\\nu)$ fitted on the same counts as ``BayCAP.fit`` does (``fit_beta_binomial``); ``"none"``: the
+    recalls $f_{jj}/n^s_j$ of the fixed $\\hat C$ (E3.1), so that the prior part is $0$.
     """
     val_counts = np.asarray(val_counts, dtype=float)
     n_s = val_counts.sum(axis=1)
     f_diag = np.diag(val_counts)
     if c_prior == "uniform":
         return (f_diag + 1) / (n_s + val_counts.shape[0])
+    if c_prior == "none":
+        return plain_recalls(val_counts)
     if c_prior == "empirical-bayes":
         fit = fit_beta_binomial(f_diag, n_s)
         return (f_diag + fit.nu * fit.m) / (n_s + fit.nu)
@@ -269,6 +279,14 @@ METHOD_LABELS = {
     "BayesCAP-H-real": "BayCAP-H-real",
     "BayesCAP-Hf-real": "BayCAP-Hf-real",
     "BayesCAP-Hfn-real": "BayCAP-Hfn-real",
+    "BayCAP-KDEy-h": "BayCAP-KDEy-h",
+    "BayCAP-KDEy-h-real": "BayCAP-KDEy-h-real",
+    "BayCAP-KDEy-mlp": "BayCAP-KDEy-mlp",
+    "BayCAP-KDEy-mlp-real": "BayCAP-KDEy-mlp-real",
+    "BayCAP-EMQ-h": "BayCAP-EMQ-h",
+    "BayCAP-EMQ-h-real": "BayCAP-EMQ-h-real",
+    "BayCAP-EMQ-mlp": "BayCAP-EMQ-mlp",
+    "BayCAP-EMQ-mlp-real": "BayCAP-EMQ-mlp-real",
 }
 CAPTION = (
     "Causes of {method}'s displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "
@@ -418,7 +436,12 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--tables", action="store_true", help="Generate tables")
     parser.add_argument("-p", "--pdf", action="store_true", help="Generate PDF from tables")
     parser.add_argument("-a", "--all", action="store_true", help="Generate both tables and PDF")
-    parser.add_argument("--method", default=METHOD, help="Method of main to analyse (default: %(default)s)")
+    parser.add_argument(
+        "--method",
+        default=METHOD,
+        choices=METHOD_CHOICES,
+        help="BayCAP method of main to analyse (default: %(default)s)",
+    )
     parser.add_argument(
         "--table-dir",
         "--output-dir",

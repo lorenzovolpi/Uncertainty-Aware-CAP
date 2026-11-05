@@ -68,6 +68,15 @@ class DisplacementTest(unittest.TestCase):
         self.assertAlmostEqual(prior_part(self.val_counts, [0.5, 0.5]), expected)
         self.assertAlmostEqual(prior_part(self.val_counts, [1.0, 0.0]), 9 / 12 - 0.8)
 
+    def test_method_choices_are_the_baycap_methods_of_main(self):
+        from uncawe.experiments.methods import METHOD_CLASS
+
+        self.assertIn(displacement.METHOD, displacement.METHOD_CHOICES)
+        self.assertIn("BayCAP-KDEy-h", displacement.METHOD_CHOICES)
+        self.assertNotIn("BayesCAP-KDEy-h", displacement.METHOD_CHOICES)
+        self.assertNotIn("RQBS", displacement.METHOD_CHOICES)
+        self.assertTrue(set(displacement.METHOD_CHOICES) <= set(METHOD_CLASS))
+
     def test_prior_part_follows_the_prior_of_the_method(self):
         self.assertEqual(method_c_prior("BayesCAP"), "uniform")
         self.assertEqual(method_c_prior("BayesCAP-real"), "uniform")

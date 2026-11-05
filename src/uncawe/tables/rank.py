@@ -8,13 +8,18 @@ from matplotlib.colors import rgb2hex
 
 import uncawe.env as env
 from uncawe.config import acc_from_ct, get_acc_names, get_method_names
+from uncawe.experiments.methods import FIXED_C_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.results import Results
 from uncawe.tables import main as main_tables
 
 METRICS = ("acc_err", "winkler")
 LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
-EXCLUDED_METHODS = {"L-CBPE"} | main_tables.EXCLUDED_METHODS
+# the rank tables leave out the methods of the main tables listed here and add BayesCAP-Hf-real, the best BayCAP prior of
+# E2.8 (user's request of 2026-11-05); the main tables keep BayesCAP-EB-real and BayesCAP-H-real
+RANK_ONLY_EXCLUDED = {"L-CBPE", "BayesCAP-EB-real", "BayesCAP-H-real"}
+RANK_ONLY_INCLUDED = {"BayesCAP-Hf-real"}
+EXCLUDED_METHODS = (RANK_ONLY_EXCLUDED | main_tables.EXCLUDED_METHODS) - RANK_ONLY_INCLUDED
 BEST_RGB = (138, 154, 91)
 # BEST_RGB = (172, 207, 173)
 WHITE_RGB = (255, 255, 255)
@@ -37,8 +42,14 @@ def _selected_metrics(pargs) -> tuple[str, ...]:
     return tuple(metric for metric in METRICS if metric in pargs.metrics)
 
 
-def _methods() -> list[str]:
-    return [method for method in get_method_names() if method not in EXCLUDED_METHODS]
+def _methods(include: tuple[str, ...] = ()) -> list[str]:
+    """The methods of the rank tables: those of ``main`` without ``EXCLUDED_METHODS``, plus the excluded ones named in
+    ``include`` (e.g. the eight methods of E3.1, ``--include-e31``)."""
+    return [method for method in get_method_names() if method not in EXCLUDED_METHODS or method in include]
+
+
+# output subfolder of the rank tables with included methods, so that the tables of the paper are not overwritten
+EXTENDED_DIR = "extended"
 
 
 def _rgb_array(rgb: tuple[int, int, int]) -> np.ndarray:
@@ -208,10 +219,16 @@ def _wilcoxon_not_significantly_different(best_ranks: pd.Series, method_ranks: p
     return bool(np.isfinite(pvalue) and pvalue >= WILCOXON_ALPHA)
 
 
-def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS) -> str:
+def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, methods: list[str] | None = None) -> str:
+    """The rank table of ``df``; ``methods`` gives the columns and their order (default ``_methods()``), and must
+    include every method of ``df``, since all of them are ranked."""
     dataset_ranks = _dataset_rank_values(df, metrics)
     mean_rank = _rank_mean_values(dataset_ranks)
-    methods = [method for method in _methods() if method in mean_rank.columns.get_level_values("method")]
+    ranked = mean_rank.columns.get_level_values("method")
+    methods = [method for method in (_methods() if methods is None else methods) if method in ranked]
+    missing = sorted(set(ranked) - set(methods))
+    if missing:
+        raise ValueError(f"Ranked methods without a column: {', '.join(missing)}")
     columns = main_tables._ordered_columns(methods, metrics)
     rows = pd.Index(
         [classifier for classifier in main_tables.CLASSIFIER_FILTER if classifier in mean_rank.index],
@@ -241,6 +258,16 @@ def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS) -> s
     return _hide_latex_header_names(latex, methods, metrics, show_metric_names=len(metrics) > 1)
 
 
+def _metric_cmidrules(n_methods: int, n_metrics: int) -> str:
+    """One ``\\cmidrule`` under each metric of the header, over its ``n_methods`` columns."""
+    rules = []
+    for idx in range(n_metrics):
+        first = 2 + idx * n_methods
+        trim = "r" if idx < n_metrics - 1 else "l"
+        rules.append(f"\\cmidrule({trim}){{{first}-{first + n_methods - 1}}}")
+    return "".join(rules)
+
+
 def _hide_latex_header_names(
     latex: str,
     methods: list[str],
@@ -258,7 +285,7 @@ def _hide_latex_header_names(
                     main_tables._format_metric_header_separators(line.replace("metric & ", " & ", 1), len(metrics))
                 )
                 # formatted.append("\\midrule")
-                formatted.append("\\cmidrule(r){2-7}\\cmidrule(l){8-13}")
+                formatted.append(_metric_cmidrules(len(methods), len(metrics)))
             skip_classifier_header = False
         elif line.startswith("method & "):
             formatted.append(_protect_method_header_cells(line.replace("method & ", " & ", 1), 1, methods, metrics))
@@ -316,7 +343,20 @@ def _prepare_results(acc_name: str, domain: str, methods: list[str]) -> pd.DataF
 
 
 def _table_dir(pargs) -> str:
-    return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables", "rank")
+    if pargs.table_dir is not None:
+        return pargs.table_dir
+    base = os.path.join(env.root_dir, "tables", "rank")
+    return os.path.join(base, EXTENDED_DIR) if _included(pargs) else base
+
+
+def _included(pargs) -> tuple[str, ...]:
+    include = tuple(getattr(pargs, "include", None) or ())
+    if getattr(pargs, "include_e31", False):
+        include += tuple(FIXED_C_VARIANTS)
+    unknown = [method for method in include if method not in get_method_names()]
+    if unknown:
+        raise ValueError(f"Unknown methods: {', '.join(unknown)}")
+    return include
 
 
 def _rank_latex_document(tables: list[tuple[str, str, str]]) -> str:
@@ -362,7 +402,7 @@ def _rank_latex_document(tables: list[tuple[str, str, str]]) -> str:
 def gen_tables(pargs):
     domain = pargs.domain
     metrics = _selected_metrics(pargs)
-    methods = _methods()
+    methods = _methods(_included(pargs))
 
     table_dir = _table_dir(pargs)
     tabular_dir = os.path.join(table_dir, "tabular")
@@ -379,7 +419,7 @@ def gen_tables(pargs):
             continue
 
         name = f"{EXPERIMENT}_{domain}_{acc_name}_rank"
-        table = _rank_latex_table(df, metrics)
+        table = _rank_latex_table(df, metrics, methods)
         tabular_filename = f"{name}.tex"
         with open(os.path.join(tabular_dir, tabular_filename), "w") as f:
             f.write(table)
@@ -430,6 +470,17 @@ if __name__ == "__main__":
     parser.add_argument("--image", action="store_const", dest="domain", const="image")
     parser.add_argument("--classic", action="store_const", dest="domain", const="classic")
     parser.add_argument("--metrics", nargs="+", choices=METRICS, default=None, help="Metrics to include in tables")
+    parser.add_argument(
+        "--include",
+        nargs="+",
+        default=None,
+        help=f"Methods excluded from the tables of main to rank too (output under rank/{EXTENDED_DIR}/)",
+    )
+    parser.add_argument(
+        "--include-e31",
+        action="store_true",
+        help=f"Rank the eight methods of E3.1 too (output under rank/{EXTENDED_DIR}/)",
+    )
     parser.add_argument(
         "--table-dir",
         "--output-dir",

@@ -17,6 +17,7 @@ from sklearn.neural_network import MLPClassifier as MLP
 
 from uncawe.experiments.metrics import gen_acc_measure
 from uncawe.methods.baycap import BayCAP
+from uncawe.methods.baycap_fixed import BayCAPFixed
 
 BAYES_WARMUPS = 500
 BAYES_N_JOBS = 16
@@ -58,6 +59,14 @@ METHOD_CLASS = {
     "BayesCAP-H-real": BayCAP,
     "BayesCAP-Hf-real": BayCAP,
     "BayesCAP-Hfn-real": BayCAP,
+    "BayCAP-KDEy-h": BayCAPFixed,
+    "BayCAP-KDEy-h-real": BayCAPFixed,
+    "BayCAP-KDEy-mlp": BayCAPFixed,
+    "BayCAP-KDEy-mlp-real": BayCAPFixed,
+    "BayCAP-EMQ-h": BayCAPFixed,
+    "BayCAP-EMQ-h-real": BayCAPFixed,
+    "BayCAP-EMQ-mlp": BayCAPFixed,
+    "BayCAP-EMQ-mlp-real": BayCAPFixed,
 }
 # estimand and prior on the columns of C of the BayCAP methods of main (methods/baycap.py:BayCAP): BayesCAP-real is
 # E2.3, the EB methods are E2.4, BayesCAP-H-real is E2.7, BayesCAP-Hf-real is E2.8 and BayesCAP-Hfn-real is E2.9 of
@@ -74,6 +83,18 @@ BAYCAP_VARIANTS = {
 # the other hyperparameters of BayCAP that differ from its defaults: BayesCAP-Hfn-real samples the model of
 # BayesCAP-Hf-real with non-centred shares of the mistakes (E2.9, §T.17)
 BAYCAP_OPTIONS = {"BayesCAP-Hfn-real": {"shares": "non-centred"}}
+# quantifier, input classifier and estimand of the methods with a fixed rate matrix of E3.1 of
+# docs/ext3_posterior_propagation.md (methods/baycap_fixed.py:BayCAPFixed); BayesKDEy with the Gaussian kernel,
+# bandwidth 0.1 and no shrinkage, BayesianMAPLS as in QuaPy; NUTS settings and default seed of the BayCAP methods. The
+# population and realised method of a cell share their prevalence draws
+FIXED_C_VARIANTS = {
+    f"BayCAP-{label}-{source}{suffix}": (quantifier, source, estimand)
+    for label, quantifier in (("KDEy", "kdey"), ("EMQ", "emq"))
+    for source in ("h", "mlp")
+    for suffix, estimand in (("", "population"), ("-real", "realised"))
+}
+# the methods run by main in the BayCAP pool, with BAYES_N_JOBS workers and BAYES_ENV
+BAYES_POOL_METHODS = frozenset(BAYCAP_VARIANTS) | frozenset(FIXED_C_VARIANTS)
 
 
 def kdey():
@@ -120,6 +141,22 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
                 num_samples=BOOTSTRAP_ITERS,
                 num_warmup=BAYES_WARMUPS,
                 **BAYCAP_OPTIONS.get(name, {}),
+            ),
+        )
+    for name, (quantifier, source, estimand) in FIXED_C_VARIANTS.items():
+        yield (
+            name,
+            BayCAPFixed(
+                acc,
+                quantifier=quantifier,
+                input_classifier=source,
+                estimand=estimand,
+                kernel="gaussian",
+                bandwidth=0.1,
+                shrinkage=0.0,
+                temperature=1.0,
+                num_samples=BOOTSTRAP_ITERS,
+                num_warmup=BAYES_WARMUPS,
             ),
         )
 

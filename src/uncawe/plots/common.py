@@ -24,6 +24,15 @@ METHOD_COLORS = {
     "BayesCAP-H-real": "#79706E",
     "BayesCAP-Hf-real": "#BAB0AC",
     "BayesCAP-Hfn-real": "#8C564B",
+    # E3.1: one hue per cell, dark for the population and light for the realised pushforward
+    "BayCAP-KDEy-h": "#1F77B4",
+    "BayCAP-KDEy-h-real": "#AEC7E8",
+    "BayCAP-KDEy-mlp": "#2CA02C",
+    "BayCAP-KDEy-mlp-real": "#98DF8A",
+    "BayCAP-EMQ-h": "#D62728",
+    "BayCAP-EMQ-h-real": "#FF9896",
+    "BayCAP-EMQ-mlp": "#9467BD",
+    "BayCAP-EMQ-mlp-real": "#C5B0D5",
     "PQ": "#E45756",
     "RQBS": "#B279A2",
     "DoC": "#54A24B",
@@ -44,6 +53,14 @@ METHOD_PLOT_LABELS = {
     "BayesCAP-H-real": "BayCAP-H-real",
     "BayesCAP-Hf-real": "BayCAP-Hf-real",
     "BayesCAP-Hfn-real": "BayCAP-Hfn-real",
+    "BayCAP-KDEy-h": "BayCAP-KDEy-h",
+    "BayCAP-KDEy-h-real": "BayCAP-KDEy-h-real",
+    "BayCAP-KDEy-mlp": "BayCAP-KDEy-mlp",
+    "BayCAP-KDEy-mlp-real": "BayCAP-KDEy-mlp-real",
+    "BayCAP-EMQ-h": "BayCAP-EMQ-h",
+    "BayCAP-EMQ-h-real": "BayCAP-EMQ-h-real",
+    "BayCAP-EMQ-mlp": "BayCAP-EMQ-mlp",
+    "BayCAP-EMQ-mlp-real": "BayCAP-EMQ-mlp-real",
 }
 
 ACC_NAME = "vanilla_accuracy"
