@@ -9,12 +9,14 @@ from uncawe.experiments.methods import (
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
     FIXED_C_VARIANTS,
+    KDEY_HF_VARIANTS,
     METHOD_CLASS,
     gen_methods,
     get_method_names,
 )
 from uncawe.methods.baycap import BayCAP
-from uncawe.methods.baycap_fixed import BayCAPFixed
+from uncawe.methods.baycap_kdey import BayCAPKDEy
+from uncawe.methods.baycap_mapls import BayCAPMAPLS
 from uncawe.plots.amplitude_vs_coverage import PLOT_METHODS as AVC_METHODS
 from uncawe.plots.common import DEFAULT_METHODS, METHOD_COLORS, METHOD_PLOT_LABELS
 from uncawe.tables import main as main_tables
@@ -46,6 +48,8 @@ IN_AVC = [
 ]
 # the eight methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md)
 E31_METHODS = [f"BayCAP-{q}-{s}{x}" for q in ("KDEy", "EMQ") for s in ("h", "mlp") for x in ("", "-real")]
+# the two methods with a random C of E3.2
+E32_METHODS = ["BayCAP-KDEy-Hf-h-real", "BayCAP-KDEy-Hf-mlp-real"]
 
 
 class BayCAPFactoryTest(unittest.TestCase):
@@ -85,13 +89,31 @@ class BayCAPFactoryTest(unittest.TestCase):
             with self.subTest(method=name):
                 method = self.methods[name]
                 quantifier, source, estimand = FIXED_C_VARIANTS[name]
-                self.assertIs(METHOD_CLASS[name], BayCAPFixed)
-                self.assertIsInstance(method, BayCAPFixed)
+                cls = BayCAPKDEy if quantifier == "kdey" else BayCAPMAPLS
+                self.assertIs(METHOD_CLASS[name], cls)
+                self.assertIs(type(method), cls)
                 self.assertEqual(quantifier, "kdey" if "-KDEy-" in name else "emq")
                 self.assertEqual(source, "h" if "-h" in name.replace("-real", "") else "mlp")
                 self.assertEqual(estimand, "realised" if name.endswith("-real") else "population")
+                self.assertEqual((method.input_classifier, method.estimand), (source, estimand))
+                if quantifier == "kdey":
+                    self.assertEqual(method.c_prior, "fixed")
+                    self.assertEqual((method.kernel, method.bandwidth, method.shrinkage), ("gaussian", 0.1, 0.0))
+                self.assertEqual((method.temperature, method.prior), (1.0, "uniform"))
+                self.assertEqual((method.num_samples, method.num_warmup), (BOOTSTRAP_ITERS, BAYES_WARMUPS))
+                self.assertEqual(method.random_state, reference.random_state)
+
+    def test_factory_builds_the_e32_methods_with_their_configuration(self):
+        self.assertEqual(KDEY_HF_VARIANTS, {name: name.split("-")[3] for name in E32_METHODS})
+        reference = BayCAP(None)
+        for name in E32_METHODS:
+            with self.subTest(method=name):
+                method = self.methods[name]
+                self.assertIs(METHOD_CLASS[name], BayCAPKDEy)
+                self.assertIsInstance(method, BayCAPKDEy)
                 self.assertEqual(
-                    (method.quantifier, method.input_classifier, method.estimand), (quantifier, source, estimand)
+                    (method.input_classifier, method.estimand, method.c_prior),
+                    (KDEY_HF_VARIANTS[name], "realised", "hierarchical-f"),
                 )
                 self.assertEqual((method.kernel, method.bandwidth, method.shrinkage), ("gaussian", 0.1, 0.0))
                 self.assertEqual((method.temperature, method.prior), (1.0, "uniform"))
@@ -99,9 +121,11 @@ class BayCAPFactoryTest(unittest.TestCase):
                 self.assertEqual(method.random_state, reference.random_state)
 
     def test_bayes_pool_holds_every_baycap_method(self):
-        self.assertEqual(BAYES_POOL_METHODS, set(BAYCAP_METHODS) | set(E31_METHODS))
+        self.assertEqual(BAYES_POOL_METHODS, set(BAYCAP_METHODS) | set(E31_METHODS) | set(E32_METHODS))
         for name in get_method_names():
-            self.assertEqual(name in BAYES_POOL_METHODS, isinstance(self.methods[name], (BayCAP, BayCAPFixed)))
+            self.assertEqual(
+                name in BAYES_POOL_METHODS, isinstance(self.methods[name], (BayCAP, BayCAPKDEy, BayCAPMAPLS))
+            )
 
     def test_factory_names_match_method_class(self):
         self.assertEqual(list(self.methods), get_method_names())
@@ -119,7 +143,7 @@ class BayCAPFactoryTest(unittest.TestCase):
                 if name not in IN_RANKS:
                     self.assertNotIn(name, rank._methods())
                 self.assertNotIn(name, DEFAULT_METHODS)
-        for name in E31_METHODS:
+        for name in E31_METHODS + E32_METHODS:
             with self.subTest(method=name):
                 if name not in IN_MAIN_TABLES:
                     self.assertNotIn(name, main_tables.table_method_names())
@@ -129,7 +153,7 @@ class BayCAPFactoryTest(unittest.TestCase):
 
     def test_coverage_vs_amplitude_plot_shows_the_requested_baycap_methods(self):
         self.assertEqual(AVC_METHODS[: len(DEFAULT_METHODS)], DEFAULT_METHODS)
-        for name in BAYCAP_METHODS + E31_METHODS:
+        for name in BAYCAP_METHODS + E31_METHODS + E32_METHODS:
             with self.subTest(method=name):
                 if name in IN_AVC:
                     self.assertIn(name, AVC_METHODS)
@@ -137,7 +161,7 @@ class BayCAPFactoryTest(unittest.TestCase):
                     self.assertNotIn(name, AVC_METHODS)
 
     def test_every_baycap_method_has_labels_and_a_colour(self):
-        for name in BAYCAP_METHODS + E31_METHODS:
+        for name in BAYCAP_METHODS + E31_METHODS + E32_METHODS:
             with self.subTest(method=name):
                 self.assertIn(name, METHOD_COLORS)
                 self.assertIn(name, METHOD_PLOT_LABELS)

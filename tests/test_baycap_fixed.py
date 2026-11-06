@@ -21,20 +21,13 @@ from scipy.special import logsumexp
 from scipy.stats import dirichlet, norm
 from sklearn.linear_model import LogisticRegression
 
-from uncawe.methods.baycap_fixed import (
-    FIXED_SUMMARIES,
-    NUTS_DIAGNOSTICS,
-    BayCAPFixed,
-    accuracy_moments,
-    emq_model,
-    ilr,
-    ilr_inverse,
-    kdey_model,
-    top_label_ece,
-)
+from uncawe.methods.baycap_kdey import BayCAPKDEy, kdey_model
+from uncawe.methods.baycap_mapls import BayCAPMAPLS, emq_model, ilr, ilr_inverse
+from uncawe.methods.baycap_quantifier import FIXED_SUMMARIES, NUTS_DIAGNOSTICS, accuracy_moments, top_label_ece
 
 # QuaPy's Bayesian module disables itself when pystan is missing (it only needs pystan for other methods); the test
-# restores the modules its two quantifiers use, so that their draws can be compared with those of BayCAPFixed
+# restores the modules its two quantifiers use, so that their draws can be compared with those of BayCAPKDEy and
+# BayCAPMAPLS
 QUAPY_BAYES_MODULES = {
     "DEPENDENCIES_INSTALLED": True,
     "jax": jax,
@@ -75,9 +68,17 @@ class _Data:
 DATA = _Data()
 
 
+def _build(quantifier="kdey", **kwargs):
+    """The E3.1 method of a quantifier (``BayCAPKDEy`` with a fixed C for ``"kdey"``, ``BayCAPMAPLS`` for ``"emq"``)."""
+    if quantifier == "kdey":
+        return BayCAPKDEy(vanilla_acc, **(SETTINGS | kwargs))
+    if quantifier == "emq":
+        return BayCAPMAPLS(vanilla_acc, **(SETTINGS | kwargs))
+    raise ValueError(f"unknown quantifier {quantifier!r}")
+
+
 def _fitted(**kwargs):
-    method = BayCAPFixed(vanilla_acc, **(SETTINGS | kwargs))
-    return method.fit(DATA.val, DATA.val_posteriors)
+    return _build(**kwargs).fit(DATA.val, DATA.val_posteriors)
 
 
 class HelpersTest(unittest.TestCase):
@@ -139,11 +140,14 @@ class HelpersTest(unittest.TestCase):
         self.assertAlmostEqual(float(value), expected, places=4)
 
 
-class BayCAPFixedTest(unittest.TestCase):
+class FixedCTest(unittest.TestCase):
     def test_rejects_unknown_options(self):
-        for kwargs in ({"quantifier": "pacc"}, {"input_classifier": "svm"}, {"estimand": "both"}, {"prior": "map"}):
-            with self.assertRaises(ValueError):
-                BayCAPFixed(vanilla_acc, **kwargs)
+        for cls in (BayCAPKDEy, BayCAPMAPLS):
+            for kwargs in ({"input_classifier": "svm"}, {"estimand": "both"}, {"prior": "map"}, {"temperature": 0}):
+                with self.subTest(cls=cls.__name__, **kwargs), self.assertRaises(ValueError):
+                    cls(vanilla_acc, **kwargs)
+        with self.assertRaises(ValueError):
+            BayCAPKDEy(vanilla_acc, c_prior="uniform")
 
     def test_rate_matrix_is_measured_on_validation(self):
         method = _fitted(input_classifier="h")

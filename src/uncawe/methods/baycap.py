@@ -339,6 +339,43 @@ def hierarchical_rates(recalls, shares):
     return jnp.zeros((n_classes, n_classes)).at[rows, cols].set(off).at[diag, diag].set(recalls)
 
 
+def hierarchical_rate_sites(n_classes: int, light: bool, shares: str = "centred"):
+    r"""Sample the hierarchical prior on $C$ inside a NumPyro model and return ``p_c_cond_y`` in the ``cap-ml`` layout.
+
+    With ``light=False``, the prior of ``c_prior="hierarchical"`` (§T.15 of ``docs/ext2_baycap.md``): $m\sim U(0,1)$,
+    $u=1/\sqrt{1+\nu}\sim U(0,1)$, centred recalls $C_{jj}\mid m,\nu\sim\operatorname{Beta}(\nu m,\nu(1-m))$ and
+    shares of the mistakes $\operatorname{Dir}(\mathbf 1_{K-1})$. With ``light=True``, that of ``"hierarchical-f"``
+    (§T.16): $\rho=1/(1+\nu)\sim U(0,1)$ instead of $u$, and shares $\operatorname{Dir}(\kappa\mathbf 1_{K-1})$ with
+    $1/(1+\kappa)\sim U(0,1)$, in the coordinates of ``shares`` (§T.17). With $K=2$ there are no shares and no
+    $\kappa$. Used by :class:`BayCAP` and by ``methods/baycap_kdey.py:BayCAPKDEy`` (E3.2 of
+    ``docs/ext3_posterior_propagation.md``), so that the two models have the same sites, in the same order.
+    """
+    m = numpyro.sample(H_M, dist.Uniform(0.0, 1.0))
+    if light:
+        rho = numpyro.sample(H_RHO, dist.Uniform(0.0, 1.0))
+        nu = numpyro.deterministic(H_NU, strength_from_rho(rho))
+    else:
+        u = numpyro.sample(H_U, dist.Uniform(0.0, 1.0))
+        nu = numpyro.deterministic(H_NU, nu_from_u(u))
+    with numpyro.plate("classes", n_classes):
+        recalls = numpyro.sample(H_RECALLS, dist.Beta(nu * m, nu * (1 - m)))
+    if n_classes > 2:
+        if light:
+            rho_kappa = numpyro.sample(H_RHO_KAPPA, dist.Uniform(0.0, 1.0))
+            kappa = numpyro.deterministic(H_KAPPA, strength_from_rho(rho_kappa))
+        if light and shares == "non-centred":
+            cells = (n_classes, n_classes - 1)
+            gamma = numpyro.sample(H_SHARES_GAMMA, dist.Gamma(kappa + 1.0, 1.0).expand(cells).to_event(2))
+            exponential = numpyro.sample(H_SHARES_EXP, dist.Exponential(1.0).expand(cells).to_event(2))
+            share_draws = numpyro.deterministic(H_SHARES, noncentred_shares(gamma, exponential, kappa))
+        else:
+            concentration = (kappa if light else 1.0) * jnp.ones((n_classes, n_classes - 1))
+            share_draws = numpyro.sample(H_SHARES, dist.Dirichlet(concentration))
+    else:
+        share_draws = jnp.ones((n_classes, 1))
+    return numpyro.deterministic(P_C_COND_Y, hierarchical_rates(recalls, share_draws))
+
+
 def hierarchical_summaries(draws: dict[str, np.ndarray], min_val_count: float, with_kappa: bool = False) -> dict:
     r"""Summarise the posterior of the hierarchical prior from the draws of one NUTS run (E2.7, E2.8).
 
@@ -551,34 +588,9 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         numpyro.sample("N_c", dist.Multinomial(jnp.sum(pred_posterior_count), p_c), obs=pred_posterior_count)
 
     def _hierarchical_model(self, n_classes: int):
-        """The hierarchical prior on $C$ (§T.15, or its variant of §T.16 for ``"hierarchical-f"``), with centred
-        recalls and, for ``"hierarchical-f"``, the shares in the form of ``shares`` (§T.17); returns ``p_c_cond_y`` in
-        the ``cap-ml`` layout."""
-        light = self.c_prior == "hierarchical-f"
-        m = numpyro.sample(H_M, dist.Uniform(0.0, 1.0))
-        if light:
-            rho = numpyro.sample(H_RHO, dist.Uniform(0.0, 1.0))
-            nu = numpyro.deterministic(H_NU, strength_from_rho(rho))
-        else:
-            u = numpyro.sample(H_U, dist.Uniform(0.0, 1.0))
-            nu = numpyro.deterministic(H_NU, nu_from_u(u))
-        with numpyro.plate("classes", n_classes):
-            recalls = numpyro.sample(H_RECALLS, dist.Beta(nu * m, nu * (1 - m)))
-        if n_classes > 2:
-            if light:
-                rho_kappa = numpyro.sample(H_RHO_KAPPA, dist.Uniform(0.0, 1.0))
-                kappa = numpyro.deterministic(H_KAPPA, strength_from_rho(rho_kappa))
-            if light and self.shares == "non-centred":
-                cells = (n_classes, n_classes - 1)
-                gamma = numpyro.sample(H_SHARES_GAMMA, dist.Gamma(kappa + 1.0, 1.0).expand(cells).to_event(2))
-                exponential = numpyro.sample(H_SHARES_EXP, dist.Exponential(1.0).expand(cells).to_event(2))
-                shares = numpyro.deterministic(H_SHARES, noncentred_shares(gamma, exponential, kappa))
-            else:
-                concentration = (kappa if light else 1.0) * jnp.ones((n_classes, n_classes - 1))
-                shares = numpyro.sample(H_SHARES, dist.Dirichlet(concentration))
-        else:
-            shares = jnp.ones((n_classes, 1))
-        return numpyro.deterministic(P_C_COND_Y, hierarchical_rates(recalls, shares))
+        """The hierarchical prior on $C$ of ``c_prior`` (:func:`hierarchical_rate_sites`); returns ``p_c_cond_y`` in the
+        ``cap-ml`` layout."""
+        return hierarchical_rate_sites(n_classes, light=self.c_prior == "hierarchical-f", shares=self.shares)
 
     def sample_posterior(self, posterior_count: np.ndarray, alpha: np.ndarray) -> dict:
         mcmc = numpyro.infer.MCMC(
