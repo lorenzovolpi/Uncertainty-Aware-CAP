@@ -1,0 +1,13 @@
+- BayCAP-Hf-real è il candidate method che esce da ext2
+- lo studio di ext2 e ext3 deve essere visto come uno studio in due direzioni parallele a partire da BayCAP:
+	- **ext2**: partendo da come funziona BayCAP si studia come il metodo può migliorare aggiungendo conoscenza su C che viene da V nel processo bayesiano
+	- **ext3**: partendo da BayCAP si esplora come, tenendo invece fisso C, varia la performance del modello al variare del quantificatore bayesiano sottostante
+		- questo porta ad un'esplorazione della parte relativa alle class conditional error rates in BayesianKDEy e BayesianMAPLS fuori dallo scope dello studio
+- va rivisto da capo lo studio fatto per ext4:
+	- è buona la decomposizione dell'errore
+	- è buono il bound per $e_1$ e gli altri bound (anche se più conservativi)
+	- lo studio per la varianza delle parti dell'errore può essere interessante, ma rischia di esplodere in complessità dato che ogni metodo ha una sua varianza diversa
+		- si può darne un'esempio, ad esempio per la famiglia RQBS e per BayCAP, ma lasciare non espressi gli altri (*da verificare*)
+	- lo studio relativo a quali parti dell'errore vengono trattate dai vari metodi e quindi come queste influiscono sulla coverage è buono
+	- secondo me va fatta un'analisi che mostra come variano le varie componenti dell'errore fissando le restanti con degli oracoli
+		- lo studio su come variano le componenti dell'errore a partire dalla dimensione di V e U è potenzialmente interessante
