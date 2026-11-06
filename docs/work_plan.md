@@ -226,6 +226,7 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
+| WP-13 | E3.2: BayCAP-KDEy with a random $C$ (joint posterior of $(\pi,C)$, kernel likelihood, Hf prior) | experiment | Scheduled | — | 2026-11-06 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -267,6 +268,21 @@ Entry template:
 - **Log:** <dated notes on progress: pilot run, problems, decisions>
 - **Outcome:** <filled when the branch is merged: merge commit; decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card>
 ```
+
+### WP-13 E3.2: BayCAP-KDEy with a random $C$ (joint posterior of $(\pi,C)$, kernel likelihood, Hf prior), on the `main` protocol
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext3_posterior_propagation]] E3.2 (§T.10–§T.13)
+- **Goal:** the realised BayCAP-KDEy with a fixed $\hat C$ (E3.1, §II.4) under-covers where the error comes from $V$. Make $C$ random: split each class of $V$ into cells by the prediction of $h$, take one Gaussian kernel density ($b=0.1$, no shrinkage) per cell, model the class density as $f_j=\sum_kC_{kj}\hat\phi_{kj}$, and sample $(\pi,C)$ jointly by NUTS ($500$ warm-up iterations, $1000$ draws, the seed of `BayesCAP`, $\tau=1$) with $\pi\sim\operatorname{Dir}(\mathbf 1)$, the Hf prior on $C$ (centred shares, as `BayesCAP-Hf-real`, §II.18) and the validation counts observed as multinomials, as in `BayCAP`. Likelihood of the bag: for the input classifier `h`, $\sum_u\log\sum_j\pi_j\sum_kC_{kj}\hat\phi_{kj}(z_u)$; for `mlp` (the MLP of E3.1, cross-fitted on $V$), $\sum_u\log\sum_j\pi_jC_{\hat y_uj}\hat\phi_{\hat y_uj}(z_u)$, with $\hat y_u$ the prediction of $h$. An empty cell $(k,j)$ borrows the kernel density of all validation instances predicted $\omega_k$, or that of class $\omega_j$ if $h$ never predicts $\omega_k$ on $V$. Realised pushforward. Compare with `BayCAP-KDEy-<s>-real` (E3.1) and `BayesCAP-Hf-real`: AE, coverage, amplitude and Winkler score for the three metrics; for accuracy, the split of the shift into $R$ and $P$, paired bootstrap Winkler tests against both references (Holm over the $75$ pairs), the standardised shift, NUTS diagnostics and Hf summaries, and, label-free, the ratio of the posterior sd of each $C_{kj}$ to its sd from $V$ alone, the mismatch $\lVert n^t/N^Q-\bar C\bar\pi\rVert_1$, and the numbers of empty and borrowed cells. No decision rule (user's decision of 2026-11-06).
+- **Estimand:** realised table of the target sample, scored against `true_cts`.
+- **Scope:** split `methods/baycap_fixed.py:BayCAPFixed` into `methods/baycap_kdey.py:BayCAPKDEy` and `methods/baycap_mapls.py:BayCAPMAPLS` (shared code in a common module), with `c_prior` $\in\{$`"fixed"`, `"hierarchical-f"`$\}$ on `BayCAPKDEy`; two factory entries `BayCAP-KDEy-Hf-h-real` and `BayCAP-KDEy-Hf-mlp-real` in `experiments/methods.py` (BayCAP pool, `BAYES_ENV`, excluded from the tables, ranks and default plots of `main`); per-bag storage of the NUTS diagnostics, the Hf summaries, the posterior mean and sd of $C$, the mismatch and the numbers of empty and borrowed cells; a table module and a plot module for E3.2 (comparison table with the paired Winkler tests and the standardised shift, information on $C$ per cell, diagnostics); `tables/rank.py` and `tables/displacement.py --method` for the new methods. Pilot on `mammographic`, `poker_hand` and `wine-quality`.
+- **Depends on:** none (uses the Hf helpers of WP-11 and the realised pushforward of WP-4).
+- **Comparability:** the split must reproduce the draws of `BayCAPFixed` in the eight configurations of E3.1 (tested), so the stored E3.1 results stay valid; adds the rows of two methods to `main` and changes nothing else. §II.4 and §II.12 are updated for the split.
+- **Deviations from Part V:** a NumPyro model of its own, not a copy of QuaPy's, so for `c_prior="hierarchical-f"` there is no equality test with QuaPy's `sample_from_posterior`; the check is instead the reduction to BayesKDEy at $C=\hat C$ for `h`.
+- **Done when:** the full run has stored results for both methods on the $75$ pairs, the tables and plots are generated, and the Part II section records the result location, the `cap-ml` commit and the date.
+- **Commands:** to be filled when the code exists.
+- **Log:** 2026-11-06: card added by the user.
+- **Outcome:** —
 
 ## III.3 Completed cards
 
