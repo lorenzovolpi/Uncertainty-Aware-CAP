@@ -34,9 +34,16 @@ E2_METHODS = [
 ]
 BAYCAP_METHODS = ["BayesCAP", *E2_METHODS]
 # E2 and E3.1 methods in the tables of main (user's request of 2026-11-05)
-IN_MAIN_TABLES = ["BayesCAP-EB-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
+IN_MAIN_TABLES = [
+    "BayesCAP-EB-real",
+    "BayesCAP-Hf-real",
+    "BayCAP-KDEy-h-real",
+    "BayCAP-KDEy-mlp-real",
+    "BayCAP-KDEy-Hf-h-real",
+    "BayCAP-KDEy-Hf-mlp-real",
+]
 # E2 and E3.1 methods in the ranks of main (user's request of 2026-11-05)
-IN_RANKS = ["BayesCAP-EB-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
+IN_RANKS = IN_MAIN_TABLES
 # BayCAP methods in the coverage vs amplitude plot (user's request of 2026-11-05)
 IN_AVC = [
     "BayesCAP",
@@ -45,6 +52,8 @@ IN_AVC = [
     "BayesCAP-Hf-real",
     "BayCAP-KDEy-h-real",
     "BayCAP-KDEy-mlp-real",
+    "BayCAP-KDEy-Hf-h-real",
+    "BayCAP-KDEy-Hf-mlp-real",
 ]
 # the eight methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md)
 E31_METHODS = [f"BayCAP-{q}-{s}{x}" for q in ("KDEy", "EMQ") for s in ("h", "mlp") for x in ("", "-real")]

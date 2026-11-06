@@ -34,13 +34,16 @@ from uncawe.plots.common import (
 PLOT_NAME = "amplitude_vs_coverage"
 # added to the default methods: BayesCAP-real, BayesCAP-Hf-real and the two realised BayCAP-KDEy methods of E3.1
 # (user's request of 2026-11-05; before, BayesCAP-EB, BayesCAP-EB-real and BayesCAP-H-real in place of the last three),
-# and BayesCAP-EB-real again since 2026-11-06 (user's request)
+# and BayesCAP-EB-real again since 2026-11-06 (user's request), with the two methods of E3.2 (user's request of
+# 2026-11-06)
 PLOT_METHODS = DEFAULT_METHODS + [
     "BayesCAP-real",
     "BayesCAP-EB-real",
     "BayesCAP-Hf-real",
     "BayCAP-KDEy-h-real",
     "BayCAP-KDEy-mlp-real",
+    "BayCAP-KDEy-Hf-h-real",
+    "BayCAP-KDEy-Hf-mlp-real",
 ]
 
 

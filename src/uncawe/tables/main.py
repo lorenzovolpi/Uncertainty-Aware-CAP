@@ -81,8 +81,14 @@ metrics_map = {
 # (E2.8), and the methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md), except the two
 # realised BayCAP-KDEy methods (user's request of 2026-11-05; before, the tables showed BayesCAP-EB-real and
 # BayesCAP-H-real and none of these three); BayesCAP-EB-real (E2.4) is back since 2026-11-06 (user's request); the
-# methods with a random C of E3.2 are left out too
-IN_TABLES = {"BayesCAP-EB-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"}
+# two methods with a random C of E3.2 are in the tables too since 2026-11-06 (user's request)
+IN_TABLES = {
+    "BayesCAP-EB-real",
+    "BayesCAP-Hf-real",
+    "BayCAP-KDEy-h-real",
+    "BayCAP-KDEy-mlp-real",
+    *KDEY_HF_VARIANTS,
+}
 EXCLUDED_METHODS = (
     {"BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real", "BayesCAP-Hf-real", "BayesCAP-Hfn-real"}
     | set(FIXED_C_VARIANTS)

@@ -16,7 +16,7 @@ from uncawe.tables import main as main_tables
 METRICS = ("acc_err", "winkler")
 LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
 # the rank tables rank the methods of the main tables (since 2026-11-05 with BayesCAP-Hf-real and the two realised
-# BayCAP-KDEy methods, user's requests) except those listed here
+# BayCAP-KDEy methods, user's requests, and since 2026-11-06 with the two methods of E3.2) except those listed here
 RANK_ONLY_EXCLUDED = {"L-CBPE"}
 RANK_ONLY_INCLUDED: set[str] = set()
 EXCLUDED_METHODS = (RANK_ONLY_EXCLUDED | main_tables.EXCLUDED_METHODS) - RANK_ONLY_INCLUDED
