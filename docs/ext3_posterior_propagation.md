@@ -2,7 +2,7 @@
 
 ## Claim
 
-A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, not just one estimate. This extension adds CAP methods that turn such a posterior into an interval on classifier performance, and compares them with the methods of the paper. **BayCAP with a fixed $\hat C$** takes the posterior of a Bayesian quantifier and pushes each draw $\pi^{(r)}$ through the rate matrix of the classifier measured on the validation set, $\hat C\operatorname{diag}(\pi^{(r)})$, either as a population table or, with the realised-table predictive of [[ext2_baycap|Extension 2]], as a plausible realised table of the target bag. Two quantifiers are considered: the Bayesian KDEy of [KDE-Bayes](papers/kde_bayes.pdf) (BayesKDEy, giving **BayCAP-KDEy**), which estimates from the validation set how the outputs of a classifier are spread within each class, and QuaPy's BayesianMAPLS, a Bayesian version of the EM quantifier EMQ (giving **BayCAP-EMQ**), which reads the outputs as calibrated probabilities. Each quantifier can read the outputs of the classifier $h$ whose performance we estimate, or those of a separate MLP trained on the validation set. **SQS-B** does what the other SQS methods do, but draws the prevalences of its validation bags from the posterior of a Bayesian quantifier instead of from a point estimate or a bootstrap. The methods differ from existing ones in one component at a time (the quantifier, the classifier it reads, the handling of $C$, the source of the prevalences), so their comparison with BayCAP and RQBS tells which component matters. The uncertainty budget of [[ext4_uncertainty_budget|Extension 4]] predicts which sources of error each method represents, and so where it should cover well; Extension 4 also reuses the same implementations in its regime map over $\lvert U\rvert$ and $\lvert V\rvert$. The first experiment, E3.1, evaluates the four combinations of quantifier and input classifier, with both pushforwards, on the protocol of `main`.
+A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, not just one estimate. This extension adds CAP methods that turn such a posterior into an interval on classifier performance, and compares them with the methods of the paper. **BayCAP with a fixed $\hat C$** takes the posterior of a Bayesian quantifier and pushes each draw $\pi^{(r)}$ through the rate matrix of the classifier measured on the validation set, $\hat C\operatorname{diag}(\pi^{(r)})$, either as a population table or, with the realised-table predictive of [[ext2_baycap|Extension 2]], as a plausible realised table of the target bag. Two quantifiers are considered: the Bayesian KDEy of [KDE-Bayes](papers/kde_bayes.pdf) (BayesKDEy, giving **BayCAP-KDEy**), which estimates from the validation set how the outputs of a classifier are spread within each class, and QuaPy's BayesianMAPLS, a Bayesian version of the EM quantifier EMQ (giving **BayCAP-EMQ**), which reads the outputs as calibrated probabilities. Each quantifier can read the outputs of the classifier $h$ whose performance we estimate, or those of a separate MLP trained on the validation set. **SQS-B** does what the other SQS methods do, but draws the prevalences of its validation bags from the posterior of a Bayesian quantifier instead of from a point estimate or a bootstrap. The methods differ from existing ones in one component at a time (the quantifier, the classifier it reads, the handling of $C$, the source of the prevalences), so their comparison with BayCAP and RQBS tells which component matters. The uncertainty budget of [[ext4_uncertainty_budget|Extension 4]] predicts which sources of error each method represents, and so where it should cover well; Extension 4 also reuses the same implementations in its regime map over $\lvert U\rvert$ and $\lvert V\rvert$. The first experiment, E3.1, evaluates the four combinations of quantifier and input classifier, with both pushforwards, on the protocol of `main`. The second, E3.2, makes the rate matrix of BayCAP-KDEy random: it splits each class of the validation set by the prediction of $h$, so that the class densities of BayesKDEy become mixtures of cell densities whose weights are the columns of $C$, and samples $C$ jointly with $\pi$, with the Hf prior of Extension 2, so that the target bag updates both.
 
 ## Status
 
@@ -12,9 +12,10 @@ A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, no
 | E3.1, BayCAP with a fixed $\hat C$: quantifier × input classifier × pushforward, on the `main` protocol | run and analysed (card WP-8 of [[work_plan]], done): BayCAP-KDEy with the realised pushforward is the best of the eight methods |
 | SQS-B | [proposal], not implemented |
 | BayCAP with a fixed $\hat C$ and the posterior of BayesianCC | [proposal], not implemented |
-| A random rate matrix for BayesKDEy (options 1–3 of Appendix B); BayesianMAPLS with a uniform prior or a random calibration map (Appendix E) | [new hypothesis] |
+| E3.2, BayCAP-KDEy with a random $C$: the joint posterior of $(\pi,C)$ with a kernel likelihood and the Hf prior (§T.10–§T.13), with the split of `BayCAPFixed` into `BayCAPKDEy` and `BayCAPMAPLS` | [proposal], specified, not implemented (card WP-13 of [[work_plan]], scheduled) |
+| A random rate matrix for BayesKDEy (options 1–2 of Appendix B); BayesianMAPLS with a uniform prior or a random calibration map (Appendix E) | [new hypothesis] |
 | The predictions of §T.9 and the moving centre of §T.8 | checked by E3.1: P1–P3, P5, P6 hold, P8 only for BayesKDEy, P7 does not; the centre barely moves |
-| Candidate experiments E3.c1–E3.c7 | [proposal], not scheduled |
+| Candidate experiments E3.c1–E3.c4, E3.c6, E3.c7 (E3.c5 became E3.2) | [proposal], not scheduled |
 
 This document replaces the former Extensions 8 (`docs/sqs_b.md`) and 9 (`docs/baycap_kdey.md`); their last version is in commit `391220c`, and the material that was set aside is in [[optional_extensions]] §8.
 
@@ -24,7 +25,7 @@ All experiments use the protocol of `main`: the $15$ datasets and $5$ classifier
 
 ## E3.1: BayCAP with a fixed $\hat C$: quantifier × input classifier × pushforward, on the `main` protocol
 
-**Why.** BayCAP-KDEy is implemented but has never been evaluated, and it differs from BayCAP in three components at once: the quantifier (BayesKDEy instead of BayesianCC), the classifier whose outputs the quantifier reads (a separate MLP instead of $h$), and the rate matrix (fixed at its validation estimate $\hat C$ instead of sampled). E3.1 keeps the rate matrix fixed and crosses the other two components, so that their effects can be told apart. The quantifier is BayesKDEy, which estimates the distribution of the outputs within each class from $V$ (§T.3), or BayesianMAPLS, which takes it from the outputs themselves, read as calibrated probabilities (§T.4). The input classifier is $h$ or a separate MLP trained on $V$. Each of the four cells is run with both pushforwards. The theory makes predictions that E3.1 can check (§T.9). First, the population interval is narrow, because a fixed $\hat C$ carries the prevalence uncertainty into accuracy only through the differences between the recalls (§T.5), and it leaves out the luck of the bag (§T.6); it should under-cover on most pairs. Second, the realised pushforward should widen it by the factor $\sqrt{1+(\bar\sigma_g/\sigma_p)^2}$ found by E2.3, which here should be large. Third, unlike in BayCAP, the realised pushforward can also move the centre, because neither quantifier fits $\pi^Q$ to the predictions of $h$, and it should move less when the quantifier reads the outputs of $h$ (§T.8). Fourth, $\hat C$ has no prior, so the pull of the recalls towards $1/K$ that displaces BayCAP on the large-$K$ datasets (E2.2) should be absent. Fifth, BayCAP-EMQ should be worse where its input classifier is poorly calibrated, and its prior, which is not uniform (§T.4), may displace it on the bags with a class prevalence near $0$. The answers tell which quantifier and which input classifier to use for SQS-B (E3.c1) and for a random $C$ (E3.c3–E3.c5), and how these methods compare with those of `main`.
+**Why.** BayCAP-KDEy is implemented but has never been evaluated, and it differs from BayCAP in three components at once: the quantifier (BayesKDEy instead of BayesianCC), the classifier whose outputs the quantifier reads (a separate MLP instead of $h$), and the rate matrix (fixed at its validation estimate $\hat C$ instead of sampled). E3.1 keeps the rate matrix fixed and crosses the other two components, so that their effects can be told apart. The quantifier is BayesKDEy, which estimates the distribution of the outputs within each class from $V$ (§T.3), or BayesianMAPLS, which takes it from the outputs themselves, read as calibrated probabilities (§T.4). The input classifier is $h$ or a separate MLP trained on $V$. Each of the four cells is run with both pushforwards. The theory makes predictions that E3.1 can check (§T.9). First, the population interval is narrow, because a fixed $\hat C$ carries the prevalence uncertainty into accuracy only through the differences between the recalls (§T.5), and it leaves out the luck of the bag (§T.6); it should under-cover on most pairs. Second, the realised pushforward should widen it by the factor $\sqrt{1+(\bar\sigma_g/\sigma_p)^2}$ found by E2.3, which here should be large. Third, unlike in BayCAP, the realised pushforward can also move the centre, because neither quantifier fits $\pi^Q$ to the predictions of $h$, and it should move less when the quantifier reads the outputs of $h$ (§T.8). Fourth, $\hat C$ has no prior, so the pull of the recalls towards $1/K$ that displaces BayCAP on the large-$K$ datasets (E2.2) should be absent. Fifth, BayCAP-EMQ should be worse where its input classifier is poorly calibrated, and its prior, which is not uniform (§T.4), may displace it on the bags with a class prevalence near $0$. The answers tell which quantifier and which input classifier to use for SQS-B (E3.c1) and for a random $C$ (E3.c3, E3.c4 and E3.2, formerly E3.c5), and how these methods compare with those of `main`.
 
 - **Design.**
   - **Inputs:** the $75$ pairs and $100$ bags of `main`; the stored `main` results of every other method (`DoC`, `QuAcc_NxN`, `O-LEAP`, `L-CBPE`, `RQBS`, `PQ`, `BayesCAP` recomputed on CPU, `BayesCAP-real`, and `BayesCAP-Hf-real`, the best BayCAP prior of E2.8 in [[ext2_baycap]], realised only); the validation counts $f_{ij}$ of $h$, rebuilt as in E2.2; the results of eight new methods of `main`, each with its own run: `BayCAP-<Q>-<s>` (population) and `BayCAP-<Q>-<s>-real` (realised) for the quantifier $Q\in\{$`KDEy`, `EMQ`$\}$ and the input classifier $s\in\{$`h`, `mlp`$\}$, e.g. `BayCAP-EMQ-h-real`.
@@ -72,21 +73,44 @@ All experiments use the protocol of `main`: the $15$ datasets and $5$ classifier
 
   What this shows: with a fixed $\hat C$, the theory of §T.5–§T.8 describes the intervals closely: the population interval is narrow where the recalls are similar, the realised pushforward widens it by $\sqrt{1+(\bar\sigma_g/\sigma_p)^2}$, the centre stays put, and without a prior on $C$ the displacement of BayCAP on the large-$K$ datasets disappears. The realised methods represent only $e_1^U$ and $e_3$, so they cover well where $V$ is large and the quantifier is right ($K\ge8$) and fail where the error comes from $V$: the rates of $h$ on `mammographic` (one realisation of $e_2$ shared by its five pairs) and on `semeion` LR and MLP (a small class on $V$), the quantifier on `poker_hand` ($e_2$ and $e_1^V$, with $3$ validation instances in the smallest class), and a bias of every quantifier on `wine-quality`, shared by BayesianCC. Of the two quantifiers BayesKDEy is the better one, and BayesianMAPLS is hurt by miscalibrated inputs, as P6 predicts (shown by the paired contrast, more weakly by the correlation across pairs); its prior is not visible, in a test confounded with $K$ (P7). The input classifier matters little for BayesKDEy: an MLP trained on $V$ helps when $h$ is a weak classifier (LR), probably because its outputs discriminate the classes better (new hypothesis), not because of calibration or of the fixed $\hat C$. All in all, BayCAP-KDEy with the realised pushforward is the best of the eight methods: narrower intervals than BayCAP, a better Winkler score on most pairs, the best mean Winkler rank (level with Hf by the Wilcoxon tests) and the best AE rank, but a lower coverage and a higher mean Winkler score than Hf, since it leaves out the error that comes from $V$; only the realised methods are considered from now on. For the candidates: the quantifier of SQS-B (E3.c1) can be BayesKDEy, with either input classifier; `mammographic` and `semeion` are the test cases of a random $C$ at the bridge (E3.c3) and `poker_hand` of the error of the kernel densities (E3.c4); on `wine-quality` a random $C$ or random kernel densities could only widen the interval, as Hf does, not remove the bias shared by all quantifiers; the results do not motivate a uniform prior for BayesianMAPLS (E3.c6), while its sensitivity to calibration is what a random calibration map (E3.c7) would represent.
 
+## E3.2: BayCAP-KDEy with a random $C$: the joint posterior of $(\pi,C)$ with a kernel likelihood and the Hf prior
+
+**Why.** E3.1 found that BayCAP-KDEy with the realised pushforward is the best of its eight methods, but that it fails where the error comes from $V$: it holds both the rate matrix $\hat C$ and the kernel densities fixed, so it leaves out the error of the rates of $h$ measured on $V$ ($e_2$; `mammographic`, `semeion` LR and MLP) and part of the error of the quantifier fitted on $V$ ($e_1^V$; `poker_hand`). `BayesCAP-Hf-real` ([[ext2_baycap]] E2.8) represents both through its joint posterior of $(\pi,C)$, and covers more ($0.89$ against $0.74$ on average) with wider intervals. E3.2 joins the two. It splits each class of $V$ into cells by the prediction of $h$ and estimates a kernel density in each cell; the class density of BayesKDEy is then the mixture of the cell densities, with the rates of $h$ as weights (§T.10). It makes these weights, i.e. the columns of $C$, random, with the Hf prior of Extension 2 and the validation counts as in BayCAP (§T.11), and samples them with $\pi$ by NUTS, so that the target bag updates $C$ as in BayCAP, but through the outputs of the input classifier instead of the counts of the predictions alone (§T.13). It is the reduced form of the full joint posterior of the prevalence and of one weight per validation instance (option 3 of Appendix B, the former candidate E3.c5): the cells keep the unknowns of BayCAP, whatever $\lvert V\rvert$. Each new method differs from an existing one in one component: from the realised BayCAP-KDEy of E3.1 with the same input classifier, in the rate matrix (random, with the Hf prior and updated by the bag, instead of fixed at $\hat C$); from `BayesCAP-Hf-real`, in the likelihood of the target bag (kernel densities of the outputs within the cells instead of the counts of the predictions).
+
+- **Design.**
+  - **Inputs:** the $75$ pairs and $100$ bags of `main`; the stored `main` results of `BayCAP-KDEy-h-real` and `BayCAP-KDEy-mlp-real` (E3.1), `BayesCAP-Hf-real`, `BayesCAP-real`, `RQBS` and the other methods of `main`; the validation counts $f_{ij}$ of $h$, rebuilt as in E2.2; the results of two new methods of `main`, each with its own run: `BayCAP-KDEy-Hf-h-real` and `BayCAP-KDEy-Hf-mlp-real`.
+  - **Varied:** the input classifier, together with the form of the likelihood it requires (§T.10): `h`, the outputs of $h$, with the likelihood of the outputs alone, since the prediction of $h$ is a function of its outputs; or `mlp`, the MLP of E3.1, with the joint likelihood of the outputs of the MLP and the predictions of $h$ (user's decision of 2026-11-06). *Held fixed:* the realised pushforward (user's decision of 2026-11-05); the Hf prior on $C$ with centred shares, as in `BayesCAP-Hf-real` (§T.11; user's decision of 2026-11-06); the kernel of E3.1 (Gaussian, $b=0.1$, no shrinkage); the convention for empty cells of §T.12 (decision of 2026-11-06); $\pi\sim\operatorname{Dir}(\mathbf 1)$; temperature $\tau=1$; NUTS with $500$ warm-up iterations and $1000$ draws and the seed of `BayesCAP`; the MLP and its `random_state` as in E3.1; data and bags.
+  - **Measures:** for both methods, all three metrics of `main` (vanilla accuracy, macro-F1, macro-K): AE, coverage, amplitude, Winkler score. For vanilla accuracy only:
+    - the split of the shift into recall term $R$ and prevalence term $P$ (E2.2 of [[ext2_baycap]]);
+    - paired bootstrap tests of the mean Winkler difference, as in E3.1 ($10{,}000$ seeded resamples of the $100$ per-bag differences, Holm-adjusted over the $75$ pairs, separately for each test), against the realised BayCAP-KDEy of E3.1 with the same input classifier and against `BayesCAP-Hf-real`;
+    - the standardised shift of each pair, the shift divided by the standard deviation of the accuracy samples, averaged over the bags: since all bags of a pair share one $V$, the error from $V$ is one draw per pair, and an interval that represents it should leave standardised shifts that look like draws of a standard normal across pairs (§T.13);
+    - the NUTS diagnostics of `main` (divergent transitions, largest split-$\hat R$, smallest effective sample size) on $\pi$, $C$ and the Hf hyperparameters, and the Hf posterior summaries ($\ln\nu$, $\ln\kappa$, $P(\kappa<1)$);
+    - label-free, per cell $(k,j)$: the posterior standard deviation of $C_{kj}$ divided by the standard deviation that $V$ alone gives it, $\sqrt{\hat C_{kj}(1-\hat C_{kj})/(n^s_j+1)}$, against the count $f_{kj}$: a ratio below $1$ says that the bag adds information on that cell (§T.13); the mismatch $\lVert n^t/N^Q-\bar C\bar\pi\rVert_1$ of §T.8 with the posterior means $\bar C$ and $\bar\pi$; and, per pair, the number of empty cells and of cells with a borrowed density (§T.12).
+  - **Estimand:** realised table for both methods, scored against the realised table of each bag (`true_cts`), as every method of `main`. The split of the shift and the standardised shift use the bags' true tables, so they are analyses, not methods; the diagnostics, the ratios of standard deviations, the mismatch and the counts of empty cells use no target labels.
+  - **Cost:** two runs of `main` on `bcuda` with `JAX=cpu`, one per method, each $75\times100=7500$ NUTS runs on $K-1+K(K-1)$ unknowns plus the Hf hyperparameters (the size of `BayesCAP-Hf-real`), plus, per bag, the kernel values of the $N^Q$ target outputs at the $\lvert V\rvert$ validation outputs, and, per pair, the fit of the cell densities (and of the MLP for `mlp`). A pilot on `mammographic`, `poker_hand` and `wine-quality` (user's decision of 2026-11-06), the test cases of $e_2$, of $e_1^V$ with the sparsest validation table, and of a bias shared by all quantifiers, precedes the full run.
+- **Representation.**
+  - **Comparison table:** one row per pair, grouped by dataset and ordered by $K$: coverage, amplitude and Winkler score of the two new methods, of `BayCAP-KDEy-h-real`, `BayCAP-KDEy-mlp-real`, `BayesCAP-Hf-real` and `RQBS`; for each new method, the $95\%$ bootstrap intervals of the mean Winkler differences against its two references and their Holm-adjusted p-values; the standardised shift.
+  - **Rank table:** mean Winkler and AE ranks of all methods of `main` with the two new methods, per metric (`tables/rank.py`).
+  - **Decomposition table:** the table of E2.2 for the two new methods (`tables/displacement.py --method`).
+  - **Scatter, coverage:** coverage of the E3.1 method with the same input classifier on the horizontal axis and of the new method on the vertical axis, one panel per input classifier; the same with `BayesCAP-Hf-real` on the horizontal axis; one point per pair, coloured by $K$, with lines at $0.95$.
+  - **Scatter, information on $C$:** the ratio of standard deviations of each cell against $f_{kj}$ (logarithmic axis), one panel per input classifier, one point per cell and pair, with the line $y=1$.
+  - **Diagnostics table:** per pair and method, the NUTS diagnostics and the Hf summaries, with the number of empty and borrowed cells.
+- **Analysis.** Not run.
+
 # Candidate experiments
 
-Ideas that came up in the discussions of 2026-10-27 and 2026-10-28. They are not scheduled and are numbered E3.c<n>; one becomes an experiment of the main section only when the user decides so, and then it gets the next number E3.<n> and a full specification.
+Ideas that came up in the discussions of 2026-10-27 and 2026-10-28. They are not scheduled and are numbered E3.c<n>; one becomes an experiment of the main section only when the user decides so, and then it gets the next number E3.<n> and a full specification. E3.c5, the full joint posterior of prevalence and weights for BayesKDEy, became E3.2 on 2026-11-06, in the reduced form of §T.10.
 
 - **E3.c1, SQS-B on a Bayesian quantifier.** *Why:* SQS-B draws one validation bag of size $\lvert U\rvert$ for each joint posterior draw $\pi^{(r)}$, with class counts $\approx\lvert U\rvert\pi^{(r)}_j$, and applies the metric to the table of $h$ on that bag. Against RQBS it changes only the source of the prevalences (posterior instead of bootstrap of $U$); against the realised BayCAP method of E3.1 with the same quantifier it changes only the bridge from prevalence to table: a bag simulated forwards from $V$, from true classes to predictions, instead of true classes sampled backwards given the observed predictions of $h$ on $U$. Given $\pi^{(r)}$, the accuracy of an SQS-B bag has mean $\hat d^\top\pi^{(r)}$ and the binomial variance of §T.6 computed with the recalls on $V$, so the budget predicts that SQS-B and the realised methods of E3.1 represent the same sources of error (§T.9). *Needs:* an SQS-B method with the conventions of `RQBS` in `main` (surrogate quantifier, use of $V$, rounding of the class counts, sampling with replacement), to be read from `cap-ml` before implementation; the quantifier and input classifier of one cell of E3.1, chosen from its results; its own NUTS runs.
 - **E3.c2, BayCAP with a fixed $\hat C$ and the posterior of BayesianCC.** *Why:* it pushes the marginal draws $\pi^{(r)}$ of BayCAP's posterior through $\hat C$, in both pushforwards. Compared with the methods of E3.1 it changes only the posterior of $\pi^Q$ (BayesianCC on the predictions of $h$ instead of BayesKDEy or BayesianMAPLS on soft outputs); compared with `BayesCAP` on the same draws it changes only whether $C$ is random, so it measures how much the uncertainty on $C$ and the pull of its prior towards $1/K$ act at the bridge, separately from their effect on the posterior of $\pi^Q$. *Needs:* a pushforward option in `methods/baycap.py:BayCAP` that uses $\hat C$ in place of $C^{(r)}$; its own rerun of BayCAP.
 - **E3.c3, a random $C$ at the bridge (option 1 of Appendix B).** *Why:* it pairs each draw $\pi^{(r)}$ with an independent draw $C^{(r)}_{\cdot j}\sim\operatorname{Dir}(f_{1j},\dots,f_{Kj})$ of each column of the rate matrix, which adds the error of $C$ estimated on $V$ (the term $e_2$ of Extension 4) without a new posterior. It is BayCAP's posterior on $C$ from $V$ alone, but with the prior $\operatorname{Dir}(\mathbf 0)$ instead of $\operatorname{Dir}(\mathbf 1)$, so it has no pull towards $1/K$. It applies to either quantifier. *Decision rule:* if it brings coverage near nominal on the pairs where the realised methods of E3.1 under-cover, the random $C$ at the bridge is enough; if the displacement remains, the missing error of the quantifier from $V$ (term $e_1^V$) matters, and E3.c4 (for BayesKDEy) or E3.c7 (for BayesianMAPLS) is the next candidate. *Needs:* a third pushforward in the class of E3.1; its own run; a convention for cells with $f_{ij}=0$, which stay at $0$ in every draw.
 - **E3.c4, cut posterior with random kernel densities for BayesKDEy (option 2 of Appendix B)** [new hypothesis]. *Why:* random weights on the validation instances make both the kernel densities of BayesKDEy and $C$ random, coherently, and add the term $e_1^V$. *Needs:* $M$ NUTS runs per bag, one per draw of the weights, so a cost about $M$ times that of one method of E3.1; a choice of $M$.
-- **E3.c5, full joint posterior of prevalence and weights for BayesKDEy (option 3 of Appendix B)** [new hypothesis]. *Why:* the analogue of BayCAP for BayesKDEy: the target bag also updates the weights, as it updates $C$ in BayesianCC. *Needs:* NUTS on $K-1+\lvert V\rvert$ parameters, which may be slow or mix poorly; to be considered only if E3.c4 is worthwhile.
 - **E3.c6, BayesianMAPLS with a uniform prior** (Appendix E). *Why:* the NUTS model of QuaPy's `BayesianMAPLS` gives $\pi$ a logistic-normal prior, whose density goes to $0$ at the edges of the simplex (§T.4), while BayesKDEy uses the uniform prior $\operatorname{Dir}(\mathbf 1)$, which matches the UPP bags of `main`. So the quantifier factor of E3.1 mixes two differences, the likelihood and the prior. Rerunning the `EMQ` cells with a uniform prior separates them; it is worthwhile if E3.1 finds the `EMQ` methods displaced on the bags with a small $\min_j\pi^Q_j$. *Needs:* a NUTS model that samples $\pi$ from the Dirichlet directly, or that keeps the ILR coordinates and replaces the normal factor with the log-Jacobian of the transformation (Appendix E); its own runs of the `EMQ` methods.
-- **E3.c7, BayesianMAPLS with a random calibration map** (Appendix E) [new hypothesis]. *Why:* BayesianMAPLS has no kernel densities or validation counts to randomise: its model of the classes is the calibration of the input classifier (§T.4). A small parametric recalibration of the outputs, one temperature and $K$ class biases (bias-corrected temperature scaling, Alexandari et al. 2020), with parameters $\theta$, can be sampled jointly with $\pi$: the labels of $V$ give a likelihood on $\theta$, and the bag gives the EM likelihood on $(\pi,\theta)$. It is the analogue of BayesianCC's joint posterior of $(\pi,C)$, with $K+1$ extra parameters instead of the $\lvert V\rvert$ of E3.c5, so it would add the calibration part of $e_1^V$ cheaply and coherently. The rate matrix of $h$ at the bridge stays a separate object (Appendix E). *Needs:* a NumPyro model of its own, a prior on $\theta$, its own runs; to be considered if E3.1 finds the `EMQ` methods sensitive to the calibration of their input classifier.
+- **E3.c7, BayesianMAPLS with a random calibration map** (Appendix E) [new hypothesis]. *Why:* BayesianMAPLS has no kernel densities or validation counts to randomise: its model of the classes is the calibration of the input classifier (§T.4). A small parametric recalibration of the outputs, one temperature and $K$ class biases (bias-corrected temperature scaling, Alexandari et al. 2020), with parameters $\theta$, can be sampled jointly with $\pi$: the labels of $V$ give a likelihood on $\theta$, and the bag gives the EM likelihood on $(\pi,\theta)$. It is the analogue of BayesianCC's joint posterior of $(\pi,C)$, with $K+1$ extra parameters instead of the $\lvert V\rvert$ of the full joint posterior of Appendix B (option 3), so it would add the calibration part of $e_1^V$ cheaply and coherently. The rate matrix of $h$ at the bridge stays a separate object (Appendix E). *Needs:* a NumPyro model of its own, a prior on $\theta$, its own runs; to be considered if E3.1 finds the `EMQ` methods sensitive to the calibration of their input classifier.
 
 # Theory
 
-This part explains what E3.1 needs, step by step. We follow the notation of the reference paper. There are $K$ classes $\omega_1,\dots,\omega_K$. $h$ is the classifier whose performance we estimate. $C_{ij}=P(\hat Y=\omega_i\mid Y=\omega_j)$ is the probability that $h$ predicts $\omega_i$ for an instance of true class $\omega_j$, so column $j$ of $C$ sums to one. $\pi^Q$ is the vector of class prevalences of the target bag $U$, which has $N^Q=\lvert U\rvert$ instances. $V$ is the labelled validation set, with $n^s_j$ instances of class $\omega_j$. A contingency table $T$ has predicted classes on rows and true classes on columns. $s$ is the input classifier of the quantifier, $h$ itself or a separate MLP, and $z=s(x)$ its output probabilities, a point of the simplex $\Delta^{K-1}$ (a vector of $K$ non-negative numbers summing to one).
+This part explains what E3.1 and E3.2 need, step by step; §T.10–§T.13 are for E3.2. We follow the notation of the reference paper. There are $K$ classes $\omega_1,\dots,\omega_K$. $h$ is the classifier whose performance we estimate. $C_{ij}=P(\hat Y=\omega_i\mid Y=\omega_j)$ is the probability that $h$ predicts $\omega_i$ for an instance of true class $\omega_j$, so column $j$ of $C$ sums to one. $\pi^Q$ is the vector of class prevalences of the target bag $U$, which has $N^Q=\lvert U\rvert$ instances. $V$ is the labelled validation set, with $n^s_j$ instances of class $\omega_j$. A contingency table $T$ has predicted classes on rows and true classes on columns. $s$ is the input classifier of the quantifier, $h$ itself or a separate MLP, and $z=s(x)$ its output probabilities, a point of the simplex $\Delta^{K-1}$ (a vector of $K$ non-negative numbers summing to one).
 
 ## T.1 Prior probability shift and the population table
 
@@ -416,6 +440,138 @@ With $\eta$ the ratio of the missing to the represented variance, Extension 4 §
 - **P7, the prior of BayesianMAPLS displaces it near the edges.** The coverage of the `EMQ` methods should fall on the bags with a small $\min_j\pi^Q_j$, and that of the `KDEy` methods should not, or less (§T.4).
 - **P8, reading $h$ moves the centre less.** The mismatch and the movement of the centre should be smaller with $s=h$ than with $s$ an MLP (§T.8).
 
+## T.10 The cells of $V$ and the likelihood of E3.2
+
+*Intuition:* split each class of $V$ by what $h$ predicts on it. The density of the outputs of a class is then a mix of the densities of its cells, and the shares of the mix are the rates of $h$. Making the shares random makes $C$ random, and the target bag can then inform both $\pi$ and $C$.
+
+**The cells.** Let $V_{kj}$ be the validation instances of true class $\omega_j$ that $h$ predicts as $\omega_k$; it has $f_{kj}$ instances (§T.2), and $\sum_kf_{kj}=n^s_j$. The kernel density of cell $(k,j)$ is the average of the bumps of its outputs, with the kernel $K_b$ of §T.3:
+
+$$
+\hat\phi_{kj}(z)=\frac1{f_{kj}}\sum_{v\in V_{kj}}K_b(z,z_v).
+$$
+
+(We write $\hat\phi$ for the densities of the cells, to keep $f_{kj}$ for their counts.)
+
+**The class density is a mixture of the cell densities.** The cells of class $\omega_j$ split $V_j$ into groups with no instance in common, so the sum over $V_j$ in the kernel density of §T.3 is the sum of the sums over the cells. Multiplying and dividing each of them by $f_{kj}$:
+
+$$
+\hat f_j(z)=\frac1{n^s_j}\sum_k\sum_{v\in V_{kj}}K_b(z,z_v)=\sum_k\frac{f_{kj}}{n^s_j}\cdot\frac1{f_{kj}}\sum_{v\in V_{kj}}K_b(z,z_v)=\sum_k\hat C_{kj}\,\hat\phi_{kj}(z).
+$$
+
+So the density of BayesKDEy is the mixture of the cell densities, with weights the column $j$ of $\hat C$. E3.2 replaces $\hat C$ with an unknown $C$:
+
+$$
+f_j(z)=\sum_kC_{kj}\,\hat\phi_{kj}(z).
+$$
+
+In words: an instance of class $\omega_j$ falls in cell $k$ (it is predicted $\omega_k$ by $h$) with probability $C_{kj}$, and its output then follows the density of the cell.
+
+**The joint likelihood, for the input classifier `mlp`.** For a target instance we observe the output $z_u$ of the MLP and the prediction $\hat y_u$ of $h$. By the chain rule of probability, $P(A\cap B\cap D)=P(A)\,P(B\mid A)\,P(D\mid A\cap B)$, the density that its true class is $\omega_j$, that $h$ predicts $\omega_k$ and that its output is $z$ is $\pi_j\,C_{kj}\,\hat\phi_{kj}(z)$. The true class is not observed, so by the law of total probability we sum over $j$:
+
+$$
+p(z_u,\hat y_u=\omega_k\mid\pi,C)=\sum_j\pi_j\,C_{kj}\,\hat\phi_{kj}(z_u).
+$$
+
+The instances of $U$ are treated as independent, so the likelihood is the product of these densities and its logarithm is a sum over the bag:
+
+$$
+\log\mathcal L_U(\pi,C)=\sum_{u\in U}\log\sum_j\pi_j\,C_{\hat y_uj}\,\hat\phi_{\hat y_uj}(z_u).
+$$
+
+The prediction of $h$ is not a function of the output of the MLP, so it adds information. Summing the joint density over $k$ gives the density of the outputs alone, $\sum_j\pi_jf_j(z_u)$; the joint density refines it with the predictions of $h$, the information that BayCAP's likelihood uses.
+
+**The likelihood of the outputs alone, for the input classifier `h`.** With $s=h$ the prediction is the class of the largest output, $\hat y_u=\arg\max_kz_{u,k}$, so it is known once $z_u$ is known. Given $\hat y_u=\omega_k$, the output lies in the region $R_k$ of the simplex where $\omega_k$ has the largest output, but the Gaussian bumps of a cell put part of their mass outside $R_k$, more for the outputs near its border. In the joint form above each cell density would then have to be divided by its mass inside the region, $c_{kj}=\int_{R_k}\hat\phi_{kj}(z)\,dz$, to be a density on $R_k$; without that division the likelihood would favour the cells whose outputs lie far from the borders [new hypothesis]. E3.2 avoids computing $c_{kj}$ by using the density of the outputs alone, $\sum_j\pi_jf_j(z)$:
+
+$$
+\log\mathcal L_U(\pi,C)=\sum_{u\in U}\log\sum_j\pi_j\sum_kC_{kj}\,\hat\phi_{kj}(z_u).
+$$
+
+Every cell density is here a full kernel density, normalised as in BayesKDEy, and the prediction of $h$ enters through $z_u$, which determines it.
+
+**E3.1 is the special case $C=\hat C$, for `h`.** By the mixture identity above, with $C=\hat C$ the inner sum is $\hat f_j(z_u)$, and the log-likelihood is that of BayesKDEy (§T.3). So, with $s=h$, E3.2 differs from the realised BayCAP-KDEy of E3.1 only in that $C$ is random, with its prior and the update by the bag. With `mlp`, $C=\hat C$ gives the likelihood of BayesKDEy refined by the predictions of $h$, so the two methods differ also in the use of the predictions.
+
+**Computation.** For each bag the kernel values $K_b(z_u,z_v)$ of the $N^Q$ target outputs at the $\lvert V\rvert$ validation outputs are averaged within each cell once, before sampling, giving the array $F_{u,kj}=\hat\phi_{kj}(z_u)$ of size $N^Q\times K\times K$. NUTS then evaluates $\sum_u\log\sum_j\pi_jC_{kj}F_{u,kj}$, with $k=\hat y_u$ for `mlp` and summed over $k$ for `h`. The unknowns are those of BayCAP-Hf, whatever $\lvert V\rvert$.
+
+## T.11 The prior on $C$: the validation counts and the Hf prior
+
+*Intuition:* $V$ says a lot about the rates of $h$ on the large classes and little on the small ones; the prior decides the rest. The Hf prior lets the classes of a classifier borrow from each other, instead of pulling each recall towards $1/K$.
+
+**The validation counts as data.** As in BayCAP, the counts of column $j$, $\mathbf f_{\cdot j}=(f_{1j},\dots,f_{Kj})$, are observed: each of the $n^s_j$ instances of class $\omega_j$ falls in cell $k$ with probability $C_{kj}$, independently of the others, so the counts are multinomial, $P(\mathbf f_{\cdot j}\mid C_{\cdot j})\propto\prod_kC_{kj}^{f_{kj}}$. By Bayes' rule the joint posterior is
+
+$$
+p(\pi,C\mid U,V)\propto p(\pi)\,p(C)\prod_jP(\mathbf f_{\cdot j}\mid C_{\cdot j})\;\mathcal L_U(\pi,C).
+$$
+
+**Why not a plain Dirichlet prior.** Take the prior $C_{\cdot j}\sim\operatorname{Dir}(\alpha,\dots,\alpha)$, whose density is proportional to $\prod_kC_{kj}^{\alpha-1}$. Bayes' rule multiplies it by the multinomial probability, and the exponents add, so what $V$ alone says about the column is again a Dirichlet:
+
+$$
+C_{\cdot j}\mid V\sim\operatorname{Dir}(\mathbf f_{\cdot j}+\alpha).
+$$
+
+One coordinate of a Dirichlet has mean its parameter divided by the sum of the parameters, so the recall $C_{jj}$ has mean
+
+$$
+\frac{f_{jj}+\alpha}{n^s_j+K\alpha}=(1-\lambda_j)\,\hat d_j+\lambda_j\,\frac1K,\qquad\lambda_j=\frac{K\alpha}{n^s_j+K\alpha},
+$$
+
+as one checks by writing the right side over the common denominator $n^s_j+K\alpha$, with $\hat d_j=f_{jj}/n^s_j$. A single $\alpha$ sets both how strongly each recall is pulled towards $1/K$ and how much probability the empty cells receive. With $\alpha=1$, BayCAP's prior, the pull displaces the recalls of the small classes when $K$ is large (E2.2 of [[ext2_baycap]]). With a small $\alpha$ the pull vanishes, but an empty cell has the parameter $\alpha<1$, whose long tail in the coordinates of NUTS causes divergent transitions (§T.11 of [[ext2_baycap]]). With $\alpha=0$ an empty cell is $0$ in every draw: a class recalled perfectly on $V$ has recall $1$ with no uncertainty, and a target instance predicted as a class that $h$ never predicts on $V$ has likelihood $0$ under every $(\pi,C)$.
+
+**The Hf prior.** BayCAP-Hf (§T.16 of [[ext2_baycap]]) writes column $j$ as a recall and the shares of the mistakes, $C_{jj}=r_j$ and $C_{kj}=(1-r_j)\,s_{kj}$ for $k\ne j$, with $\sum_{k\ne j}s_{kj}=1$. Its prior has two parts:
+
+- the recalls, $r_j\mid m,\nu\sim\operatorname{Beta}(\nu m,\nu(1-m))$, independent across the classes given $(m,\nu)$, with $m\sim U(0,1)$, the typical recall of the classifier, and $\rho=1/(1+\nu)\sim U(0,1)$, the share of the largest possible variance that the recalls have;
+- the shares, $s_{\cdot j}\mid\kappa\sim\operatorname{Dir}(\kappa\mathbf 1_{K-1})$, with $1/(1+\kappa)\sim U(0,1)$: a small $\kappa$ puts the mistakes of a class in few cells, a large $\kappa$ spreads them evenly; with $K=2$ there are no shares and no $\kappa$.
+
+**Where the recall is pulled.** A Beta is a Dirichlet with two coordinates, and the count of correct predictions of class $\omega_j$ on $V$ is binomial, a multinomial with two cells. So, given $(m,\nu)$, the update of the previous paragraph applies with the parameters $(\nu m,\nu(1-m))$ in place of $(\alpha,\alpha)$: the recall from $V$ is $\operatorname{Beta}(\nu m+f_{jj},\,\nu(1-m)+n^s_j-f_{jj})$, whose mean is
+
+$$
+\frac{\nu m+f_{jj}}{\nu+n^s_j}=(1-\lambda_j)\,\hat d_j+\lambda_j\,m,\qquad\lambda_j=\frac{\nu}{\nu+n^s_j}.
+$$
+
+The recall is pulled towards the typical recall $m$ of the classifier, not towards $1/K$, and by an amount that $V$ decides: $\nu$ is large, and the pull strong, only when the recalls of the other classes are similar. A class with few validation instances borrows from the others; a large class keeps its own count. The shares do the same for the mistakes, with $\kappa$ learned from how the mistakes of the classes are spread on $V$.
+
+**Centred shares.** E3.2 samples the shares in the centred form of `BayesCAP-Hf-real` (user's decision of 2026-11-06), so that its prior and its coordinates are those of its reference. Where $\kappa<1$ meets empty cells the shares have long tails and NUTS may diverge (§T.16 of [[ext2_baycap]]); the non-centred form of E2.9 (§T.17 of [[ext2_baycap]]) samples the same model in other coordinates, but it was run on a pilot only. In E3.2 the bag may pin some of these cells (§T.13) and soften the problem [new hypothesis]; the divergences are recorded per pair.
+
+## T.12 Empty cells
+
+*Intuition:* the Hf prior gives every cell a positive rate, also the cells with no validation instance; such a cell needs a density, and it borrows the density of the instances that most resemble it.
+
+A cell with $f_{kj}=0$ has no outputs, so $\hat\phi_{kj}$ is not defined, while $C_{kj}>0$ in every draw of the Hf prior. E3.2 uses the following convention (decision of 2026-11-06) [new hypothesis: the borrowed density is a reasonable stand-in for the missing one]:
+
+1. if $h$ predicts $\omega_k$ for some validation instance, $\hat\phi_{kj}$ is the kernel density $\hat\phi_{k\cdot}$ of all the validation instances predicted $\omega_k$, whatever their true class: with $s=h$ their outputs lie in the region $R_k$, as those of the cell would; with $s$ an MLP it is the available description of the outputs of the instances that $h$ predicts as $\omega_k$;
+2. if $h$ never predicts $\omega_k$ on $V$, $\hat\phi_{kj}$ is the kernel density $\hat f_j$ of class $\omega_j$ (§T.3).
+
+Every cell then has a density, and since every $C_{kj}$ is positive, every target instance has a positive likelihood under every $(\pi,C)$: the posterior is always defined. A borrowed density acts only through the weight $\pi_jC_{kj}$ of its cell, which stays small, since $V$ has no instance in the cell, unless the bag supports it.
+
+## T.13 What the target bag says about $C$, and what the budget predicts for E3.2
+
+*Intuition:* BayCAP learns from the bag only how often $h$ predicts each class. E3.2 also sees how the outputs of the bag are spread within each prediction, which can separate the instances that $h$ gets right from those it gets wrong.
+
+**In BayCAP the bag fixes only $C\pi$.** The likelihood of BayCAP uses the counts $n^t$ of the predictions of $h$ on $U$, a multinomial with probabilities $q=C\pi$. The $K$ counts sum to $N^Q$, so they carry $K-1$ free numbers, while $(\pi,C)$ has $K-1+K(K-1)$. Many pairs $(\pi,C)$ give the same $q$, and between them only $V$ and the prior decide.
+
+**In E3.2 the bag can fix both $\pi$ and $C$.** Take the target instances that $h$ predicts as $\omega_k$. By §T.10 their outputs follow, up to a normalising constant, the mixture $\sum_j\beta_{kj}\hat\phi_{kj}(z)$ with weights $\beta_{kj}=\pi_jC_{kj}$. If the densities $\hat\phi_{k1},\dots,\hat\phi_{kK}$ have different shapes, the mixture determines its weights, as a kernel quantifier does, so the bag determines the $K^2$ products $\beta_{kj}$. They give back both unknowns: the columns of $C$ sum to one, so $\sum_k\beta_{kj}=\pi_j\sum_kC_{kj}=\pi_j$, and then $C_{kj}=\beta_{kj}/\pi_j$. Where the shapes overlap, or a cell has few instances on $V$, the bag cannot split the weights, and $V$ and the prior decide again. Two consequences [new hypotheses]:
+
+- with $s=h$, the outputs of $h$ on its mistakes point, by definition, to the wrong class, so $\hat\phi_{kj}$ and $\hat\phi_{kk}$ overlap where $h$ is confidently wrong, and the bag informs the off-diagonal cells weakly; an MLP trained on $V$ may tell apart the instances that $h$ gets right and wrong, and inform them more;
+- fitting $(\pi,C)$ to the bag makes the expected shares of the predictions $q=C\pi$ close to the observed shares $n^t/N^Q$: in the joint likelihood through the factor $C_{\hat y_uj}$, with $s=h$ through the regions $R_k$. So, as in BayCAP (E2.3), the realised pushforward should not move the centre (§T.8).
+
+The ratio of the posterior standard deviation of $C_{kj}$ to its standard deviation from $V$ alone measures this cell by cell. From $V$ alone (Appendix B), $C_{kj}$ has a Beta marginal with mean $\hat C_{kj}$ and variance $\hat C_{kj}(1-\hat C_{kj})/(n^s_j+1)$; a ratio below $1$ says that the bag has narrowed the cell.
+
+**The budget.** In the notation of §T.9:
+
+| Method | Represented | Missing |
+|---|---|---|
+| `BayCAP-KDEy-Hf-<s>-real` (E3.2) | $e_1^U$, $e_3$, $e_2$ (through the posterior of $C$), the part of $e_1^V$ that is the weights of the cells within each class | the shapes of the cell densities (the rest of $e_1^V$), any bias of the kernel densities (the bandwidth, a difference between $V$ and the test pool) |
+
+The weights of the cells of class $\omega_j$ are the column $C_{\cdot j}$, so the uncertainty on $C$ is at once the error of the rates of $h$ ($e_2$) and an error of the class densities of the quantifier ($e_1^V$), coherently, as in option 2 of Appendix B.
+
+**Predictions for E3.2** [new hypotheses]:
+
+- **P9, coverage rises where the error is $e_2$.** On `mammographic` and on `semeion` LR and MLP, coverage and Winkler score improve over the realised BayCAP-KDEy of E3.1. All bags of a pair share one $V$, so the error from $V$ is a single draw per pair: an interval that represents it correctly can still under-cover on a pair whose $V$ gave a large draw, and the five pairs of `mammographic` share one such draw. So the test is the standardised shift: it should fall on these pairs and, across pairs, look like draws of a standard normal; a coverage of $0.95$ on each pair is not expected.
+- **P10, `poker_hand` improves only in part.** Its smallest class has $3$ validation instances: the Hf prior makes its rates uncertain and pulls them towards the typical recall, but the shapes of its cell densities, built from $3$ outputs, stay fixed.
+- **P11, `wine-quality` does not improve.** Its error is a bias shared by all quantifiers (E3.1), which a random $C$ widens but does not remove.
+- **P12, against `BayesCAP-Hf-real`.** The two methods have the same prior and the same use of $V$; where the cells are well separated the bag informs $C$ more in E3.2, so its intervals should be narrower at a similar coverage, more with `mlp` than with `h`.
+- **P13, the bag narrows the cells with many instances.** The ratio of standard deviations is below $1$ on the cells with a large $f_{kj}$ and near $1$ on the small ones, more often with `mlp` than with `h`.
+- **P14, the predicted shares match the observed ones.** The mismatch $\lVert n^t/N^Q-\bar C\bar\pi\rVert_1$ is of the order of the sampling noise, $1/\sqrt{N^Q}$, and smaller than for the methods of E3.1.
+
 # Implementation
 
 Components (for E3.1):
@@ -446,13 +602,39 @@ Reproducibility and comparability:
 - every row records the quantifier and its configuration, the input classifier, the seeds and the pushforward;
 - the eight methods are comparable with the CPU results of `BayesCAP`, `BayesCAP-real` and `BayesCAP-Hf-real` (same bags, same platform); a pilot on two datasets precedes the full run.
 
+Components (for E3.2), all [proposal]:
+
+- **Split of `BayCAPFixed`** (user's decision of 2026-11-06). `methods/baycap_fixed.py:BayCAPFixed` is split into `methods/baycap_kdey.py:BayCAPKDEy` (BayesKDEy) and `methods/baycap_mapls.py:BayCAPMAPLS` (BayesianMAPLS); the parameter `quantifier` disappears, and the code they share (input classifier and cross-fitting of the MLP, realised pushforward, NUTS diagnostics, ECE, moments of accuracy) moves to a common module. The eight factory entries of E3.1 keep their names and configurations and build the new classes. The name `BayCAPKDEy` was used by the class that `BayCAPFixed` replaced, which has no stored results.
+- **The random $C$ in `BayCAPKDEy`.** A parameter `c_prior` $\in\{$`"fixed"`, `"hierarchical-f"`$\}$, default `"fixed"` (E3.1). With `"hierarchical-f"`, a NumPyro model of its own: $\pi\sim\operatorname{Dir}(\mathbf 1)$; the Hf sites and the construction of $C$ of `methods/baycap.py` (`strength_from_rho`, `hierarchical_rates`, centred shares), shared, not copied; the validation counts observed as multinomials per class, as in `BayCAP.model`; the log-likelihood of §T.10 as a `numpyro.factor`, computed with a log-sum-exp over the true classes (and the predicted classes for `h`) from the logarithms of $\pi_j$, $C_{kj}$ and $F_{u,kj}$.
+- **Cell densities.** Per fit, one kernel density per non-empty cell $(k,j)$ on the validation outputs of the input classifier (cross-fitted for `mlp`), with the kernel of E3.1 (QuaPy's `KDEBase`, Gaussian, $b=0.1$), and the borrowed densities of §T.12 for the empty cells; per bag, the array of log-densities $\log F_{u,kj}$ of the target outputs, computed before sampling.
+- **Realised pushforward.** `methods/baycap.py:realised_tables` applied to the table draws $C^{(r)}\operatorname{diag}(\pi^{(r)})$, in the `cap-ml` layout (true classes on rows); the population pushforward stays available for tests, and only the realised one is run.
+- **Diagnostics and summaries.** `nuts_diagnostics` on $\pi$, $C$ and the Hf hyperparameters; `hierarchical_summaries` and `kappa_summaries`; per bag, the posterior mean and standard deviation of $C$, the mismatch with $\bar C$, and the numbers of empty and borrowed cells. A failed start of NUTS is handled as in `BayesCAP-Hf-real`.
+- **Methods in `main`:** two factory entries, `BayCAP-KDEy-Hf-h-real` and `BayCAP-KDEy-Hf-mlp-real`, run in the BayCAP pool with `BAYES_ENV`; results only, excluded from the tables, ranks and default plots of `main`, like the methods of E3.1.
+- **Tables and plots:** a table module and a plot module for E3.2, reusing the paired bootstrap of `tables/pushforward.py`, `tables/displacement.py --method` and `tables/rank.py`.
+
+Tests (for E3.2):
+
+- after the split, `BayCAPKDEy` and `BayCAPMAPLS` give, for the same seeds, the draws of `BayCAPFixed` in the eight configurations of E3.1;
+- the cells partition $V$, and $\sum_k\hat C_{kj}\hat\phi_{kj}$ equals the class density $\hat f_j$ of BayesKDEy;
+- with $C=\hat C$, the log-likelihood of `h` equals that of BayesKDEy, and the joint log-likelihood of `mlp`, summed over the predicted classes, equals the log-likelihood of the outputs alone;
+- the borrowed densities follow §T.12, and on a bag with a prediction that $h$ never makes on $V$ the log-posterior is finite;
+- the Hf sites are those of `BayCAP` with `c_prior="hierarchical-f"`, and with $K=2$ there is no $\kappa$;
+- the realised tables have predicted-class margins equal to $n^t/N^Q$;
+- for the same seeds, two runs give the same draws.
+
+Reproducibility and comparability (for E3.2):
+
+- the split of `BayCAPFixed` changes no draw (first test above), so the stored results of E3.1 stay valid and its factory entries reproduce them;
+- E3.2 adds the rows of two methods to `main` and leaves the stored results of every other method untouched;
+- the two methods are comparable with the stored CPU results of E3.1 and of `BayesCAP-Hf-real` (same bags, same platform); a pilot on `mammographic`, `poker_hand` and `wine-quality` precedes the full run.
+
 # Appendix
 
 ## A. Toy simulations
 
 None yet.
 
-## B. Making the rate matrix random for BayesKDEy (background for E3.c3–E3.c5)
+## B. Making the rate matrix random for BayesKDEy (background for E3.c3, E3.c4 and E3.2)
 
 *Intuition:* describe the uncertainty about each class-conditional distribution with random weights on the validation instances of that class; one set of weights gives, coherently, both the kernel densities of the quantifier and a rate matrix of $h$.
 
@@ -478,12 +660,12 @@ This is BayCAP's posterior on the column from $V$ alone, with the prior $\operat
 
 1. *Random $C$ at the bridge only* (E3.c3): keep the posterior of §T.3 and pair each $\pi^{(r)}$ with an independent $C^{(r)}_{\cdot j}\sim\operatorname{Dir}(f_{\cdot j})$. It adds $e_2$, not $e_1^V$, and costs no extra NUTS.
 2. *Cut posterior* (E3.c4): for each of $M$ draws of the weights, recompute $\hat f^{(w)}_j$ and $C^{(w)}$, run NUTS on $\pi$ with $\hat f^{(w)}_j$, and pool the draws. The weights come from $V$ only and are not updated by $U$: this is modular Bayesian inference, not a full posterior. It adds $e_1^V$ and $e_2$, coherently, at about $M$ times the cost.
-3. *Full joint posterior* (E3.c5): NUTS samples $(\pi,w)$ together, with likelihood $\sum_{i\in U}\log\sum_j\pi_j\sum_{v\in V_j}w_{j,v}K_b(z_i,z_v)$, so $U$ also updates the weights, as it updates $C$ in BayesianCC. It has $\lvert V\rvert$ extra parameters, and since $U$ updates the weights only through the outputs of $s$, the predictions of $h$ on $U$ do not inform $C$.
+3. *Full joint posterior* (the former candidate E3.c5): NUTS samples $(\pi,w)$ together, with likelihood $\sum_{i\in U}\log\sum_j\pi_j\sum_{v\in V_j}w_{j,v}K_b(z_i,z_v)$, so $U$ also updates the weights, as it updates $C$ in BayesianCC. It has $\lvert V\rvert$ extra parameters, and since $U$ updates the weights only through the outputs of $s$, the predictions of $h$ on $U$ do not inform $C$. The likelihood depends on $(\pi,w)$ only through the products $\beta_v=\pi_{j(v)}w_{j(v),v}$, where $j(v)$ is the class of $v$: the target is modelled as one weighted kernel density over all of $V$, and $\pi_j$ is the total weight of class $\omega_j$. Two validation outputs closer than $b$ have almost the same bump, so the bag cannot tell their weights apart, and the posterior is flat along many directions, which makes NUTS slow. Grouping the instances of each class and giving one weight to each group removes these directions; by the aggregation property the group weights have the prior $\operatorname{Dir}$ of the group sizes, so only the re-weighting within a group is lost. Grouping by the prediction of $h$ makes the group weights the columns of $C$: this is the model of E3.2 (§T.10), with the validation counts and the Hf prior in place of the Bayesian bootstrap (§T.11).
 
 ## C. Relation to other extensions
 
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics; macro-F1 and macro-K have no closed form under the fixed $\hat C$ (§T.5).
-- **[[ext2_baycap|Extension 2]]**: supplies the realised-table predictive (§T.7), the decomposition of the shift and the paired Winkler test (E2.2, E2.3), and the finding that the prior on $C$ displaces BayCAP on large-$K$ datasets, which P3 tests from the other side.
+- **[[ext2_baycap|Extension 2]]**: supplies the realised-table predictive (§T.7), the decomposition of the shift and the paired Winkler test (E2.2, E2.3), the finding that the prior on $C$ displaces BayCAP on large-$K$ datasets, which P3 tests from the other side, and the Hf prior on $C$ (E2.8) used by E3.2, whose reference is `BayesCAP-Hf-real`.
 - **[[ext4_uncertainty_budget|Extension 4]]**: supplies the budget of §T.9; its regime map (E4.2a) includes the methods of this extension, with the same implementations, so this extension does not vary $\lvert U\rvert$ or $\lvert V\rvert$.
 - **[[ext5_baycap_priors_tempering|Extension 5]]**: tempering, including the temperatures of BayesKDEy and BayesianMAPLS.
 - **Extension 7** ([[extensions]] §7): tuning of the MLP input classifier and of the hyperparameters of BayesKDEy (kernel, $b$, $\lambda$) beyond the configuration fixed for E3.1.
@@ -514,6 +696,6 @@ s^\theta_y(x)=\frac{\exp\big(\log s_y(x)/t+\beta_y\big)}{\sum_l\exp\big(\log s_l
 \theta=(t,\beta_1,\dots,\beta_K),
 $$
 
-a temperature $t>0$ that makes the outputs more or less confident and class biases $\beta_y$ that shift them towards some classes (bias-corrected temperature scaling, Alexandari et al. 2020; one bias can be fixed at $0$, since adding the same number to all of them changes nothing). The joint posterior of $(\pi,\theta)$ has two likelihoods: on $V$, $\sum_{v\in V}\log s^\theta_{y_v}(x_v)$, the log-probability of the observed labels under the recalibrated outputs, which involves $\theta$ only; on $U$, the likelihood of §T.4 with $s^\theta$ in place of $s$, which involves both. The labels of $V$ locate $\theta$, the bag also updates it, as it updates $C$ in BayesianCC, and the uncertainty about $\theta$ widens the posterior of $\pi$. With $K$ parameters added to the $K-1$ of $\pi$, NUTS stays cheap, unlike the $\lvert V\rvert$ weights of E3.c5.
+a temperature $t>0$ that makes the outputs more or less confident and class biases $\beta_y$ that shift them towards some classes (bias-corrected temperature scaling, Alexandari et al. 2020; one bias can be fixed at $0$, since adding the same number to all of them changes nothing). The joint posterior of $(\pi,\theta)$ has two likelihoods: on $V$, $\sum_{v\in V}\log s^\theta_{y_v}(x_v)$, the log-probability of the observed labels under the recalibrated outputs, which involves $\theta$ only; on $U$, the likelihood of §T.4 with $s^\theta$ in place of $s$, which involves both. The labels of $V$ locate $\theta$, the bag also updates it, as it updates $C$ in BayesianCC, and the uncertainty about $\theta$ widens the posterior of $\pi$. With $K$ parameters added to the $K-1$ of $\pi$, NUTS stays cheap, unlike the $\lvert V\rvert$ weights of the full joint posterior of Appendix B (option 3).
 
 **The bridge stays separate.** The recalibration changes the outputs that the quantifier reads, not the predictions of $h$, which are fixed. So it does not make the rate matrix $\hat C$ of $h$ random: with $s=h$ the two are computed from the same outputs but are different functions of them, and a random $C$ at the bridge still needs option 1 of Appendix B (E3.c3).
