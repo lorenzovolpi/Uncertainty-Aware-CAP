@@ -13,7 +13,7 @@ This extension is the common frame for the method extensions: the realised-table
 | SQS-H, SQS-S, BayCAP at $\lvert U\rvert=1000$, scored against the realised accuracy of each bag | [paper] |
 | `RQBS` (SQS-H with a bootstrap of $\hat\pi$, the variant run by `main`), `PrediQuant` (SQS-S), `BayesCAP` (BayCAP, built from `methods/baycap.py:BayCAP`) | [implemented] |
 | `BayesCAP-real` (BayCAP with the realised-table predictive, [[ext2_baycap]] E2.3) | [implemented], evaluated in `main` |
-| `BayCAPFixed` (the methods of E3.1 of [[ext3_posterior_propagation]]; it replaces `BayCAPKDEy`) | [implemented], not evaluated |
+| `BayCAPKDEy` with a fixed $\hat C$ and `BayCAPMAPLS` (the methods of E3.1 of [[ext3_posterior_propagation]]; one class, `BayCAPFixed`, until WP-13) | [implemented], evaluated by E3.1 |
 | SQS-B and the realised pushforward of BayCAP-KDEy ([[ext3_posterior_propagation]]) | [proposal] |
 | Error split, budget with the pool term, coverage rule and ratios $\eta$, $r$, oracle ladder, SQS-H with $U$ and $V$ resampling | [new hypothesis] |
 | The protocol without replacement and its budget (§T.10) | [new hypothesis] |
@@ -670,7 +670,7 @@ $$
 **Which BayCAP variants.** The BayCAP methods of `main` (`src/uncawe/experiments/methods.py`) come from two classes, which obtain $C$ and $\pi^Q$ differently, so the results of this section do not hold for all of them alike:
 
 - the `BayCAP` class (`methods/baycap.py`): a joint posterior of $(\pi^Q,C)$, with $\pi^Q$ estimated from the predictions of $h$ through $C$ (BayesianCC); its variants differ in the prior on $C$, uniform (`BayesCAP`, `BayesCAP-real`), empirical-Bayes (`BayesCAP-EB`, `BayesCAP-EB-real`) or hierarchical (`BayesCAP-H-real`, `BayesCAP-Hf-real`, `BayesCAP-Hfn-real`), and in the pushforward;
-- the `BayCAPFixed` class (`methods/baycap_fixed.py`, [[ext3_posterior_propagation]] E3.1): a fixed $\hat C$, the frequency matrix of $V$, and the prevalence posterior of a separate Bayesian quantifier (BayesKDEy or BayesianMAPLS, on the outputs of $h$ or of an MLP): `BayCAP-{KDEy,EMQ}-{h,mlp}` and their `-real` versions.
+- the classes `BayCAPKDEy` with `c_prior="fixed"` and `BayCAPMAPLS` (`methods/baycap_kdey.py`, `methods/baycap_mapls.py`; one class, `BayCAPFixed`, until WP-13; [[ext3_posterior_propagation]] E3.1): a fixed $\hat C$, the frequency matrix of $V$, and the prevalence posterior of a separate Bayesian quantifier (BayesKDEy or BayesianMAPLS, on the outputs of $h$ or of an MLP): `BayCAP-{KDEy,EMQ}-{h,mlp}` and their `-real` versions.
 
 The pushforward (population or realised) changes which parts the interval represents (§T.6), not the error parts of the point estimate, whose expectation is the same for both.
 
@@ -724,7 +724,7 @@ $$
 
 So for BayCAP the prevalence part is the luck of the bag and the error of $V$, scaled by $\kappa$: it vanishes when $d_1=d_0$ and grows without limit as $d_1+d_0\to1$, i.e. as $h$ approaches a random classifier. The within-source correlations of §T.4, which the budget drops, are here structural, because the quantifier and the classifier are the same. These are frequentist variances of BayCAP's estimate to first order; the priors (on $C$ and on $\pi^Q$, whose bias is not derived) and the information of the target bag on $C$ change them, but not the mechanism, so the factor $\kappa$ applies to every variant of the `BayCAP` class.
 
-**BayCAP with a fixed rate matrix (`BayCAPFixed`).** Its recalls are the frequencies $\tilde d_j=k_j/\lvert V_j\rvert$ of $V$, used in every draw. So its $e_2$ is that of the SQS family: mean $0$ (no prior, hence no prior bias) and variance $\sum_j(\pi^Q_j)^2d_j(1-d_j)/\lvert V_j\rvert$ (§T.4), and it is not represented, since all draws share $\tilde d$ (§T.6). Its prevalence part comes from the quantifier, not from inverting $C$: its variance is set by the kernel densities of BayesKDEy or by the fixed point of the EM algorithm of BayesianMAPLS, and is not derived here; BayesKDEy keeps its densities fixed, so it does not propagate the error of $V$ into $e_1^V$ (§T.6). With the outputs of an MLP as input, the quantifier's errors are not those of $h$, and the correlations with $e_3^b$ and $e_2$ are the ordinary within-source correlations of §T.4 rather than structural ones.
+**BayCAP with a fixed rate matrix (`BayCAPKDEy` with `c_prior="fixed"`, `BayCAPMAPLS`).** Its recalls are the frequencies $\tilde d_j=k_j/\lvert V_j\rvert$ of $V$, used in every draw. So its $e_2$ is that of the SQS family: mean $0$ (no prior, hence no prior bias) and variance $\sum_j(\pi^Q_j)^2d_j(1-d_j)/\lvert V_j\rvert$ (§T.4), and it is not represented, since all draws share $\tilde d$ (§T.6). Its prevalence part comes from the quantifier, not from inverting $C$: its variance is set by the kernel densities of BayesKDEy or by the fixed point of the EM algorithm of BayesianMAPLS, and is not derived here; BayesKDEy keeps its densities fixed, so it does not propagate the error of $V$ into $e_1^V$ (§T.6). With the outputs of an MLP as input, the quantifier's errors are not those of $h$, and the correlations with $e_3^b$ and $e_2$ are the ordinary within-source correlations of §T.4 rather than structural ones.
 
 ## T.14 Label-free plug-ins, self-diagnosis and completed intervals
 
