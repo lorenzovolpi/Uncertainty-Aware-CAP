@@ -337,19 +337,26 @@ SHORT_LABELS = {
     HF: "Hf",
     RQBS: "SQS-H",
 }
-TABLE_SCORES = ("coverage", "amplitude", "winkler")
+# the scores of the comparison table, in the order of E3.1
+TABLE_SCORES = baycap_fixed.TABLE_SCORES
+
+
+def _rotated(label: str) -> str:
+    """A method label set vertically in the LaTeX header, as in the tables of ``main``."""
+    return f"\\rotatebox{{90}}{{{label}}}"
 
 
 def _comparison_styler(table: pd.DataFrame):
-    """Columns grouped by score, then by method, with the standardised shift last; each row and score group coloured
-    as in E3.1 (``tables/baycap_fixed.py:_score_cell_styles``)."""
+    """Columns grouped by score (AE, amplitude, coverage, Winkler, as in E3.1), then by method, with the standardised
+    shift last; each row and score group coloured as in E3.1 (``tables/baycap_fixed.py:_score_cell_styles``); the
+    method labels are rotated, as in the tables of ``main``."""
     labels = {score: baycap_fixed.SCORE_LABELS[score] for score in TABLE_SCORES}
     cols = {}
     for score in TABLE_SCORES:
         for method in METHODS:
-            cols[(labels[score], SHORT_LABELS[method])] = table[f"{method}_{score}"].to_numpy()
+            cols[(labels[score], _rotated(SHORT_LABELS[method]))] = table[f"{method}_{score}"].to_numpy()
     for method in METHODS:
-        cols[("$z$", SHORT_LABELS[method])] = table[f"{method}_std_shift"].to_numpy()
+        cols[("$z$", _rotated(SHORT_LABELS[method]))] = table[f"{method}_std_shift"].to_numpy()
     out = pd.DataFrame(cols)
     out.columns = pd.MultiIndex.from_tuples(out.columns)
     out.index = baycap_h._index(table)
@@ -421,7 +428,8 @@ COMMON_CAPTION = (
 )
 CAPTIONS = {
     "comparison": COMMON_CAPTION
-    + "Coverage $\\mathcal{C}$, amplitude $\\mathcal{A}$, Winkler score $\\mathcal{W}$ and standardised shift $z$ "
+    + "Absolute error AE, amplitude $\\mathcal{A}$, coverage $\\mathcal{C}$, Winkler score $\\mathcal{W}$ and "
+    "standardised shift $z$ "
     "(mean over the bags of $(\\hat A-A)/\\operatorname{sd}(A^{(r)})$). " + baycap_fixed.SCORE_HIGHLIGHT,
     "tests": COMMON_CAPTION
     + "Mean per-bag Winkler difference of each new method minus its reference, $95\\%$ paired bootstrap interval and "
@@ -450,8 +458,14 @@ def _stem(name: str) -> str:
     return f"{TABLE_NAME}_{name}"
 
 
-# the comparison (24 columns) and diagnostics (22 columns) tables are typeset on A3, the tests table on A4
+# the comparison (30 columns) and diagnostics (22 columns) tables are typeset on A3, the tests table on A4
 A3_TABLES = ("comparison", "diagnostics")
+
+
+def _latex_document(longtable_path: str, a3: bool = False) -> str:
+    """The document of E3.1, with ``graphicx`` for the rotated method labels."""
+    document = baycap_fixed._latex_document(longtable_path, a3=a3)
+    return document.replace("\\begin{document}", "\\usepackage{graphicx}\n\\begin{document}", 1)
 
 
 def gen_tables(pargs):
@@ -477,7 +491,7 @@ def gen_tables(pargs):
         with open(os.path.join(tabular_dir, f"{_stem(name)}_long.tex"), "w") as f:
             f.write(eb_prior._latex_longtable(styler, CAPTIONS[name], label))
         with open(os.path.join(out_dir, f"{_stem(name)}_doc.tex"), "w") as f:
-            f.write(baycap_fixed._latex_document(f"tabular/{_stem(name)}_long.tex", a3=name in A3_TABLES))
+            f.write(_latex_document(f"tabular/{_stem(name)}_long.tex", a3=name in A3_TABLES))
 
     with pd.option_context("display.width", 200, "display.max_columns", None, "display.precision", 3):
         for name, summary in analysis_summary(table, cells).items():

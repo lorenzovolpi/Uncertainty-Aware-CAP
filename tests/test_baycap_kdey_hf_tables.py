@@ -165,6 +165,15 @@ class KDEyHfTablesTest(unittest.TestCase):
         plt.close(plots.plot_information(cells))
         self.assertEqual(set(plots.FIGURES), set(plots.PLOTTERS) | {"information"})
 
+    def test_comparison_columns_follow_e31_with_rotated_methods(self):
+        styler = kh._comparison_styler(self.table)
+        groups = list(dict.fromkeys(styler.data.columns.get_level_values(0)))
+        labels = [kh.baycap_fixed.SCORE_LABELS[score] for score in ("ae", "amplitude", "coverage", "winkler")]
+        self.assertEqual(groups, [*labels, "$z$"])
+        self.assertEqual(styler.data.shape[1], 5 * len(kh.METHODS))
+        self.assertTrue(all(m.startswith("\\rotatebox{90}{") for m in styler.data.columns.get_level_values(1)))
+        self.assertIn("\\usepackage{graphicx}", kh._latex_document("x.tex"))
+
     def test_displacement_accepts_the_methods_with_a_nan_prior_part(self):
         for method in kh.NEW.values():
             self.assertIn(method, METHOD_CHOICES)
