@@ -16,8 +16,5 @@ docs/response*.md
 # env.json
 # AGENTS.md
 
-# uv files
-uv.lock
-
 # obsidian
 .obsidian
