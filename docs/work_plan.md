@@ -234,7 +234,7 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
-| FIX-1 + FIX-4 | SQS-S fix in `cap-ml` and `cap-ml` pinned to a commit | fix | In progress | none | 2026-11-09 |
+| FIX-1 + FIX-4 | SQS-S fix in `cap-ml`, `cap-ml` pinned to a commit, `PQ` re-run in `main` | fix | In progress | none | 2026-11-09 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -277,19 +277,19 @@ Entry template:
 - **Outcome:** <filled when the branch is merged: merge commit; decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card>
 ```
 
-### FIX-1 + FIX-4 SQS-S fix in `cap-ml` and `cap-ml` pinned to a commit
+### FIX-1 + FIX-4 SQS-S fix in `cap-ml`, `cap-ml` pinned to a commit, `PQ` re-run in `main`
 
 - **Kind / status:** fix / In progress
 - **Source:** Part IV, FIX-1 (SQS-S fits its quantifier on all of $V$, and estimates the candidate bags and the target with different estimators) and FIX-4 (`cap-ml` taken from a branch, `uv.lock` not tracked); scheduled together by the user on 2026-11-09, because the SQS-S fix lives in `cap-ml` and reaches UNCAWE only through a new pin.
-- **Goal:** make `PQ` the paper's SQS-S and make the `cap-ml` version of every run explicit. In `cap-ml` (commit `e9e77cd`, version 0.1.1.9): `PrediQuant` trains its quantifier on $V_1$ only, so that it never sees the bag-sampling subset $V_2$, and estimates the prevalences of the candidate bags and of the target with the same pipeline, the quantifier's own classifier followed by its aggregation; the classifier $h$ is used only for the contingency tables of the bags; `reuse_h` is removed; tests in `tests/test_prediquant.py`. In UNCAWE: `pyproject.toml` takes `cap-ml` at that commit and `uv.lock` is tracked.
+- **Goal:** make `PQ` the paper's SQS-S and make the `cap-ml` version of every run explicit. In `cap-ml` (commit `e9e77cd`, version 0.1.1.9): `PrediQuant` trains its quantifier on $V_1$ only, so that it never sees the bag-sampling subset $V_2$, and estimates the prevalences of the candidate bags and of the target with the same pipeline, the quantifier's own classifier followed by its aggregation; the classifier $h$ is used only for the contingency tables of the bags; `reuse_h` is removed; tests in `tests/test_prediquant.py`. In UNCAWE: `pyproject.toml` takes `cap-ml` at that commit and `uv.lock` is tracked. Then `PQ` is re-run in `main` (classic domain, $75$ pairs, the three metrics, $100$ bags per pair, the seeds of `main`), so that the stored `PQ` results are those of the fixed SQS-S (added to the card by the user on 2026-11-09). `predist` is not re-run by this card.
 - **Estimand:** realised table of the target sample, as `PQ` in `main` (unchanged).
-- **Scope:** `pyproject.toml`, `uv.lock`, `.gitignore`; this document (Part I, the convention on the `cap-ml` pin in Part V, the entries IV.1 and IV.4 removed); the status of FIX-1 in [[ext4_uncertainty_budget]].
+- **Scope:** `pyproject.toml`, `uv.lock`, `.gitignore`; this document (Part I, the convention on the `cap-ml` pin in Part V, the entries IV.1 and IV.4 removed); the status of FIX-1 in [[ext4_uncertainty_budget]]; the stored `PQ` results of `main` (the old ones moved to `<OUT_DIR>/uncawe/main_pq_pre_fix1/`, same tree as `main/`).
 - **Depends on:** none.
-- **Comparability:** from the previously locked `cap-ml` commit (`bb20aa5`) to `e9e77cd` only `PrediQuant` changes (`git diff bb20aa5 e9e77cd`), so no other method of `main` is affected. The stored `PQ` results of `main` and all `predist` results were computed with the old `PrediQuant` and are not comparable with new ones; they must be re-run, which happens only when the user asks for it and is not part of this card. Which `cap-ml` commit produced the stored results of the other methods is not recorded (`uv.lock` was not tracked).
+- **Comparability:** from the previously locked `cap-ml` commit (`bb20aa5`) to `e9e77cd` only `PrediQuant` changes (`git diff bb20aa5 e9e77cd`), so no other method of `main` is affected. The stored `PQ` results of `main` and all `predist` results were computed with the old `PrediQuant` and are not comparable with new ones; the `PQ` results of `main` are re-run by this card, the `predist` results are not. Which `cap-ml` commit produced the stored results of the other methods is not recorded (`uv.lock` was not tracked).
 - **Deviations from Part V:** none.
-- **Done when:** the pin and the tracked `uv.lock` are merged into `devel` and the unit tests pass.
-- **Commands:** none (no run). After the merge, `make sync` installs the pinned environment on `bcuda`.
-- **Log:** 2026-11-09: scheduled by the user; started on branch `fix-1-4/sqs-s-cap-pin`. The `PrediQuant` fix was written in `cap-ml` and pushed by the user as `e9e77cd`. `pyproject.toml` pins `cap-ml` at `e9e77cdb4e25dde3b43cdd070a80beda0a066c22`; `uv lock` updated only `cap-ml` (`bb20aa5` → `e9e77cd`); `uv.lock` removed from `.gitignore` and tracked.
+- **Done when:** the pin and the tracked `uv.lock` are merged into `devel`, the unit tests pass, and the re-run `PQ` results are stored in `main` for the $75$ pairs; §I.2 then records the run (`cap-ml` commit, date) in place of "not re-run".
+- **Commands:** on `bcuda` (the default), from the branch of the card (the remote working tree is pushed and the environment synced from the tracked `uv.lock`). Old results moved aside first (`main` skips the cells already stored): every `output/uncawe/main/**/PQ.parquet` to the same path under `output/uncawe/main_pq_pre_fix1/`. Full run: `make run-main-classic ARGS="--methods PQ"`; `make logs EXP=main-classic` shows the output, `make explog EXP=main` the experiment log. No pilot (user's decision of 2026-11-09).
+- **Log:** 2026-11-09: scheduled by the user; started on branch `fix-1-4/sqs-s-cap-pin`. The `PrediQuant` fix was written in `cap-ml` and pushed by the user as `e9e77cd`. `pyproject.toml` pins `cap-ml` at `e9e77cdb4e25dde3b43cdd070a80beda0a066c22`; `uv lock` updated only `cap-ml` (`bb20aa5` → `e9e77cd`); `uv.lock` removed from `.gitignore` and tracked. Unit tests: 254, all passing with the new pin (`c329fc2`). At the user's request, the re-run of `PQ` in `main` is added to the card; the $225$ old `PQ.parquet` files of `main` on `bcuda` (75 pairs × 3 metrics) moved to `output/uncawe/main_pq_pre_fix1/`.
 - **Outcome:** 
 
 ## III.3 Completed cards
