@@ -12,7 +12,8 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 | FIX-1 (SQS-S fits its quantifier on all of $V$; [[work_plan]] §IV.1) | fixed in `cap-ml` `devel` (user's report of 2026-11-09), not yet pinned in `uncawe`, `PQ` not re-run; a gate for every experiment of this extension |
 | Error split with the pool recalls (§T.1, §T.2), fixed and bag parts within a cell (§T.4), oracle $2\times2$ (§T.5) | [proposal], not implemented |
 | E4.1 (split on stored results), E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$), E4.3 (oracle $2\times2$ on stored results) | [proposal], not implemented, gated by FIX-1 |
-| Candidate E4.c11 (oracles fed into the methods) | [proposal], not scheduled |
+| Bounds on the parts: on $e_1$ (brought back from the earlier §T.11), on the cross term $x$, on $e_2$ and $e_3$ (§T.6) | derived; tightness not measured |
+| Candidates E4.c11 (oracles fed into the methods), E4.c12 (tightness of the bounds) | [proposal], not scheduled |
 | Variance model of the parts and everything built on it, pool term, protocol without replacement, toy simulation of the budget | set aside on 2026-11-09, in [[optional_extensions]] §10 |
 
 # Experiments
@@ -24,7 +25,8 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 | — | E4.1 (new) |
 | E4.1a, the parts across $\lvert U\rvert$ and $\lvert V\rvert$ | E4.2, restricted to two Bayesian methods, without the coverage rule and with the pool term merged into $e_2$ |
 | oracle ladder of E4.1a | E4.3, a $2\times2$ design on stored results |
-| E4.1b, E4.1c, E4.2a–E4.2f, E4.3a, E4.3b, candidates E4.c1, E4.c2 | set aside ([[optional_extensions]] §10) |
+| E4.1c, the bound on the prevalence part | candidate E4.c12 (2026-11-09), extended to the bounds of §T.6 |
+| E4.1b, E4.2a–E4.2f, E4.3a, E4.3b, candidates E4.c1, E4.c2 | set aside ([[optional_extensions]] §10) |
 
 New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before.
 
@@ -91,6 +93,7 @@ New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before.
 Ideas that came up in the discussions; they are not scheduled. One becomes an experiment of the main section only when the user decides so.
 
 - **E4.c11, oracles fed into the methods.** *Why:* E4.3 substitutes the true components after estimation, which leaves the other component of each estimate unchanged; a method that receives the true prevalence or the pool recalls as input may change its other component too (with $\pi^Q$ known, the posterior of $C$ of BayCAP-Hf changes), and only a run with the oracle inside the method gives an interval, hence a coverage. *Needs:* oracle variants of the methods (true $\pi^Q$; recalls fixed at $d^{\text{pool}}$), run on the protocol of `main`; to limit the cost, a few methods only (user's remark of 2026-11-09), e.g. `RQBS` and one Bayesian method.
+- **E4.c12, tightness of the bounds.** *Why:* the bounds of §T.6 hold always; their ratio to the parts they bound says whether the error of the quantifier times the spread of the recalls (for $e_1$), or the product of the two errors (for the cross term $x$), is a good proxy of the error of accuracy, and how much of a part comes from the size of the per-class errors rather than from their arrangement across the classes. It is the former E4.1c, extended to $x$, $e_2$ and $e_3$. *Needs:* the per-bag quantities of E4.1 and E4.3 ($\tilde\pi$, $\tilde d$, $\pi^Q$, $d^{\text{pool}}$, $c_j/n_j$), no runs; per bag and method, each part, its bound and their ratio; per pair, the spread of the recalls $\max\tilde d-\min\tilde d$ and the median ratios; across pairs, the rank correlation between the accuracy error and the quantifier's AE, with and without the factor of the spread of the recalls.
 
 # Theory
 
@@ -206,6 +209,53 @@ The split is exact (add and subtract $\bar e$), and the bag parts of a cell sum 
 
 **Post-estimation oracles.** The cells keep each method's other component as it was estimated. For a method whose two components are estimated jointly, as BayCAP and BayCAP-Hf, knowing one would change the other; that version is candidate E4.c11.
 
+## T.6 Bounds on the parts
+
+*Intuition.* A wrong prevalence changes the estimated accuracy only because the classes have different recalls: giving too much weight to a class matters only if that class is easier or harder for $h$ than the others. So the damage is at most "how much weight was moved" times "how different the recalls are". The same argument bounds the cross term of §T.5, and the two other parts are averages, so they lie between their smallest and largest per-class terms.
+
+This section comes from §T.11 of the earlier version of the extension (set aside in [[optional_extensions]] §10 and brought back on 2026-11-09 at the user's request), adapted to the split of the mean table (§T.2); the bounds on $x$, $e_2$ and $e_3$ are added here. The bounds are mathematical facts; how tight they are on real data is not known (candidate E4.c12).
+
+**A lemma.** Let $u$ be a vector whose entries sum to $0$, and $a$ any vector with the same number of entries. Write $\lVert u\rVert_1=\sum_j\lvert u_j\rvert$ for the $L_1$ norm of $u$. Then
+
+$$
+\Big\lvert\sum_ju_ja_j\Big\rvert\le\tfrac12\lVert u\rVert_1\cdot\Big(\max_ja_j-\min_ja_j\Big).
+$$
+
+*Derivation.*
+
+1. Split the entries into those with $u_j>0$ and those with $u_j<0$. Since the $u_j$ sum to $0$, the positive ones and the negative ones have the same total size: $\sum_{u_j>0}u_j=\sum_{u_j<0}\lvert u_j\rvert$. The two totals add up to $\lVert u\rVert_1$, so each is $\frac12\lVert u\rVert_1$.
+2. Then $\sum_ju_ja_j=\sum_{u_j>0}u_ja_j-\sum_{u_j<0}\lvert u_j\rvert a_j$.
+3. In the first sum every $a_j$ is at most $\max a$; in the second every $a_j$ is at least $\min a$. Replacing them can only increase the first sum and decrease what is subtracted, so $\sum_ju_ja_j\le\frac12\lVert u\rVert_1\max a-\frac12\lVert u\rVert_1\min a$.
+4. Exchanging the roles of $\max$ and $\min$ gives $\sum_ju_ja_j\ge-\frac12\lVert u\rVert_1(\max a-\min a)$. Together, the claim.
+
+The bound is tight: equality holds when all the weight of $u$ moves from the entry with the smallest $a_j$ to the entry with the largest.
+
+**The prevalence part.** Take $u=\tilde\pi-\pi^Q$, which sums to $1-1=0$ because both are prevalence vectors, and $a=\tilde d$. The lemma gives
+
+$$
+\lvert e_1\rvert=\Big\lvert\sum_j(\tilde\pi_j-\pi^Q_j)\,\tilde d_j\Big\rvert\le\tfrac12\lVert\tilde\pi-\pi^Q\rVert_1\cdot\Big(\max_j\tilde d_j-\min_j\tilde d_j\Big).
+$$
+
+In the binary case $\frac12\lVert u\rVert_1=\lvert\tilde\pi_1-\pi^Q_1\rvert$ and $e_1=(\tilde\pi_1-\pi^Q_1)(\tilde d_1-\tilde d_0)$ (since $u_0=-u_1$), so the bound is an equality. The quantification literature reports the absolute error $\mathrm{AE}=\lVert\tilde\pi-\pi^Q\rVert_1/K$ of a quantifier, so $\lvert e_1\rvert\le\frac K2\,\mathrm{AE}\,(\max\tilde d-\min\tilde d)$: the error of the quantifier, times the spread of the recalls, bounds the error of accuracy that it causes. If all the recalls are equal, a wrong prevalence costs nothing, which is the condition of Eq. 2 of the paper. Since the split uses one $\tilde\pi$ and one $\tilde d$ per bag, read from the method's mean table (§T.2), the bound holds for every method that estimates a table, `O-LEAP` and `QuAcc_NxN` included; it does not hold for `DoC`. The same derivation bounds the difference between the accuracies of any two prevalence vectors $\pi,\pi'$ with the same recalls: $\lvert\sum_j(\pi_j-\pi'_j)\tilde d_j\rvert\le\frac12\lVert\pi-\pi'\rVert_1(\max\tilde d-\min\tilde d)$.
+
+**The cross term of §T.5.** Take the same $u=\tilde\pi-\pi^Q$ and $a=\delta$, with $\delta_j=\tilde d_j-d^{\text{pool}}_j$ the error of the recall of class $\omega_j$. The lemma gives
+
+$$
+\lvert x\rvert=\Big\lvert\sum_j(\tilde\pi_j-\pi^Q_j)\,\delta_j\Big\rvert\le\tfrac12\lVert\tilde\pi-\pi^Q\rVert_1\cdot\Big(\max_j\delta_j-\min_j\delta_j\Big)\le\lVert\tilde\pi-\pi^Q\rVert_1\cdot\max_j\lvert\delta_j\rvert,
+$$
+
+where the last step uses $\max\delta-\min\delta\le2\max_j\lvert\delta_j\rvert$. So the interaction of the oracle $2\times2$ is the product of two errors, the prevalence error and the spread of the recall errors: it is small whenever either is small, and it is zero when all the recalls are wrong by the same amount.
+
+**The recall part and the luck of the bag.** Both are averages with the weights $\pi^Q_j$, which are non-negative and sum to $1$: $e_2=\sum_j\pi^Q_j\delta_j$ and $e_3=\sum_j\pi^Q_j\varepsilon_j$, with $\varepsilon_j=d^{\text{pool}}_j-c_j/n_j$ the luck of the bag in class $\omega_j$. A weighted average with such weights lies between the smallest and the largest of the averaged values (replacing every value by the largest can only increase the sum, and the weights then sum to $1$; likewise for the smallest), so
+
+$$
+\min_j\delta_j\le e_2\le\max_j\delta_j,\qquad \min_j\varepsilon_j\le e_3\le\max_j\varepsilon_j,
+$$
+
+and in particular $\lvert e_2\rvert\le\max_j\lvert\delta_j\rvert$ and $\lvert e_3\rvert\le\max_j\lvert\varepsilon_j\rvert$. Unlike $e_1$, these parts do not cancel when their per-class errors are equal: a recall error common to all classes passes entirely into $e_2$.
+
+**What the bounds are for.** They turn per-class errors, which are what a quantifier or a validation set gets wrong, into errors of accuracy, without any assumption on how the errors are distributed. Per bag they are not computable without labels, since $\pi^Q$ and $d^{\text{pool}}$ are unknown; on the stored results, where both are known, they say how much of each part is explained by the size of the per-class errors and how much by their arrangement across the classes.
+
 # Implementation
 
 Components:
@@ -237,6 +287,6 @@ Reproducibility and comparability:
 
 ## B. Out of scope
 
-- the variance model of the parts and everything built on it (coverage rule, regime map, width floors, plug-ins, completed and guaranteed intervals), the parts of BayCAP with joint estimation, the bound on $e_1$, the pool term and the protocol without replacement, and the toy simulation of the budget: set aside on 2026-11-09 ([[optional_extensions]] §10);
+- the variance model of the parts and everything built on it (coverage rule, regime map, width floors, plug-ins, completed and guaranteed intervals), the parts of BayCAP with joint estimation, the pool term and the protocol without replacement, and the toy simulation of the budget: set aside on 2026-11-09 ([[optional_extensions]] §10);
 - the methods not in the main table (other BayCAP priors, population pushforwards, the other methods of Extension 3, `L-CBPE`): they may be shown in separate experiments, not here;
 - violations of PPS ([[optional_extensions]] §2); the validation allocation $\rho$ (Extension 6).
