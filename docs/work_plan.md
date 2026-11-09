@@ -537,11 +537,13 @@ Cards that are done, most recent first. Each entry keeps the history of the card
 
 Every entry is **[fix]**. Each one states where it is fixed (UNCAWE or upstream `cap-ml`) and what it does to existing results.
 
-## IV.1 (FIX-1) SQS-S fits the quantifier on all of $V$
+## IV.1 (FIX-1) SQS-S fits the quantifier on all of $V$ and estimates bags and target with different estimators
 
-- **Divergence.** The paper's SQS-S (§4.2) splits $V$ with stratification into $V_1\cup V_2$ with $\lvert V_1\rvert\approx\lvert V_2\rvert$, trains the quantifier on $V_1$, and draws the candidate bags from $V_2$. `cap-ml` `PrediQuant` makes the same 50/50 split but fits the quantifier on all of $V$, so the quantifier-training and bag-sampling sets overlap.
-- **Where:** upstream in `cap-ml`, followed by a pin bump (FIX-4).
-- **Comparability:** `PQ` results in `main` must be recomputed. Old and new `PQ` results are not comparable, and the paper's SQS-S figures come from the old version.
+- **Divergence 1 (overlap).** The paper's SQS-S (§4.2) splits $V$ with stratification into $V_1\cup V_2$ with $\lvert V_1\rvert\approx\lvert V_2\rvert$, trains the quantifier on $V_1$, and draws the candidate bags from $V_2$. `cap-ml` `PrediQuant` makes the same 50/50 split but fits the quantifier on all of $V$, so the quantifier-training and bag-sampling sets overlap.
+- **Divergence 2 (estimator mismatch, found on 2026-11-09).** `PrediQuant.fit` estimates the prevalence of each candidate bag as `q.aggregate` of the posteriors of $h$, the classifier under evaluation, while `predict_range` estimates the prevalence of the target with `q.predict(X)`, i.e. the quantifier's own classifier followed by its aggregation; the aggregation is fitted on the posteriors of the quantifier's own classifier (the MLP of `PACC(MLP)` in `main`, of `KDEyML(MLP)` in `predist`). The nearest-bag selection therefore compares estimates of two different estimators, $g(h(\sigma_b))$ for the bags and $g(\text{MLP}(U))$ for the target, whose biases differ. Visible in the stored `predist` results (§II.3), e.g. `connect-4`, sample 01: the predicted prevalences of the selected bags sit on the target near a vertex, while their true prevalences are far from it (coverage 0 for every distance).
+- **Fix (user's decision of 2026-11-09).** The quantifier is trained on $V_1$ only, and the prevalences of the candidate bags and of the target are both estimated by the quantifier's own pipeline (its classifier, then its aggregation); $h$ is used only for the contingency tables of the bags. This keeps `PQ` as `PACC(MLP)` and aligns it with `RQBS`, which also estimates $\hat\pi^Q$ with the surrogate pipeline (it differs in fitting the surrogate on all of $V$, as the paper prescribes for SQS-H). The `reuse_h` parameter is removed. Prepared in the `cap-ml` working tree, version 0.1.1.9 (`src/cap/models/confidence.py`, tests in `tests/test_prediquant.py`); not yet committed, pushed or used by UNCAWE.
+- **Where:** upstream in `cap-ml`, followed by a pin bump (FIX-4). `experiments/predist.py` needs no change (`_predict_test_prior(X)` keeps its signature).
+- **Comparability:** `PQ` results in `main` and all `predist` results must be recomputed. Old and new results are not comparable, and the paper's SQS-S figures come from the old version. No other method is affected.
 
 ## IV.2 (FIX-2) SQS-H is implemented as a bootstrap variant
 
