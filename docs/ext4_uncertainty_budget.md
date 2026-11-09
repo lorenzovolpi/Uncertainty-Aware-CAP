@@ -11,7 +11,7 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 | Methods of the main table (`tables/main.py:MAIN_METHODS`): `DoC`, `QuAcc_NxN`, `O-LEAP`, `RQBS` (SQS-H), `PQ` (SQS-S), `BayesCAP-real` (BayCAP), `BayesCAP-Hf-real` (BayCAP-Hf), `BayCAP-KDEy-mlp-real` (BayCAP-KDEy, MLP input, fixed $\hat C$) | [implemented], stored in `main` at $\lvert U\rvert=1000$ |
 | FIX-1 (SQS-S fits its quantifier on all of $V$; [[work_plan]] §I.2, card FIX-1 + FIX-4) | fixed in `cap-ml` `e9e77cd` (2026-11-09) and pinned in `uncawe` on the branch of FIX-1 + FIX-4 (only `PrediQuant` changes from the previous pin), `PQ` re-run in `main` on 2026-11-09, merged into `devel` (`fcdabf2`); the gate for every experiment of this extension, met (user's confirmation of 2026-11-09) |
 | Error split with the pool recalls (§T.1, §T.2), fixed and bag parts within a cell (§T.4), oracle $2\times2$ (§T.5) | [proposal], not implemented |
-| E4.1 (split on stored results), E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$), E4.3 (oracle $2\times2$ on stored results) | [proposal], not implemented; the FIX-1 gate is met |
+| E4.1 (split on stored results), E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$), E4.3 (oracle $2\times2$ on stored results) | [proposal], not implemented; the FIX-1 gate is met; E4.1 and E4.3 scheduled together as card WP-14 ([[work_plan]] §III.2, 2026-11-09) |
 | Bounds on the parts: on $e_1$ (brought back from the earlier §T.11), on the cross term $x$, on $e_2$ and $e_3$ (§T.6) | derived; tightness not measured |
 | Candidates E4.c11 (oracles fed into the methods), E4.c12 (tightness of the bounds) | [proposal], not scheduled |
 | Variance model of the parts and everything built on it, pool term, protocol without replacement, toy simulation of the budget | set aside on 2026-11-09, in [[optional_extensions]] §10 |
@@ -43,12 +43,12 @@ New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before.
 - **Design.**
   - **Inputs:** the stored results of `main` (vanilla accuracy, $\lvert U\rvert=1000$, $100$ APP bags per pair, $75$ pairs), with `PQ` re-run after FIX-1, for `QuAcc_NxN`, `O-LEAP`, `RQBS`, `PQ`, `BayesCAP-real`, `BayesCAP-Hf-real`, `BayCAP-KDEy-mlp-real`: the mean estimated table `estim_cts` and the realised table `true_cts` of each bag; the predictions and labels of $h$ on the test pool, from the pretrain files.
   - **Varied:** dataset, classifier, method; nothing else.
-  - **Measures:** per bag and method, $\tilde\pi$ and $\tilde d$ from `estim_cts`, the true prevalence $\pi^Q$ from `true_cts`, the pool recalls $d^{\text{pool}}$, and the parts $e_1$, $e_2$, $e_3$ of §T.2, with a check that $e_1+e_2+e_3=\hat A-A(h,U)$; per pair and method, the mean and the root mean square (RMS) of each part and of the total error over the $100$ bags; per method, the same averaged over the pairs, and the share of pairs on which each part has the largest RMS.
+  - **Measures:** per bag and method, $\tilde\pi$ and $\tilde d$ from `estim_cts`, the true prevalence $\pi^Q$ from `true_cts`, the pool recalls $d^{\text{pool}}$, and the parts $e_1$, $e_2$, $e_3$ of §T.2, with a check that $e_1+e_2+e_3=\hat A-A(h,U)$; per pair and method, the mean and the root mean square (RMS) of each part and of the total error over the $100$ bags, and the part with the largest RMS; per block of datasets (binary, multiclass), the RMS averaged over the pairs and the share of pairs on which each part has the largest RMS. Bags where NUTS failed are dropped and counted; a class with an empty estimated column ($\tilde\pi_j=0$) gets $\tilde d_j:=d^{\text{pool}}_j$, so its whole contribution goes to $e_1$, and such bags are counted (user's decision of 2026-11-09); a class absent from the bag ($n_j=0$) has weight $\pi^Q_j=0$ and contributes $0$ to $e_3$.
   - **Estimand:** the realised table of each bag, for every method; the split uses the true prevalence of the bag and the labels of the pool (an analysis).
   - **Cost:** none.
 - **Representation.**
-  - **Table, per method:** RMS of $e_1$, $e_2$, $e_3$ and of the total error, averaged over the pairs, and the share of pairs where each part is the largest; one block for binary and one for multiclass datasets.
-  - **Table, per dataset:** the same per dataset and method (mean over the classifiers), with the mean of each part (its sign shows a systematic error).
+  - **Table A, RMS (user's decision of 2026-11-09):** one row per pair (dataset × classifier, grouped by dataset), in a block for binary and one for multiclass datasets, each closed by a row with the mean over its pairs and a row with the share of pairs in which each part is the largest. Column groups: $e_1$ (one column per method), $e_2$ (one per method), $e_3$ (a single column, since the luck of the bag uses no estimate and is the same for every method on the same bag) and the total error (one per method). In each row of the $e_1$, $e_2$ and total groups, colours run from the worst (red) to the best (green) method, as in the tables of E3.1, and the best is in bold; $e_3$ is not coloured. The total-error cell of each method carries a superscript $^{1}$, $^{2}$ or $^{3}$ naming its part with the largest RMS. A note recalls that the mean squares of the parts do not add up to the mean square of the total: $\overline{(e_1+e_2+e_3)^2}=\overline{e_1^2}+\overline{e_2^2}+\overline{e_3^2}+2(\overline{e_1e_2}+\overline{e_1e_3}+\overline{e_2e_3})$, with the bar the mean over the bags, and the cross products can be negative.
+  - **Table B, signed means (user's decision of 2026-11-09):** the same rows, blocks and column groups without the total, with the mean of $e_1$, $e_2$ and $e_3$ over the bags (a mean far from $0$ is a systematic error); not coloured, since a large mean is bad whatever its sign.
   - **Bar plot:** mean square of each part, stacked, one bar per method, one panel per dataset.
 - **Analysis.** Not run.
 
@@ -84,8 +84,8 @@ New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before.
   - **Estimand:** the realised table of each bag; the pool accuracy as a reference, which removes $e_3$.
   - **Cost:** none.
 - **Representation.**
-  - **Table, per method:** mean AE of the four cells against the realised accuracy, averaged over the pairs, with the mean AE against the pool accuracy in parentheses; one block for binary and one for multiclass datasets.
-  - **Table, per dataset:** the same per dataset and method (mean over the classifiers).
+  - **Table, against the realised accuracy:** the rows and blocks of table A of E4.1; column groups for the four cells $(\tilde\pi,\tilde d)$, $(\pi^Q,\tilde d)$, $(\tilde\pi,d^{\text{pool}})$ and $(\pi^Q,d^{\text{pool}})$, each with the mean AE of every method, coloured in each row and group from the worst (red) to the best (green) method, with the best in bold; a last group with the mean and the RMS of the cross term $x$, not coloured.
+  - **Table, against the pool accuracy:** the same layout, with every cell scored against $\sum_j\pi^Q_jd^{\text{pool}}_j$ (the cell $(\pi^Q,d^{\text{pool}})$ is then $0$).
 - **Analysis.** Not run.
 
 # Candidate experiments
@@ -260,8 +260,8 @@ and in particular $\lvert e_2\rvert\le\max_j\lvert\delta_j\rvert$ and $\lvert e_
 
 Components:
 
-- error split (`evaluation/budget.py`, new): $\tilde\pi$ and $\tilde d$ from a stored `estim_cts` (transposed in storage: true classes on rows; normalised to sum to $1$), $\pi^Q$ and the shares $c_j/n_j$ from `true_cts`, $d^{\text{pool}}$ from the predictions and labels of $h$ on the test pool (pretrain files); the parts $e_1$, $e_2$, $e_3$ (§T.2), the cross term $x$ and the four oracle estimates (§T.5); the fixed and bag parts within a cell (§T.4);
-- analyses of E4.1 and E4.3 on the stored results of `main`, with their tables and plots (one module each in `tables/` and `plots/`, following [[work_plan]] Part V);
+- error split (`src/uncawe/error_split.py`, new, pure numpy; card WP-14): $\tilde\pi$ and $\tilde d$ from a stored `estim_cts` (transposed in storage: true classes on rows; normalised to sum to $1$), $\pi^Q$ and the shares $c_j/n_j$ from `true_cts`, $d^{\text{pool}}$ from the predictions and labels of $h$ on the test pool (pretrain files); the parts $e_1$, $e_2$, $e_3$ (§T.2), the cross term $x$ and the four oracle estimates (§T.5); the fixed and bag parts within a cell (§T.4);
+- analyses of E4.1 and E4.3 on the stored results of `main` (card WP-14): the tables of both in `tables/error_split.py` (a per-bag CSV, tables A and B of E4.1, the two tables of E4.3), the bar plot of E4.1 in `plots/error_split.py`, following [[work_plan]] Part V;
 - E4.2: a new study `target_size`, with bags of fixed prevalence at any $\lvert U\rvert$ drawn with replacement from the pool (per-bag seeds from the dataset, prevalence, $\lvert U\rvert$, $\lvert V\rvert$ level, $V$ seed and bag index), nested seeded stratified subsampling of $V$ with the methods refitted on each subsample and $h$ not retrained, and the methods `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real` built as in `main`.
 
 Tests:
