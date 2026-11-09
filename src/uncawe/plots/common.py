@@ -33,6 +33,9 @@ METHOD_COLORS = {
     "BayCAP-EMQ-h-real": "#FF9896",
     "BayCAP-EMQ-mlp": "#9467BD",
     "BayCAP-EMQ-mlp-real": "#C5B0D5",
+    # E3.2: BayCAP-KDEy with a random C, one hue per input classifier
+    "BayCAP-KDEy-Hf-h-real": "#17BECF",
+    "BayCAP-KDEy-Hf-mlp-real": "#BCBD22",
     "PQ": "#E45756",
     "RQBS": "#B279A2",
     "DoC": "#54A24B",
@@ -61,6 +64,8 @@ METHOD_PLOT_LABELS = {
     "BayCAP-EMQ-h-real": "BayCAP-EMQ-h-real",
     "BayCAP-EMQ-mlp": "BayCAP-EMQ-mlp",
     "BayCAP-EMQ-mlp-real": "BayCAP-EMQ-mlp-real",
+    "BayCAP-KDEy-Hf-h-real": "BayCAP-KDEy-Hf-h-real",
+    "BayCAP-KDEy-Hf-mlp-real": "BayCAP-KDEy-Hf-mlp-real",
 }
 
 ACC_NAME = "vanilla_accuracy"

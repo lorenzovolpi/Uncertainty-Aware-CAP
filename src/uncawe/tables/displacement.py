@@ -46,7 +46,7 @@ from sklearn.metrics import confusion_matrix
 
 from uncawe import env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct
-from uncawe.experiments.methods import BAYCAP_VARIANTS, FIXED_C_VARIANTS
+from uncawe.experiments.methods import BAYCAP_VARIANTS, FIXED_C_VARIANTS, KDEY_HF_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.methods.baycap import fit_beta_binomial
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
@@ -86,14 +86,17 @@ def error_terms(estim_ct: np.ndarray, true_ct: np.ndarray) -> dict:
 
 
 # the methods ``--method`` accepts: the BayCAP methods of ``main``, whose prior on the columns of $C$ is known
-METHOD_CHOICES = tuple(BAYCAP_VARIANTS) + tuple(FIXED_C_VARIANTS)
+METHOD_CHOICES = tuple(BAYCAP_VARIANTS) + tuple(FIXED_C_VARIANTS) + tuple(KDEY_HF_VARIANTS)
 
 
 def method_c_prior(method: str) -> str:
     """Return the prior on the columns of $C$ of a BayCAP method of ``main``: ``"none"`` for the methods with a fixed
-    rate matrix of E3.1 (``FIXED_C_VARIANTS``), ``"uniform"`` for any name that is not a BayCAP method."""
+    rate matrix of E3.1 (``FIXED_C_VARIANTS``), ``"hierarchical-f"`` for the methods with a random $C$ of E3.2
+    (``KDEY_HF_VARIANTS``), ``"uniform"`` for any name that is not a BayCAP method."""
     if method in FIXED_C_VARIANTS:
         return "none"
+    if method in KDEY_HF_VARIANTS:
+        return "hierarchical-f"
     return BAYCAP_VARIANTS.get(method, ("population", "uniform"))[1]
 
 
@@ -109,7 +112,9 @@ def smoothed_recalls(val_counts: np.ndarray, c_prior: str = "uniform") -> np.nda
 
     ``"uniform"``: $\\frac{f_{jj}+1}{n^s_j+K}$; ``"empirical-bayes"``: $\\frac{f_{jj}+\\hat\\nu\\hat m}{n^s_j+\\hat\\nu}$,
     with $(\\hat m,\\hat\\nu)$ fitted on the same counts as ``BayCAP.fit`` does (``fit_beta_binomial``); ``"none"``: the
-    recalls $f_{jj}/n^s_j$ of the fixed $\\hat C$ (E3.1), so that the prior part is $0$.
+    recalls $f_{jj}/n^s_j$ of the fixed $\\hat C$ (E3.1), so that the prior part is $0$; ``"hierarchical"`` and
+    ``"hierarchical-f"``: NaN, since the posterior mean of a recall given $V$ alone has no closed form under these priors
+    (its hyperparameters are learned from $V$ and the bag together), so their prior part is not reported.
     """
     val_counts = np.asarray(val_counts, dtype=float)
     n_s = val_counts.sum(axis=1)
@@ -118,6 +123,8 @@ def smoothed_recalls(val_counts: np.ndarray, c_prior: str = "uniform") -> np.nda
         return (f_diag + 1) / (n_s + val_counts.shape[0])
     if c_prior == "none":
         return plain_recalls(val_counts)
+    if c_prior in ("hierarchical", "hierarchical-f"):
+        return np.full_like(f_diag, np.nan)
     if c_prior == "empirical-bayes":
         fit = fit_beta_binomial(f_diag, n_s)
         return (f_diag + fit.nu * fit.m) / (n_s + fit.nu)
@@ -287,6 +294,8 @@ METHOD_LABELS = {
     "BayCAP-EMQ-h-real": "BayCAP-EMQ-h-real",
     "BayCAP-EMQ-mlp": "BayCAP-EMQ-mlp",
     "BayCAP-EMQ-mlp-real": "BayCAP-EMQ-mlp-real",
+    "BayCAP-KDEy-Hf-h-real": "BayCAP-KDEy-Hf-h-real",
+    "BayCAP-KDEy-Hf-mlp-real": "BayCAP-KDEy-Hf-mlp-real",
 }
 CAPTION = (
     "Causes of {method}'s displacement on \\texttt{main} (vanilla accuracy, $|U|=1000$). "

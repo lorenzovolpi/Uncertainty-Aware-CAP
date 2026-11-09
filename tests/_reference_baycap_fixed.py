@@ -1,3 +1,6 @@
+# Frozen copy of src/uncawe/methods/baycap_fixed.py at commit 55247a1 (devel), kept only as the reference of
+# tests/test_baycap_split.py: the classes that replace BayCAPFixed (work-plan card WP-13) must reproduce its draws.
+# Do not edit.
 r"""BayCAP with a fixed rate matrix $\hat C$ and the prevalence posterior of a Bayesian quantifier.
 
 This module implements the methods of E3.1 of ``docs/ext3_posterior_propagation.md`` (work-plan card WP-8). It
