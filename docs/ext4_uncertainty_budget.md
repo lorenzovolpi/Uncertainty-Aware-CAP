@@ -10,8 +10,10 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 |---|---|
 | Methods of the main table (`tables/main.py:MAIN_METHODS`): `DoC`, `QuAcc_NxN`, `O-LEAP`, `RQBS` (SQS-H), `PQ` (SQS-S), `BayesCAP-real` (BayCAP), `BayesCAP-Hf-real` (BayCAP-Hf), `BayCAP-KDEy-mlp-real` (BayCAP-KDEy, MLP input, fixed $\hat C$) | [implemented], stored in `main` at $\lvert U\rvert=1000$ |
 | FIX-1 (SQS-S fits its quantifier on all of $V$; [[work_plan]] §I.2, card FIX-1 + FIX-4) | fixed in `cap-ml` `e9e77cd` (2026-11-09) and pinned in `uncawe` on the branch of FIX-1 + FIX-4 (only `PrediQuant` changes from the previous pin), `PQ` re-run in `main` on 2026-11-09, merged into `devel` (`fcdabf2`); the gate for every experiment of this extension, met (user's confirmation of 2026-11-09) |
-| Error split with the pool recalls (§T.1, §T.2), fixed and bag parts within a cell (§T.4), oracle $2\times2$ (§T.5) | [proposal], not implemented |
-| E4.1 (split on stored results), E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$), E4.3 (oracle $2\times2$ on stored results) | [proposal], not implemented; the FIX-1 gate is met; E4.1 and E4.3 scheduled together as card WP-14 ([[work_plan]] §III.2, 2026-11-09) |
+| Error split with the pool recalls (§T.1, §T.2) and oracle $2\times2$ (§T.5) | implemented on the branch of WP-14 (`error_split.py`, `tables/error_split.py`, `plots/error_split.py`), not run |
+| Fixed and bag parts within a cell (§T.4) | [proposal], not implemented |
+| E4.1 (split on stored results), E4.3 (oracle $2\times2$ on stored results) | card WP-14 ([[work_plan]] §III.2), in progress: code and tests written, not run |
+| E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$) | [proposal], not implemented; the FIX-1 gate is met |
 | Bounds on the parts: on $e_1$ (brought back from the earlier §T.11), on the cross term $x$, on $e_2$ and $e_3$ (§T.6) | derived; tightness not measured |
 | Candidates E4.c11 (oracles fed into the methods), E4.c12 (tightness of the bounds) | [proposal], not scheduled |
 | Variance model of the parts and everything built on it, pool term, protocol without replacement, toy simulation of the budget | set aside on 2026-11-09, in [[optional_extensions]] §10 |
