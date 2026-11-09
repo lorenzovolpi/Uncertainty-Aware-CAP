@@ -9,9 +9,9 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 | Item | Status |
 |---|---|
 | Methods of the main table (`tables/main.py:MAIN_METHODS`): `DoC`, `QuAcc_NxN`, `O-LEAP`, `RQBS` (SQS-H), `PQ` (SQS-S), `BayesCAP-real` (BayCAP), `BayesCAP-Hf-real` (BayCAP-Hf), `BayCAP-KDEy-mlp-real` (BayCAP-KDEy, MLP input, fixed $\hat C$) | [implemented], stored in `main` at $\lvert U\rvert=1000$ |
-| FIX-1 (SQS-S fits its quantifier on all of $V$; [[work_plan]] §I.2, card FIX-1 + FIX-4) | fixed in `cap-ml` `e9e77cd` (2026-11-09) and pinned in `uncawe` on the branch of FIX-1 + FIX-4 (only `PrediQuant` changes from the previous pin), `PQ` re-run in `main` on 2026-11-09, merged into `devel` (`fcdabf2`); a gate for every experiment of this extension |
+| FIX-1 (SQS-S fits its quantifier on all of $V$; [[work_plan]] §I.2, card FIX-1 + FIX-4) | fixed in `cap-ml` `e9e77cd` (2026-11-09) and pinned in `uncawe` on the branch of FIX-1 + FIX-4 (only `PrediQuant` changes from the previous pin), `PQ` re-run in `main` on 2026-11-09, merged into `devel` (`fcdabf2`); the gate for every experiment of this extension, met (user's confirmation of 2026-11-09) |
 | Error split with the pool recalls (§T.1, §T.2), fixed and bag parts within a cell (§T.4), oracle $2\times2$ (§T.5) | [proposal], not implemented |
-| E4.1 (split on stored results), E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$), E4.3 (oracle $2\times2$ on stored results) | [proposal], not implemented, gated by FIX-1 |
+| E4.1 (split on stored results), E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$), E4.3 (oracle $2\times2$ on stored results) | [proposal], not implemented; the FIX-1 gate is met |
 | Bounds on the parts: on $e_1$ (brought back from the earlier §T.11), on the cross term $x$, on $e_2$ and $e_3$ (§T.6) | derived; tightness not measured |
 | Candidates E4.c11 (oracles fed into the methods), E4.c12 (tightness of the bounds) | [proposal], not scheduled |
 | Variance model of the parts and everything built on it, pool term, protocol without replacement, toy simulation of the budget | set aside on 2026-11-09, in [[optional_extensions]] §10 |
@@ -30,7 +30,7 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 
 New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before.
 
-**Gate.** No experiment of this extension runs before FIX-1 is resolved in `uncawe`: the `cap-ml` commit with the fix pinned, the effect of the new pin on the other methods taken from `cap-ml` checked, and `PQ` re-run in `main` (user's decision of 2026-11-09). E4.2 does not use `PQ`; the gate applies to it too, so that all the results of the extension come from the same `cap-ml`.
+**Gate.** No experiment of this extension runs before FIX-1 is resolved in `uncawe`: the `cap-ml` commit with the fix pinned, the effect of the new pin on the other methods taken from `cap-ml` checked, and `PQ` re-run in `main` (user's decision of 2026-11-09). The gate is met (user's confirmation of 2026-11-09): the fix is pinned (`cap-ml` `e9e77cd`, in which only `PrediQuant` changes from the previous pin, so no other method of `main` is affected), `PQ` was re-run in `main` on 2026-11-09, and the change is merged into `devel` (`fcdabf2`). E4.2 does not use `PQ`; the gate applies to it too, so that all the results of the extension come from the same `cap-ml`.
 
 **Common settings.** Methods: the methods of the main table whose estimate comes from an estimated contingency table, i.e. all except `DoC`, which estimates accuracy directly (§T.2). Every split is computed against the realised table of each bag (`true_cts`), with the true prevalence of the bag and the recalls of $h$ on the test pool; it uses target labels, so it is an analysis, not a method. The Bayesian methods are taken with the realised-table predictive; for the split only their mean table matters (§T.2).
 
