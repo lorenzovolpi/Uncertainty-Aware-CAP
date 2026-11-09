@@ -9,7 +9,7 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 | Item | Status |
 |---|---|
 | Methods of the main table (`tables/main.py:MAIN_METHODS`): `DoC`, `QuAcc_NxN`, `O-LEAP`, `RQBS` (SQS-H), `PQ` (SQS-S), `BayesCAP-real` (BayCAP), `BayesCAP-Hf-real` (BayCAP-Hf), `BayCAP-KDEy-mlp-real` (BayCAP-KDEy, MLP input, fixed $\hat C$) | [implemented], stored in `main` at $\lvert U\rvert=1000$ |
-| FIX-1 (SQS-S fits its quantifier on all of $V$; [[work_plan]] §I.2, card FIX-1 + FIX-4) | fixed in `cap-ml` `e9e77cd` (2026-11-09) and pinned in `uncawe` on the branch of FIX-1 + FIX-4 (only `PrediQuant` changes from the previous pin), `PQ` not re-run; a gate for every experiment of this extension |
+| FIX-1 (SQS-S fits its quantifier on all of $V$; [[work_plan]] §I.2, card FIX-1 + FIX-4) | fixed in `cap-ml` `e9e77cd` (2026-11-09) and pinned in `uncawe` on the branch of FIX-1 + FIX-4 (only `PrediQuant` changes from the previous pin), `PQ` re-run in `main` on 2026-11-09 (merge of the branch pending); a gate for every experiment of this extension |
 | Error split with the pool recalls (§T.1, §T.2), fixed and bag parts within a cell (§T.4), oracle $2\times2$ (§T.5) | [proposal], not implemented |
 | E4.1 (split on stored results), E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$), E4.3 (oracle $2\times2$ on stored results) | [proposal], not implemented, gated by FIX-1 |
 | Candidate E4.c11 (oracles fed into the methods) | [proposal], not scheduled |
