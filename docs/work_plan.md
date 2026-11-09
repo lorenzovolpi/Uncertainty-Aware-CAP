@@ -234,6 +234,7 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
+| WP-14 | E4.1 + E4.3: the error split and the oracle 2×2 of the main-table methods on stored `main` results | analysis | Scheduled | FIX-1 (done) | 2026-11-09 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -275,6 +276,30 @@ Entry template:
 - **Log:** <dated notes on progress: pilot run, problems, decisions>
 - **Outcome:** <filled when the branch is merged: merge commit; decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card>
 ```
+
+### WP-14 E4.1 + E4.3: the error split and the oracle 2×2 of the main-table methods on stored `main` results
+
+- **Kind / status:** analysis / Scheduled
+- **Source:** [[ext4_uncertainty_budget]] (E4.1, E4.3)
+- **Goal:** for each main-table method that estimates a contingency table, split its error $\hat A-A(h,U)$ into the prevalence part $e_1=\sum_j(\tilde\pi_j-\pi^Q_j)\tilde d_j$, the recall part $e_2=\sum_j\pi^Q_j(\tilde d_j-d^{\text{pool}}_j)$ and the luck of the bag $e_3=\sum_j\pi^Q_j(d^{\text{pool}}_j-c_j/n_j)$, where $\tilde\pi_j$ and $\tilde d_j$ are the column sums and the recalls of the method's mean table, $\pi^Q$ and $c_j/n_j$ come from the realised table of the bag, and $d^{\text{pool}}$ are the recalls of $h$ on the test pool, which stand for the population recalls; the aim is to see which part drives the error of each method in the paper's setting (E4.1). After estimation, replace the prevalences with the true ones and the recalls with the pool ones, in a $2\times2$ design whose interaction is the cross term $x=\sum_j(\tilde\pi_j-\pi^Q_j)(\tilde d_j-d^{\text{pool}}_j)$, to measure how much the error falls when each component is known (E4.3). Methods: `QuAcc_NxN`, `O-LEAP`, `RQBS`, `PQ`, `BayesCAP-real`, `BayesCAP-Hf-real`, `BayCAP-KDEy-mlp-real` (`DoC` estimates no table and is left out). Setting: vanilla accuracy, $\lvert U\rvert=1000$, 100 bags per pair, 75 pairs. E4.1 and E4.3 share one card (user's decision of 2026-11-09) but keep separate representations.
+- **Estimand:** the realised table of each bag (`true_cts`), for every method. The split and the oracle cells use the true prevalence of the bag and the labels of the pool, so they are an analysis, not methods; the three oracle cells are references. E4.3 also scores against the pool accuracy $\sum_j\pi^Q_jd^{\text{pool}}_j$, a reference that removes $e_3$.
+- **Scope:**
+  - new `src/uncawe/error_split.py` (pure numpy, to be reused by E4.2): $\tilde\pi$ and $\tilde d$ from a stored `estim_cts` (transposed: true classes on rows; normalised); $\pi^Q$ and $c_j/n_j$ from `true_cts`; $d^{\text{pool}}$ from the argmax of the pretrain `U_posteriors` against the pool labels; the parts $e_1$, $e_2$, $e_3$, the cross term $x$ and the four oracle estimates. Conventions (user's decision of 2026-11-09): a class absent from the bag ($n_j=0$) contributes $0$ to $e_3$; a class with an empty estimated column ($\tilde\pi_j=0$) gets $\tilde d_j:=d^{\text{pool}}_j$, so its whole contribution goes to $e_1$; such bags are counted;
+  - new `tables/error_split.py`:
+    - a per-bag CSV;
+    - E4.1 table A (RMS): one row per pair (dataset × classifier, grouped by dataset), a binary and a multiclass block, each closed by a mean row and by a row with the share of pairs in which each part is the largest; column groups $e_1$ (7 methods), $e_2$ (7), $e_3$ (one column, the same for every method) and total error (7). In each row of the $e_1$, $e_2$ and total groups, colours run from the worst (red) to the best (green) method, as `tables/baycap_fixed.py:_score_cell_styles`, with the best in bold; $e_3$ is not coloured. The total-error cell of each method carries a superscript $^{1}$, $^{2}$ or $^{3}$ naming its part with the largest RMS (user's decision of 2026-11-09). A note says that the mean squares of the parts do not add up to that of the total, because of the cross products;
+    - E4.1 table B (signed means): the same layout and blocks, with the mean of $e_1$, $e_2$ and $e_3$ over the bags, without colouring (user's decision of 2026-11-09);
+    - E4.3 table: the same rows and blocks; column groups for the four cells $(\tilde\pi,\tilde d)$, $(\pi^Q,\tilde d)$, $(\tilde\pi,d^{\text{pool}})$, $(\pi^Q,d^{\text{pool}})$, each with the mean AE of the 7 methods against the realised accuracy, coloured in each row and group as table A; a group with the mean and the RMS of $x$, not coloured. The scores against the pool accuracy go in a second table with the same layout;
+  - new `plots/error_split.py`: the E4.1 bar plot (mean square of each part, stacked, one bar per method, one panel per dataset);
+  - `Makefile` targets `tables-error-split` and `plot-error-split`;
+  - tests: $e_1+e_2+e_3=\hat A-A(h,U)$ on random tables; reading a transposed table gives the column sums and recalls of the paper's orientation; with $\tilde\pi=\pi^Q$ and $\tilde d=d^{\text{pool}}$, $e_1=e_2=0$; the four oracle errors equal $e_1+e_2+e_3$, $e_2+e_3$, $e_1-x+e_3$ and $e_3$; the conventions for $n_j=0$ and $\tilde\pi_j=0$; the cell styles and superscripts on a synthetic table.
+- **Depends on:** FIX-1 (done, `fcdabf2`; the gate of Extension 4 marked as met in `80dfb24`); the stored `main` results with `PQ` re-run; the pretrain files of the test pool.
+- **Comparability:** reads stored results only; no stored result changes and nothing needs recomputing.
+- **Deviations from Part V:** the tables are descriptive, with no $^\dagger$ marks and no Wilcoxon test (§V.4, content practice); the E4.1 and E4.3 tables are in one module, `tables/error_split.py`, selected with a `--tables-set` option (the analogue of `--figures`, §V.5).
+- **Done when:** the code and tests are merged; the full analysis is run on `bcuda` at the user's request and its tables and plot are stored; the Analysis sections of E4.1 and E4.3 are written. Checks: $\lvert e_1+e_2+e_3-(\texttt{estim\_accs}-\texttt{true\_accs})\rvert<10^{-9}$ on every bag kept; the dropped bags (NUTS failures) and the bags with an empty estimated column are counted per pair and method.
+- **Commands:** filled when the code exists.
+- **Log:** 2026-11-09: card added (user's decision), merging E4.1 and E4.3 with separate representations.
+- **Outcome:** —
 
 ## III.3 Completed cards
 
