@@ -31,17 +31,15 @@ E2_METHODS = [
     "BayesCAP-Hfn-real",
 ]
 BAYCAP_METHODS = ["BayesCAP", *E2_METHODS]
-# E2 and E3.1 methods in the tables of main (user's request of 2026-11-05)
-IN_MAIN_TABLES = ["BayesCAP-EB-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
-# E2 and E3.1 methods in the ranks of main (user's request of 2026-11-05)
-IN_RANKS = ["BayesCAP-EB-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]
-# BayCAP methods in the coverage vs amplitude plot (user's request of 2026-11-05)
-IN_AVC = [
-    "BayesCAP",
+# the methods of the main tables, ranks and coverage vs amplitude plot (user's decision of 2026-11-09)
+MAIN_SET = [
+    "DoC",
+    "QuAcc_NxN",
+    "O-LEAP",
+    "RQBS",
+    "PQ",
     "BayesCAP-real",
-    "BayesCAP-EB-real",
     "BayesCAP-Hf-real",
-    "BayCAP-KDEy-h-real",
     "BayCAP-KDEy-mlp-real",
 ]
 # the eight methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md)
@@ -106,35 +104,18 @@ class BayCAPFactoryTest(unittest.TestCase):
     def test_factory_names_match_method_class(self):
         self.assertEqual(list(self.methods), get_method_names())
 
-    def test_main_tables_ranks_and_plots_exclude_the_e2_methods(self):
-        for name in ("BayesCAP", *IN_MAIN_TABLES):
-            self.assertIn(name, main_tables.table_method_names())
-        for name in ("BayesCAP", *IN_RANKS):
-            self.assertIn(name, rank._methods())
-        self.assertNotIn("L-CBPE", rank._methods())
-        for name in E2_METHODS:
+    def test_main_tables_ranks_and_plots_show_the_main_set(self):
+        self.assertEqual(main_tables.table_method_names(), MAIN_SET)
+        self.assertEqual(rank._methods(), MAIN_SET)
+        self.assertEqual(AVC_METHODS, MAIN_SET)
+        for name in ("BayesCAP", "L-CBPE", *E2_METHODS, *E31_METHODS):
             with self.subTest(method=name):
-                if name not in IN_MAIN_TABLES:
-                    self.assertNotIn(name, main_tables.table_method_names())
-                if name not in IN_RANKS:
-                    self.assertNotIn(name, rank._methods())
+                if name not in MAIN_SET:
+                    self.assertIn(name, main_tables.EXCLUDED_METHODS)
+                    self.assertIn(name, rank.EXCLUDED_METHODS)
+        for name in (*E2_METHODS, *E31_METHODS):
+            with self.subTest(method=name):
                 self.assertNotIn(name, DEFAULT_METHODS)
-        for name in E31_METHODS:
-            with self.subTest(method=name):
-                if name not in IN_MAIN_TABLES:
-                    self.assertNotIn(name, main_tables.table_method_names())
-                if name not in IN_RANKS:
-                    self.assertNotIn(name, rank._methods())
-                self.assertNotIn(name, DEFAULT_METHODS)
-
-    def test_coverage_vs_amplitude_plot_shows_the_requested_baycap_methods(self):
-        self.assertEqual(AVC_METHODS[: len(DEFAULT_METHODS)], DEFAULT_METHODS)
-        for name in BAYCAP_METHODS + E31_METHODS:
-            with self.subTest(method=name):
-                if name in IN_AVC:
-                    self.assertIn(name, AVC_METHODS)
-                else:
-                    self.assertNotIn(name, AVC_METHODS)
 
     def test_every_baycap_method_has_labels_and_a_colour(self):
         for name in BAYCAP_METHODS + E31_METHODS:

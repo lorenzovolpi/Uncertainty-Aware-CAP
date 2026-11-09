@@ -10,7 +10,6 @@ from scipy.stats import wilcoxon
 
 import uncawe.env as env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
-from uncawe.experiments.methods import FIXED_C_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
@@ -77,19 +76,26 @@ metrics_map = {
 }
 
 
-# methods stored in main but left out of its tables: the BayCAP variants of the E2 analyses, except BayesCAP-Hf-real
-# (E2.8), and the methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md), except the two
-# realised BayCAP-KDEy methods (user's request of 2026-11-05; before, the tables showed BayesCAP-EB-real and
-# BayesCAP-H-real and none of these three); BayesCAP-EB-real (E2.4) is back since 2026-11-06 (user's request)
-IN_TABLES = {"BayesCAP-EB-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"}
-EXCLUDED_METHODS = (
-    {"BayesCAP-real", "BayesCAP-EB", "BayesCAP-EB-real", "BayesCAP-H-real", "BayesCAP-Hf-real", "BayesCAP-Hfn-real"}
-    | set(FIXED_C_VARIANTS)
-) - IN_TABLES
+# the methods of the main tables (user's decision of 2026-11-09): the baselines and SQS methods of the paper without
+# L-CBPE, and the Bayesian methods with the realised-table predictive only: BayCAP (E2.3), BayCAP-Hf (E2.8) and
+# BayCAP-KDEy with an MLP as input classifier and a fixed rate matrix (E3.1); every other method stored in main is
+# left out. Before, the tables showed the methods of the paper (L-CBPE and BayesCAP with the population pushforward
+# included) plus BayesCAP-EB-real, BayesCAP-Hf-real, BayCAP-KDEy-h-real and BayCAP-KDEy-mlp-real.
+MAIN_METHODS = (
+    "DoC",
+    "QuAcc_NxN",
+    "O-LEAP",
+    "RQBS",
+    "PQ",
+    "BayesCAP-real",
+    "BayesCAP-Hf-real",
+    "BayCAP-KDEy-mlp-real",
+)
+EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
 
 
 def table_method_names() -> list[str]:
-    return [method for method in get_method_names() if method not in EXCLUDED_METHODS]
+    return [method for method in MAIN_METHODS if method in get_method_names()]
 
 
 def get_acc_coverage(method: str, true_acc: float, accs_range: np.ndarray) -> float:

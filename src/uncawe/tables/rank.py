@@ -15,8 +15,8 @@ from uncawe.tables import main as main_tables
 
 METRICS = ("acc_err", "winkler")
 LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
-# the rank tables rank the methods of the main tables (since 2026-11-05 with BayesCAP-Hf-real and the two realised
-# BayCAP-KDEy methods, user's requests) except those listed here
+# the rank tables rank the methods of the main tables (tables/main.py:MAIN_METHODS, since 2026-11-09) except those
+# listed here; L-CBPE, which runs only on binary datasets, stays listed although the main tables no longer show it
 RANK_ONLY_EXCLUDED = {"L-CBPE"}
 RANK_ONLY_INCLUDED: set[str] = set()
 EXCLUDED_METHODS = (RANK_ONLY_EXCLUDED | main_tables.EXCLUDED_METHODS) - RANK_ONLY_INCLUDED
