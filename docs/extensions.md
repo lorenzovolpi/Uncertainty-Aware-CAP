@@ -46,46 +46,11 @@ Priors are studied on both parameters. On $\pi^Q$, the paper's bags are drawn un
 
 The full formulation, hypotheses, and design are described in [ext5_baycap_priors_tempering.md](ext5_baycap_priors_tempering.md). `ACC_BayesCAP` accepts a prior on $\pi^Q$ and the `binform` experiment covers one prior configuration; tempered BayCAP and a configurable prior on $C$ are not implemented. It revives two studies previously set aside in [[optional_extensions]] (full informative-prior study, label-free temperature selection).
 
-## 6. SQS-S design: geometry, kernels and validation-budget allocation
+## 6. [[ext6_sqs_s_design|How SQS-S uses the validation set]]
 
-Merges the former Extensions 4 and 6 (2026-10-27), which both study how SQS-S uses the validation set: the first through the distance and neighbourhood that select validation bags, the second through the split of $V$ between the quantifier and the bags. Each part keeps its own primary experiment, so that the effects remain identifiable; a joint selection of geometry, neighbourhood rule and allocation $\rho$ can follow.
+SQS-S estimates the accuracy on a target bag from labelled bags drawn from $V$ whose estimated prevalence is close to that of the target. Two design choices are studied on the corrected SQS-S of `main` (after FIX-1, which trains the quantifier on $V_q$ only and estimates bags and target with the same pipeline), one experiment each, keeping the extension thin (user's decision of 2026-11-09). E6.1 compares the $L_1$, Hellinger and Jensen–Shannon distances with the `predist` diagnostic, extended to the five classifiers; $L_1$ is kept unless another distance is clearly better. E6.2 varies the allocation $\rho=\lvert V_q\rvert/\lvert V\rvert$ over $\{0.1,0.3,0.5,0.7,0.9\}$ on the full `main` protocol, with nested splits and no outer seeds: a larger $\rho$ improves the quantifier, a smaller one improves the recalls of $h$ inside the bags, whose error is shared by all the bags and so causes under-coverage. Candidates: cross-fitting (E6.c1), sensitivity to $\gamma$ (E6.c2), kernel weights (E6.c3).
 
-### 6.1 Geometric analysis and kernel variants
-
-SQS-S selects validation bags by comparing estimated prevalences through a distance on the simplex. One could systematically study how the distance and neighbourhood definition affect bias and variance:
-
-- compare $L_1$, Hellinger, Jensen--Shannon, and Aitchison distances;
-- measure the correspondence between proximity in predicted and true prevalence space;
-- study sensitivity to $\gamma$;
-- replace hard neighbour selection with kernel weights;
-- select bandwidth adaptively according to local density.
-
-This interpretation connects SQS-S to local regression or approximate Bayesian computation on the simplex. The contribution becomes substantial if it yields an adaptive rule, rather than only a comparison of distance functions.
-
-### 6.2 Validation-budget allocation
-
-SQS-S divides the labelled validation set $V$ into two parts: one part is used to train the surrogate quantifier, while the other supplies the labelled bags used by the SQS protocol. For a fixed validation budget, let
-
-$$
-|V_q|=\rho|V|,
-\qquad
-|V_b|=(1-\rho)|V|,
-$$
-
-where $V_q$ is the quantifier-training subset and $V_b$ is the bag-sampling subset. Increasing $\rho$ can improve the fitted quantifier and therefore the matching of the target sample to validation bags, but it reduces the empirical support available for constructing those bags. Decreasing $\rho$ produces the opposite trade-off. Sampling bags with replacement does not remove the loss of class-conditional diversity caused by a small $V_b$.
-
-The reference paper defines SQS-S with a stratified split $|V_1|\approx|V_2|$, where the quantifier is trained on $V_1=V_q$ and the candidate bags are drawn with replacement from $V_2=V_b$; the paper's baseline is therefore $\rho=0.5$. The `cap-ml` `PrediQuant` implementation used by the current experiments performs the same $50\%/50\%$ stratified split, but fits the quantifier on all of $V$ rather than on $V_1$, so $V_q\cap V_b\neq\emptyset$; this must be corrected before the allocation study, and results of `main` obtained before the correction do not correspond exactly to the paper's SQS-S. The proposed study is not implemented: it should vary $\rho$ while holding $|V|$, $|U|$, the target bags, and the total number of SQS samples fixed. Repeated stratified splits are needed to separate a systematic allocation effect from the particular observations assigned to either subset.
-The evaluation should track:
-
-- quantification error on $U$;
-- proximity between selected bags and $U$ in estimated- and true-prevalence space;
-- point-estimation error, interval coverage, and interval width;
-- the effective diversity and class support of the selected validation bags;
-- training and inference cost.
-
-This is a validation-budget allocation study, not part of Extension 4, whose E4.2 subsamples $|V|$ at fixed $\rho$. A secondary factorial analysis may later test interactions between $\rho$, $|V|$ and $|U|$, but the primary experiment should vary only $\rho$ so that the effects remain identifiable.
-
-**To explore: allocation of $V$ across classes** (reminder from the variance model of [[ext4_uncertainty_budget|Extension 4]], now set aside in [[optional_extensions]] §10; new hypothesis). Besides the split $\rho$, the class composition of $V$ affects the error of the rates: minimising $\operatorname{Var}(e_2)=\sum_j\pi_j^2d_j(1-d_j)/\lvert V_j\rvert$ subject to $\sum_j\lvert V_j\rvert=N$ gives the Neyman allocation $\lvert V_j\rvert\propto\pi_j\sqrt{d_j(1-d_j)}$, and, averaged over APP prevalences drawn uniformly on the simplex (for which $\mathbb E[\pi_j^2]$ is the same for all classes), $\lvert V_j\rvert\propto\sqrt{d_j(1-d_j)}$. Whether a stratified $V$ with this composition improves the SQS and BayCAP intervals, and how it interacts with $\rho$, is to be studied here.
+The full description is in [ext6_sqs_s_design.md](ext6_sqs_s_design.md). SQS-S and `predist` are implemented; the parameter $\rho$ of `PrediQuant` (to be added in `cap-ml`, with the current split kept as the default) and the experiments are not. Adaptive bandwidth, Aitchison geometry, the factorial study of $\rho$, $\lvert V\rvert$ and $\lvert U\rvert$, the Neyman allocation across classes and the label-free selection of $\rho$ are set aside in [[optional_extensions]] §11.
 
 ## 7. Grid-search optimization of classifiers and quantifiers
 
@@ -99,7 +64,7 @@ The optimization must distinguish three objects with different roles:
 
 These objects should not necessarily use the same selection objective. The target classifier $h$ can be selected by an out-of-sample classification score, possibly including a calibration criterion when its posterior probabilities are consumed downstream. By contrast, $s$ and $q$ should be selected primarily by quantification error on source-generated validation bags spanning multiple prevalences, rather than only by instance-level classification accuracy. Bayesian quantifiers may additionally require a proper score or coverage-based criterion for selecting posterior-shape parameters.
 
-The experimental protocol must remain nested and label-safe. Hyperparameters for $h$ should be selected only within its labelled training data. Parameters for $s$ and $q$ should be selected through inner splits or cross-fitting within the labelled data allocated to quantifier training. Target labels and the bags used for final CAP evaluation must never influence model selection. For SQS-S, the search must also respect the separation between $V_q$ and $V_b$ introduced in Extension 6 (§6.2), so that tuning does not consume the bag-sampling subset.
+The experimental protocol must remain nested and label-safe. Hyperparameters for $h$ should be selected only within its labelled training data. Parameters for $s$ and $q$ should be selected through inner splits or cross-fitting within the labelled data allocated to quantifier training. Target labels and the bags used for final CAP evaluation must never influence model selection. For SQS-S, the search must also respect the separation between $V_q$ and $V_b$ introduced in [[ext6_sqs_s_design|Extension 6]] (E6.2), so that tuning does not consume the bag-sampling subset.
 
 A factorial ablation should compare:
 
