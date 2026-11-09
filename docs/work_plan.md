@@ -235,6 +235,9 @@ This part tracks all implementation and experimentation work of the project: wha
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
 | WP-14 | E4.1 + E4.3: the error split and the oracle 2×2 of the main-table methods on stored `main` results | analysis | Scheduled | FIX-1 (done) | 2026-11-09 |
+| WP-15 | Allocation $\rho$ of the validation set in `PrediQuant` (`cap-ml`), nested splits, pin bump | method | Scheduled | FIX-1 (done) | 2026-11-10 |
+| WP-16 | E6.1: the distances of SQS-S in `predist`, PACC(MLP), five classifiers, summary tables | experiment | Scheduled | FIX-1 (done) | 2026-11-10 |
+| WP-17 | E6.2: the allocation $\rho$ of SQS-S on the `main` protocol | experiment | Scheduled | WP-15 | 2026-11-10 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -299,6 +302,61 @@ Entry template:
 - **Done when:** the code and tests are merged; the full analysis is run on `bcuda` at the user's request and its tables and plot are stored; the Analysis sections of E4.1 and E4.3 are written. Checks: $\lvert e_1+e_2+e_3-(\texttt{estim\_accs}-\texttt{true\_accs})\rvert<10^{-9}$ on every bag kept; the dropped bags (NUTS failures) and the bags with an empty estimated column are counted per pair and method.
 - **Commands:** filled when the code exists.
 - **Log:** 2026-11-09: card added (user's decision), merging E4.1 and E4.3 with separate representations.
+- **Outcome:** —
+
+### WP-15 Allocation $\rho$ of the validation set in `PrediQuant` (`cap-ml`), nested splits, pin bump
+
+- **Kind / status:** method / Scheduled
+- **Source:** [[ext6_sqs_s_design]] (E6.2, Implementation)
+- **Goal:** SQS-S (`cap-ml` `PrediQuant`, `PQ` in `main`) splits the validation set $V$ into $V_q$, which trains the quantifier, and $V_b$, from which the candidate bags are drawn, at a fixed $50\%/50\%$ (a stratified `train_test_split`). Add a parameter `rho` to `PrediQuant` so that the share $\rho=\lvert V_q\rvert/\lvert V\rvert$ can be varied, with nested splits across levels, and keep per prediction the quantities needed to analyse it. Behaviour (user's decision of 2026-11-09, option (a)): `rho=None` (default) keeps the current `train_test_split(test_size=0.5, random_state=random_state, stratify=y)`, so `PQ` is unchanged; with `rho` in $(0,1)$, for each class $\omega_j$ one permutation of its validation indices seeded by `random_state`, and $V_q$ the first $\operatorname{round}(\rho\lvert V_j\rvert)$ indices of each class, so that $V_q(0.1)\subset V_q(0.3)\subset\dots\subset V_q(0.9)$ for the same seed. After each prediction `PrediQuant` keeps the estimated prevalence $\hat\pi^Q$ of the target bag and the indices (in $V_b$) of the instances of the selected bags, from which the class support is computed: for each class, the number of distinct instances of that class in $V_b$ that appear in at least one selected bag, divided by the number of instances of that class in $V_b$.
+- **Estimand:** unchanged: SQS-S targets the realised table of the target bag.
+- **Scope:** `cap-ml` (owned by the user; the commit is pushed by the user): `cap/models/confidence.py` (`PrediQuant`: `rho`, the nested split, the stored $\hat\pi^Q$ and selected indices), `tests/test_prediquant.py`, README changelog. UNCAWE: the pin bump (`pyproject.toml`, `uv.lock`), §I.2 (the `rho` parameter, `PQ` with `rho=None`) and §II.12 if UNCAWE code depends on the new attributes. Tests: with `rho=None` the split has the same indices as `train_test_split`; with `rho` set, $V_q$ and $V_b$ are disjoint, cover $V$, have $\operatorname{round}(\rho\lvert V_j\rvert)$ instances of class $\omega_j$ in $V_q$, and are nested across levels; the quantifier never sees $V_b$ and a target equal to a candidate bag gets the bag's estimate, at every $\rho$; the stored $\hat\pi^Q$ equals `q.predict` on the target; the class support on bags whose instances are known by construction.
+- **Depends on:** FIX-1 (done, `fcdabf2`).
+- **Comparability:** with `rho=None` the stored `PQ` results are unchanged; the pin bump must bring no other change to `PrediQuant` or to the other `cap-ml` methods used by `main` (to check on the diff between `e9e77cd` and the new commit), otherwise the affected methods are listed and re-run.
+- **Deviations from Part V:** none expected.
+- **Done when:** the `cap-ml` code and tests are committed and pushed, the pin is bumped, and the UNCAWE tests pass.
+- **Commands:** none (no run).
+- **Log:** 2026-11-10: card added (user's decision).
+- **Outcome:** —
+
+### WP-16 E6.1: the distances of SQS-S in `predist`, PACC(MLP), five classifiers, summary tables
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext6_sqs_s_design]] (E6.1)
+- **Goal:** compare the $L_1$ distance used by SQS-S to select the candidate bags whose estimated prevalence is close to that of the target with Hellinger and Jensen–Shannon, which weigh differences in rare classes more, on the corrected `PrediQuant`. The `predist` diagnostic (§II.3) fits `PrediQuant` once per (dataset, classifier) pair and scores the three distances on the same $5$ test bags of size $1000$ (centre, three vertices at $1-0.01$, the random point farthest from them). The card extends it from one classifier (LR) to the five classifiers of `main` on the $8$ three-class datasets ($40$ pairs, $200$ test bags), with PACC(MLP), the quantifier of `PQ`, in place of KDEy(MLP) (user's decision of 2026-11-10), and adds the summary tables. Decision rule (user's decision of 2026-11-09 and 2026-11-10): $L_1$ is kept unless another distance has a lower mean Winkler score over the $200$ test bags, a lower per-pair mean Winkler score on a majority of the $40$ pairs, and a paired Wilcoxon signed-rank test over the $40$ per-pair means with $p<0.05$.
+- **Estimand:** the realised table of each test bag (vanilla accuracy), for every distance.
+- **Scope:**
+  - `experiments/predist.py`, `predist_sampling.py`, `predist_config.py`: `--classifiers` accepting several classifiers (default: the five of `main`), replacing the LR-only filter `is_lr_classifier`; all (dataset, classifier) pairs in one parallel pool through `run_tasks` with `worker_environment`, as `main`; PACC(MLP) with the configuration of `PQ` in place of `kdey()`; the other settings of `PrediQuant` as `PQ` in `main`;
+  - per test bag and distance, the mean $L_1$ distance between the true prevalences of the selected bags and the true prevalence of the test bag (stored, or computed from the stored `selected_val_true_prevs`); `RESULT_SCHEMA_VERSION` bumped;
+  - new `tables/predist.py`: a summary table (one row per distance: means over the $200$ test bags of the absolute error, coverage, amplitude, Winkler score and true-space distance; the number of pairs where the distance has the best Winkler score; the $p$-value of the paired Wilcoxon test against $L_1$) and a per-region table (the same means split by centre, vertices, random point);
+  - the ternary plots of `plots/predist.py`, unchanged, for every pair;
+  - `Makefile` target for the tables; tests: one task per (dataset, classifier) pair; the quantifier is PACC(MLP); the true-space distance on a synthetic case; the table on a synthetic result.
+- **Depends on:** FIX-1 (done, `fcdabf2`).
+- **Comparability:** the stored `predist` results (LR, KDEy(MLP), re-run on 2026-11-09 with the fixed `PrediQuant`) are not comparable with the new ones; they are moved to `<OUT_DIR>/uncawe/predist_kdey/` (results and plots) before the full run; those computed before FIX-1 stay in `predist_pre_fix1/`. `main` is not affected.
+- **Deviations from Part V:** to be stated when the code exists.
+- **Done when:** the code and tests are merged; the full run over the $40$ pairs is done on `bcuda` at the user's request and its tables and plots are stored; the Analysis section of E6.1 is written, with the outcome of the decision rule.
+- **Commands:** filled when the code exists (pilot: one dataset, the five classifiers).
+- **Log:** 2026-11-10: card added (user's decision).
+- **Outcome:** —
+
+### WP-17 E6.2: the allocation $\rho$ of SQS-S on the `main` protocol
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext6_sqs_s_design]] (E6.2)
+- **Goal:** describe how SQS-S changes when the share $\rho=\lvert V_q\rvert/\lvert V\rvert$ of the validation set that trains its quantifier moves away from $0.5$. A larger $\rho$ gives a better quantifier, so the selected bags are closer to the target in true prevalence; a smaller $\rho$ gives a larger $V_b$, so the recalls of $h$ inside the bags, shared by all the bags, are closer to its true recalls. The card runs SQS-S at $\rho\in\{0.1,0.3,0.5,0.7,0.9\}$ with nested splits (WP-15) on the full `main` protocol ($75$ pairs, $100$ APP target bags of size $1000$ per pair, the seeds of `main`), with no outer seeds (the pairs are the replicates). It is an analysis only, with no decision rule (user's decision of 2026-11-10): `PQ` keeps $\rho=0.5$ with the current split.
+- **Estimand:** the realised table of each target bag (`true_cts`), for every level.
+- **Scope:**
+  - `experiments/methods.py`: five factory entries `PQ-rho0.1`, …, `PQ-rho0.9`: `PrediQuant` with PACC(MLP), $n=10{,}000$ candidates, $\gamma=0.1$, $L_1$, $m=1000$, as `PQ`, and `rho` set; the level $0.5$ is run too, because the nested split differs from the split of `PQ`; excluded from the main and rank tables and from the default plots of `main`;
+  - per target bag, for these methods only: $\hat\pi^Q$ and the minimum over the classes of the class support of the selected bags (WP-15); the quantification error $\frac1K\sum_j\lvert\hat\pi^Q_j-\pi^Q_j\rvert$ is computed by the table from $\hat\pi^Q$ and `true_cts`;
+  - new table module: for each metric (vanilla accuracy, macro-F1, macro-K), one row per measure (quantification error, absolute error, coverage, amplitude, Winkler score, class support) and one column per level, with the mean over the $75$ pairs; the cells that differ from $\rho=0.5$ with a Holm-adjusted paired Wilcoxon $p<0.05$ are marked;
+  - new plot module: each measure against $\rho$, the mean over the pairs in bold and each pair as a faint line, one panel per measure, one figure per metric;
+  - `Makefile` targets; tests: the five methods are built with the right `rho`; the extra columns are written for these methods only; the table and the plot on a synthetic result.
+- **Depends on:** WP-15 (the `rho` parameter and the stored $\hat\pi^Q$ and selected indices, with the pin bump).
+- **Comparability:** adds the rows of five methods to `main`; the stored results of the other methods, including `PQ`, are unchanged. At $\rho=0.1$ small datasets may have classes with fewer than $5$ instances in $V_q$, which PACC's internal $5$-fold cross-validation cannot handle: such (pair, level) failures are recorded and counted, not silently dropped.
+- **Deviations from Part V:** to be stated when the code exists.
+- **Done when:** the code and tests are merged; the pilot ($3$ datasets, e.g. `mammographic`, `wine-quality` and a large dataset, with the five classifiers) and the full run (about $4$ hours on `bcuda`, from the $47$ minutes of the `PQ` re-run of 2026-11-09) are done at the user's request and the tables and plots are stored; the Analysis section of E6.2 is written.
+- **Commands:** filled when the code exists.
+- **Log:** 2026-11-10: card added (user's decision).
 - **Outcome:** —
 
 ## III.3 Completed cards

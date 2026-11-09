@@ -9,10 +9,10 @@ SQS-S estimates the accuracy of $h$ on a target bag $U$ by finding, among many l
 | Item | Status |
 |---|---|
 | SQS-S (`PQ`, `cap-ml` `PrediQuant`) as in the paper: quantifier trained on $V_1$ only, bags and target estimated by the same surrogate pipeline | [implemented], fixed by FIX-1 + FIX-4 (`cap-ml` `e9e77cd`, [[work_plan]] §I.2), stored in `main`, re-run on 2026-11-09 |
-| `predist`, the distance diagnostic ($L_1$, Hellinger, Jensen–Shannon; LR, KDEy(MLP), $8$ three-class datasets, $5$ test bags) | [implemented] ([[work_plan]] §II.3); the results computed before FIX-1 are kept in `<OUT_DIR>/uncawe/predist_pre_fix1/`; re-run with the fixed `PrediQuant` started on 2026-11-09 |
-| E6.1 (distances, five classifiers, summary table) | [proposal], needs `predist` over several classifiers in one pool and a summary table |
-| Allocation $\rho$ as a parameter of `PrediQuant`, nested splits | [proposal], to be added to `cap-ml` with a pin bump |
-| E6.2 (allocation $\rho$ on the `main` protocol) | [proposal], not implemented |
+| `predist`, the distance diagnostic ($L_1$, Hellinger, Jensen–Shannon; LR, KDEy(MLP), $8$ three-class datasets, $5$ test bags) | [implemented] ([[work_plan]] §II.3); the results computed before FIX-1 are kept in `<OUT_DIR>/uncawe/predist_pre_fix1/`; re-run with the fixed `PrediQuant` on 2026-11-09 (LR, KDEy(MLP), completed), superseded by E6.1, which uses PACC(MLP) |
+| E6.1 (distances, PACC(MLP), five classifiers, summary tables) | [proposal], scheduled as card WP-16 ([[work_plan]] Part III) |
+| Allocation $\rho$ as a parameter of `PrediQuant`, nested splits | [proposal], scheduled as card WP-15 (in `cap-ml`, with a pin bump) |
+| E6.2 (allocation $\rho$ on the `main` protocol) | [proposal], scheduled as card WP-17, after WP-15 |
 | Candidates E6.c1 (cross-fitting), E6.c2 (sensitivity to $\gamma$), E6.c3 (kernel weights) | [proposal], not scheduled |
 | Adaptive bandwidth, Aitchison geometry, factorial $\rho\times\lvert V\rvert\times\lvert U\rvert$, Neyman allocation across classes, label-free selection of $\rho$ | set aside on 2026-11-09, in [[optional_extensions]] §11 |
 
@@ -27,7 +27,7 @@ SQS-S estimates the accuracy of $h$ on a target bag $U$ by finding, among many l
 **Why.** SQS-S compares estimated prevalences with the $L_1$ distance. Hellinger and Jensen–Shannon weigh a difference in a rare class more than the same difference in a common class (§T.2), so near the edges of the simplex, where some classes are rare, they select different neighbourhoods. The stored `predist` results cannot answer the question: they were computed before FIX-1, when the bags and the target were estimated by two different estimators, and the choice of distance then only changed how the wrong space was measured (e.g. `connect-4`, LR, test bag 1: coverage $0$ for every distance).
 
 - **Design.**
-  - **Inputs:** `predist` with the fixed `PrediQuant`: the $8$ three-class datasets of `THREE_CLASS_DATASETS`, the five classifiers of `main` ($40$ pairs), $5$ test bags of size $1000$ per pair at fixed points of the simplex (the centre, the three vertices at $1-0.01$, and the random point farthest from them), drawn from the test pool with the seeds of `predist`; one fit of `PrediQuant` per pair, evaluated with the three distances on the same test bags. Quantifier: KDEy(MLP), as in the stored `predist` (open: PACC(MLP), the quantifier of `PQ` in `main`, would make the conclusion apply directly to `PQ`; user to decide).
+  - **Inputs:** `predist` with the fixed `PrediQuant`: the $8$ three-class datasets of `THREE_CLASS_DATASETS`, the five classifiers of `main` ($40$ pairs), $5$ test bags of size $1000$ per pair at fixed points of the simplex (the centre, the three vertices at $1-0.01$, and the random point farthest from them), drawn from the test pool with the seeds of `predist`; one fit of `PrediQuant` per pair, evaluated with the three distances on the same test bags. Quantifier: PACC(MLP), the quantifier of `PQ` in `main`, so that the conclusion applies directly to `PQ` (user's decision of 2026-11-10; the stored `predist` results use KDEy(MLP)).
   - **Varied:** the distance ($L_1$, Hellinger, Jensen–Shannon); held fixed: the fit, the candidate bags, $\gamma$, the test bags.
   - **Measures:** per test bag and distance, for vanilla accuracy: the absolute error of the point estimate, coverage, amplitude and Winkler score of the interval; the mean $L_1$ distance between the *true* prevalences of the selected bags and the true prevalence of the test bag (how well the selection works in true-prevalence space, §T.2); per distance, the means over the $200$ test bags, and per pair the means over its $5$ test bags.
   - **Estimand:** the realised table of each test bag, for every distance.
@@ -49,7 +49,7 @@ SQS-S estimates the accuracy of $h$ on a target bag $U$ by finding, among many l
   - **Measures:** per target bag and level: the quantification error on $U$, $\operatorname{AE}(\hat\pi^Q,\pi^Q)=\frac1K\sum_j\lvert\hat\pi^Q_j-\pi^Q_j\rvert$, with $\pi^Q$ the true prevalence of the bag; the absolute error of the point estimate, coverage, amplitude and Winkler score, for vanilla accuracy, macro-F1 and macro-K; the class support of the selected bags, for each class $\omega_j$ the number of distinct instances of $\omega_j$ in $V_b$ that appear in at least one of the $m$ selected bags divided by the number of instances of $\omega_j$ in $V_b$ (§T.3), summarised by its minimum over the classes. Per pair and level, the means over the $100$ bags.
   - **Estimand:** the realised table of each target bag, for every level.
   - **Cost:** $5$ runs of SQS-S on the $75$ pairs (the re-run of `PQ` on 2026-11-09 took $47$ minutes on `bcuda`, so about $4$ hours in all); the level $0.5$ is run too, since the nested split differs from the split of `PQ` (§T.4). A pilot on $3$ datasets (e.g. `mammographic`, `wine-quality` and a large dataset) with the five classifiers first.
-- **Decision rule** (user's decision of 2026-11-09, "if one $\rho$ wins, adopt it"; operationalised here): if a level $\rho\neq0.5$ has a lower mean Winkler score than $\rho=0.5$ for vanilla accuracy, over the $75$ per-pair means, and the paired Wilcoxon signed-rank test against $\rho=0.5$ gives $p<0.05$ after the Holm correction over the four comparisons, the level with the lowest mean Winkler score among those becomes the default allocation of SQS-S in later experiments; otherwise $\rho=0.5$ is kept. The level is chosen on the evaluation bags, so it is reported as a design choice made on these results, not as a label-free selection (set aside).
+- **Scope.** E6.2 is an analysis only (user's decision of 2026-11-10): it describes how the measures change with $\rho$ and has no decision rule; the allocation of SQS-S in `PQ` and in later experiments stays $\rho=0.5$.
 - **Representation.**
   - **Table:** for each metric, one row per measure and one column per level, with the mean over the $75$ pairs; the cells that differ from $\rho=0.5$ with a Holm-adjusted $p<0.05$ are marked.
   - **Line plot:** each measure (quantification error, absolute error, coverage, amplitude, Winkler score, class support) against $\rho$, the mean over the pairs in bold and each pair as a faint line, one panel per measure, vanilla accuracy; the same for macro-F1 and macro-K in separate figures.
@@ -163,7 +163,7 @@ Components:
 
 - **Allocation in `cap-ml`:** `PrediQuant` gets a parameter `rho` (default `None`). With `rho=None`, the split is the current stratified `train_test_split` at $50\%/50\%$, so `PQ` and its stored results are unchanged (user's decision of 2026-11-09, option (a)). With `rho` in $(0,1)$, the nested split of E6.2: for each class, a permutation of its validation indices seeded by `random_state`, and $V_q$ the first $\operatorname{round}(\rho\,\lvert V_j\rvert)$ of each class. `PrediQuant` also keeps, after each prediction, the estimate $\hat\pi^Q$ and the indices of the selected bags, so that the quantification error and the class support can be stored. Followed by a pin bump in UNCAWE.
 - **E6.2 in `main`:** five factory entries `PQ-rho<ρ>` in `experiments/methods.py`, excluded from the tables, ranks and default plots of `main`; per bag, the extra columns $\hat\pi^Q$ and the class support of the selected bags; a table module and a plot module for E6.2, following [[work_plan]] Part V.
-- **E6.1 in `predist`:** `--classifiers` accepting several classifiers, with all (dataset, classifier) pairs in one parallel pool, as `main` does; a summary table module for the tables of E6.1; the quantifier as decided for E6.1.
+- **E6.1 in `predist`:** `--classifiers` accepting several classifiers, with all (dataset, classifier) pairs in one parallel pool, as `main` does; PACC(MLP) in place of KDEy(MLP) as the quantifier of `PrediQuant`; the true-space distance of the selected bags stored per test bag and distance; a summary table module for the tables of E6.1.
 
 Tests:
 
@@ -176,7 +176,7 @@ Tests:
 Reproducibility and comparability:
 
 - `PQ` and all stored results of `main` are unchanged by `rho=None`; E6.2 adds the rows of five methods to `main`. Small datasets may have classes with fewer than $5$ instances in $V_q$ at $\rho=0.1$, which PACC's internal $5$-fold cross-validation cannot handle; such pairs are recorded as failed and counted, not silently dropped.
-- E6.1 writes the `predist` schema; the re-run of 2026-11-09 (LR) is part of its inputs if the quantifier stays KDEy(MLP), and is replaced if it changes.
+- E6.1 writes the `predist` schema, with a new schema version for the change of quantifier and the new column; its run replaces the stored `predist` results (LR, KDEy(MLP), re-run on 2026-11-09), which are not comparable with it.
 - Pin bumps follow the rule of [[work_plan]] Part V (`cap-ml` pin).
 
 # Appendix
