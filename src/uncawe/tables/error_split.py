@@ -2,7 +2,7 @@
 E4.1 and E4.3 of ``docs/ext4_uncertainty_budget.md``).
 
 Methods: the methods of the main table whose estimate comes from a contingency table, ``tables/main.py:MAIN_METHODS``
-without ``DoC`` (which estimates accuracy directly): ``QuAcc_NxN``, ``O-LEAP``, ``RQBS`` (SQS-H), ``PQ`` (SQS-S),
+without ``DoC`` (which estimates accuracy directly): ``QuAcc_NxN``, ``O-LEAP``, ``SQS-H``, ``SQS-Hbs`` (SQS-H with a bootstrap of the prevalence), ``PQ`` (SQS-S),
 ``BayesCAP-real``, ``BayesCAP-Hf-real`` and ``BayCAP-KDEy-mlp-real``. Vanilla accuracy, $|U|=1000$, the pairs of
 ``main`` stored for all seven methods. Every method and every quantity is scored against the realised table of each bag
 (``true_cts``).
@@ -63,7 +63,8 @@ TABLE_SETS = {"e4.1": ("rms", "signed"), "e4.3": ("oracle_realised", "oracle_poo
 SHORT_LABELS = {
     "QuAcc_NxN": "QuAcc",
     "O-LEAP": "LEAP",
-    "RQBS": "SQS-H",
+    "SQS-H": "SQS-H",
+    "SQS-Hbs": "SQS-H\\textsubscript{bs}",
     "PQ": "SQS-S",
     "BayesCAP-real": "\\bcap{}",
     "BayesCAP-Hf-real": "Hf",

@@ -201,7 +201,7 @@ def _latex_document(tables: list[tuple[str, str, str]]) -> str:
         f"\\setlength{{\\tabcolsep}}{{{main_tables.TABLE_COLUMN_SEP}}}",
         "",
         "\\newcommand{\\bcap}{BayesCAP}",
-        "\\newcommand{\\rqbs}{RQBS}",
+        "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
         "",
         "\\begin{document}",
         "",

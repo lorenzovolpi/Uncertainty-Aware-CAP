@@ -52,7 +52,8 @@ METHOD_CLASS = {
     "QuAcc_NxN": QuAccNxN,
     "O-LEAP": O_LEAP,
     "L-CBPE": CBPE,
-    "RQBS": RQBS,
+    "SQS-H": RQBS,
+    "SQS-Hbs": RQBS,
     "PQ": PrediQuant,
     "BayesCAP": BayCAP,
     "BayesCAP-real": BayCAP,
@@ -129,7 +130,10 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     )
     yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
     yield "L-CBPE", CBPE(acc_name, calib_method="lascal")
-    yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE)
+    # SQS-H as in the paper (one estimate of the target prevalence) and with a bootstrap of the prevalence (one bag per
+    # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
+    yield "SQS-H", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=False)
+    yield "SQS-Hbs", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=True)
     yield (
         "PQ",
         PrediQuant(

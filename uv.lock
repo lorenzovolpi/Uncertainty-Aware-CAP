@@ -227,8 +227,8 @@ wheels = [
 
 [[package]]
 name = "cap-ml"
-version = "0.1.1.11"
-source = { git = "https://github.com/lorenzovolpi/cap-ml.git?rev=47643b1b0e982ca1d5e96c558fd84129964e5a27#47643b1b0e982ca1d5e96c558fd84129964e5a27" }
+version = "0.1.1.13"
+source = { git = "https://github.com/lorenzovolpi/cap-ml.git?rev=637fdd59c46074d301ac1e6754ffbd1ffa0e2117#637fdd59c46074d301ac1e6754ffbd1ffa0e2117" }
 dependencies = [
     { name = "cvxpy" },
     { name = "jax", extra = ["cuda12"] },
@@ -3399,7 +3399,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cap-ml", git = "https://github.com/lorenzovolpi/cap-ml.git?rev=47643b1b0e982ca1d5e96c558fd84129964e5a27" },
+    { name = "cap-ml", git = "https://github.com/lorenzovolpi/cap-ml.git?rev=637fdd59c46074d301ac1e6754ffbd1ffa0e2117" },
     { name = "datasets", specifier = ">=4.8.5" },
     { name = "matplotlib", specifier = ">=3.10.0" },
     { name = "pandas", specifier = ">=3.0.2" },

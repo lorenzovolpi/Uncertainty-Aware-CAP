@@ -6,7 +6,7 @@ $Q\\in\\{$KDEy, EMQ$\\}$, input classifier $s\\in\\{h$, mlp$\\}$) push the poste
 quantifier through the rate matrix $\\hat C$ of $h$ on $V$: the four without ``-real`` target the population table
 $\\hat C\\operatorname{diag}(\\pi^Q)$, the four with ``-real`` the realised table of the target bag. All are scored against
 the realised table of each bag (``true_cts``), next to the stored ``BayesCAP``, ``BayesCAP-real``, ``BayesCAP-Hf-real``
-(E2.8) and ``RQBS``. Vanilla accuracy, $|U|=1000$, the pairs where the eight methods and the four references have
+(E2.8) and ``SQS-Hbs`` (called ``RQBS`` until 2026-11-10). Vanilla accuracy, $|U|=1000$, the pairs where the eight methods and the four references have
 stored results (so it also works on the pilot).
 
 Per pair (``compute_table``, one row per pair, every column in the CSV):
@@ -77,7 +77,7 @@ PUSHFORWARDS = ("population", "realised")
 REFERENCES = {"population": "BayesCAP", "realised": "BayesCAP-real"}
 # the best BayCAP prior of E2.8, realised only
 HF = "BayesCAP-Hf-real"
-RQBS = "RQBS"
+SQS_HBS = "SQS-Hbs"
 SCORES = ("ae", "coverage", "amplitude", "winkler")
 SCORE_LABELS = {"ae": "AE"} | {score: main_tables.metrics_map[score] for score in SCORES[1:]}
 # bins of the smallest true class prevalence of a bag, left-closed (the smallest prevalence is at most 1/2)
@@ -92,7 +92,7 @@ def method_name(cell: str, pushforward_name: str) -> str:
 
 FIXED_METHODS = [method_name(cell, p) for cell in CELLS for p in PUSHFORWARDS]
 assert sorted(FIXED_METHODS) == sorted(FIXED_C_VARIANTS)
-METHODS = FIXED_METHODS + list(REFERENCES.values()) + [HF, RQBS]
+METHODS = FIXED_METHODS + list(REFERENCES.values()) + [HF, SQS_HBS]
 
 
 def _tests() -> dict[str, tuple[str, str]]:
@@ -407,7 +407,7 @@ SHORT_LABELS = {method_name(cell, p): CELL_LABELS[cell] for cell in CELLS for p 
     "BayesCAP": "\\bcap{}",
     "BayesCAP-real": "unif.",
     HF: "Hf",
-    RQBS: "SQS-H",
+    SQS_HBS: "SQS-H\\textsubscript{bs}",
 }
 
 
@@ -457,13 +457,13 @@ def _scores_styler(table: pd.DataFrame, methods: list[str], extra: dict[tuple[st
 
 
 def _realised_styler(table: pd.DataFrame):
-    methods = [method_name(cell, "realised") for cell in CELLS] + [REFERENCES["realised"], HF, RQBS]
+    methods = [method_name(cell, "realised") for cell in CELLS] + [REFERENCES["realised"], HF, SQS_HBS]
     extra = {("ECE", "$h$"): "h_val_ece", ("ECE", "mlp"): "mlp_val_ece"}
     return _scores_styler(table, methods, extra)
 
 
 def _population_styler(table: pd.DataFrame):
-    methods = [method_name(cell, "population") for cell in CELLS] + [REFERENCES["population"], RQBS]
+    methods = [method_name(cell, "population") for cell in CELLS] + [REFERENCES["population"], SQS_HBS]
     return _scores_styler(table, methods, {("$V$", "$\\operatorname{sd}_j\\hat C_{jj}$"): "sd_recalls"})
 
 
@@ -584,7 +584,7 @@ A3_TABLES = ("realised", "population")
 def _latex_document(longtable_path: str, a3: bool = False) -> str:
     document = eb_prior._latex_document(longtable_path).replace(
         "\\begin{document}",
-        "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\newcommand{\\rqbs}{SQS-H}\n\\begin{document}",
+        "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}\n\\begin{document}",
     )
     return document.replace("[a4paper,", "[a3paper,") if a3 else document
 

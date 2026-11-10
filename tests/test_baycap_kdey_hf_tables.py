@@ -104,7 +104,7 @@ class KDEyHfTablesTest(unittest.TestCase):
             for score in (*kh.SCORES, "std_shift"):
                 self.assertTrue(self.table[f"{method}_{score}"].notna().all())
         # the references are shifted by three standard deviations, the new methods are centred
-        np.testing.assert_allclose(self.table["RQBS_std_shift"], 3.0, atol=0.3)
+        np.testing.assert_allclose(self.table["SQS-Hbs_std_shift"], 3.0, atol=0.3)
         np.testing.assert_allclose(self.table[f"{kh.NEW['mlp']}_std_shift"], 0.0, atol=0.2)
 
     def test_failed_bags_are_left_out(self):

@@ -74,7 +74,8 @@ class DisplacementTest(unittest.TestCase):
         self.assertIn(displacement.METHOD, displacement.METHOD_CHOICES)
         self.assertIn("BayCAP-KDEy-h", displacement.METHOD_CHOICES)
         self.assertNotIn("BayesCAP-KDEy-h", displacement.METHOD_CHOICES)
-        self.assertNotIn("RQBS", displacement.METHOD_CHOICES)
+        self.assertNotIn("SQS-Hbs", displacement.METHOD_CHOICES)
+        self.assertNotIn("SQS-H", displacement.METHOD_CHOICES)
         self.assertTrue(set(displacement.METHOD_CHOICES) <= set(METHOD_CLASS))
 
     def test_prior_part_follows_the_prior_of_the_method(self):

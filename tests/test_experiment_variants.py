@@ -16,7 +16,7 @@ class BinformProtocolTest(unittest.TestCase):
     def test_method_order_is_stable(self):
         self.assertEqual(
             binform._method_names(),
-            ["O-LEAP", "RQBS", "BayesCAP_uniform", "BayesCAP_transformed_val"],
+            ["O-LEAP", "SQS-Hbs", "BayesCAP_uniform", "BayesCAP_transformed_val"],
         )
 
 
