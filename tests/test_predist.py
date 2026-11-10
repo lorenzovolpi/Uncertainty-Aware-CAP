@@ -153,6 +153,9 @@ def _synthetic_results(winkler: dict) -> pd.DataFrame:
                     "ci_amplitude": score / 2,
                     "ci_winkler": score,
                     "true_dist_l1_mean": score / 5,
+                    "actual_test_prev": [0.5, 0.3, 0.2],
+                    "predicted_test_prev": [0.4, 0.3, 0.3],
+                    "selected_val_prevs": [[0.4, 0.3, 0.3], [0.4 + score / 2, 0.3, 0.3 - score / 2]],
                 }
             )
     return pd.DataFrame(rows)
@@ -172,8 +175,12 @@ class PredistTablesTest(unittest.TestCase):
         self.df = _synthetic_results(winkler)
 
     def test_summary(self):
-        pairs, summary, region = predist_tables.compute(self.df)
+        pairs, pair_region, summary, region = predist_tables.compute(self.df)
         self.assertEqual(len(pairs), 3 * len(self.pairs))
+        self.assertEqual(len(pair_region), 3 * 3 * len(self.pairs))
+        # diagnostics: L1 of (0.4, 0.3, 0.3) against (0.5, 0.3, 0.2) is 0.2; the selected bags are 0 and |score| away
+        np.testing.assert_allclose(pairs["test_prev_l1_error"], 0.2)
+        np.testing.assert_allclose(summary["pred_dist_l1_mean"], summary["ci_winkler"] / 2)
         summary = summary.set_index("distance")
         self.assertEqual(list(summary.index), ["l1", "hellinger", "jensen-shannon"])
         self.assertAlmostEqual(summary.loc["l1", "ci_winkler"], np.mean([self.winkler[(p, "l1")] for p in self.pairs]))
@@ -188,12 +195,12 @@ class PredistTablesTest(unittest.TestCase):
         self.assertEqual(int(region.loc[(region.region == "vertex") & (region.distance == "l1"), "n_bags"].iloc[0]), 24)
 
     def test_decision_rule(self):
-        _, summary, _ = predist_tables.compute(self.df)
+        _, _, summary, _ = predist_tables.compute(self.df)
         result = predist_tables.decision(summary)
         self.assertEqual(result["chosen"], "hellinger")
         self.assertEqual(result["qualified"], ["hellinger"])
         # without the better distance, L1 is kept
-        _, summary, _ = predist_tables.compute(self.df.loc[self.df.distance != "hellinger"])
+        _, _, summary, _ = predist_tables.compute(self.df.loc[self.df.distance != "hellinger"])
         result = predist_tables.decision(summary)
         self.assertEqual(result["chosen"], "l1")
 
@@ -204,11 +211,12 @@ class PredistTablesTest(unittest.TestCase):
         self.assertEqual(set(zip(kept.dataset, kept.classifier)), set(self.pairs) - {("d0", "LR"), ("d0", "RF")})
 
     def test_latex(self):
-        _, summary, region = predist_tables.compute(self.df)
+        _, _, summary, region = predist_tables.compute(self.df)
         latex = predist_tables.summary_latex(summary)
         self.assertIn("Hellinger", latex)
         self.assertIn("\\textbf{", latex)
         self.assertIn("vertices", predist_tables.region_latex(region))
+        self.assertIn("Estimated-space", latex)
 
 
 if __name__ == "__main__":

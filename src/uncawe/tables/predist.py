@@ -7,7 +7,11 @@ bag (``true_acc``).
 
 Measures, per test bag and distance: the absolute error of the point estimate (``acc_abs_error``), coverage, amplitude
 and Winkler score of the $95\\%$ interval, and the mean $L_1$ distance between the true prevalences of the selected
-bags and the true prevalence of the test bag (``true_dist_l1_mean``).
+bags and the true prevalence of the test bag (``true_dist_l1_mean``). Two diagnostics of the selection, computed here
+from the stored prevalences and not used by the decision rule: the $L_1$ error of the estimated prevalence of the test
+bag (``test_prev_l1_error``, the same for every distance, since the fit and the quantifier are shared) and the mean $L_1$
+distance between the estimated prevalences of the selected bags and the estimated prevalence of the test bag
+(``pred_dist_l1_mean``, the size of the neighbourhood in the space where the selection is made).
 
 Tables (``--tables-set``, default both):
 
@@ -17,12 +21,15 @@ Tables (``--tables-set``, default both):
   Wilcoxon signed-rank test over the per-pair mean Winkler scores against $L_1$;
 - ``region``: the same means split by the position of the test bag on the simplex (centre, vertices, random point).
 
+Both tables also show the two diagnostics, not in bold.
+
 The decision rule of E6.1 is evaluated on the summary and printed (``decision``): $L_1$ is kept unless another distance
 has a lower mean Winkler score over all the test bags, a lower per-pair mean Winkler score than $L_1$ on a majority of
 the pairs, and $p<0.05$; if several distances qualify, the one with the lowest mean Winkler score is chosen.
 
-Outputs, under ``<OUT_DIR>/uncawe/tables/predist/``: a per-pair CSV (``predist_pairs.csv``), the two tables as CSV, and
-for each table a LaTeX tabular fragment and a standalone document.
+Outputs, under ``<OUT_DIR>/uncawe/tables/predist/``: a per-pair CSV (``predist_pairs.csv``), a per-pair and per-region
+CSV (``predist_pair_region.csv``), the two tables as CSV, and for each table a LaTeX tabular fragment and a standalone
+document.
 """
 
 import os
@@ -57,6 +64,12 @@ MEASURES = {
     "ci_winkler": ("Winkler", True),
     "true_dist_l1_mean": ("True-space $L_1$", True),
 }
+# diagnostics of the selection, shown but not bold and not used by the decision rule
+DIAGNOSTICS = {
+    "test_prev_l1_error": "Test-prev.\\ error",
+    "pred_dist_l1_mean": "Estimated-space $L_1$",
+}
+COLUMNS = list(MEASURES) + list(DIAGNOSTICS)
 DISTANCE_LABELS = {"l1": "$L_1$", "hellinger": "Hellinger", "jensen-shannon": "Jensen--Shannon"}
 REGION_LABELS = {"centre": "centre", "vertex": "vertices", "random": "random point"}
 ALPHA = 0.05
@@ -86,6 +99,24 @@ def _ordered(values, order) -> list:
 # --------------------------------------------------------------------------------------------------- computation
 
 
+def _l1_rows(prevs, targets) -> np.ndarray:
+    """Per row, the mean $L_1$ distance between the prevalences in ``prevs`` (one vector or a list of vectors) and the
+    vector in ``targets``."""
+    out = []
+    for prev, target in zip(prevs, targets):
+        prev = np.atleast_2d(np.stack([np.asarray(p, dtype=float) for p in prev]))
+        out.append(float(np.abs(prev - np.asarray(target, dtype=float)).sum(axis=1).mean()))
+    return np.array(out)
+
+
+def add_diagnostics(df: pd.DataFrame) -> pd.DataFrame:
+    """Add ``test_prev_l1_error`` and ``pred_dist_l1_mean`` from the stored prevalences."""
+    df = df.copy()
+    df["test_prev_l1_error"] = _l1_rows(df["predicted_test_prev"], df["actual_test_prev"])
+    df["pred_dist_l1_mean"] = _l1_rows(df["selected_val_prevs"], df["predicted_test_prev"])
+    return df
+
+
 def complete_pairs(df: pd.DataFrame) -> pd.DataFrame:
     """The rows of the pairs that have every distance on every test bag of the pair, so that the distances are compared
     on the same bags."""
@@ -101,7 +132,12 @@ def complete_pairs(df: pd.DataFrame) -> pd.DataFrame:
 
 def pair_means(df: pd.DataFrame) -> pd.DataFrame:
     """Per (dataset, classifier, distance): the means of the measures over the test bags of the pair."""
-    return df.groupby(KEYS + ["distance"], as_index=False)[list(MEASURES)].mean()
+    return df.groupby(KEYS + ["distance"], as_index=False)[COLUMNS].mean()
+
+
+def pair_region_means(df: pd.DataFrame) -> pd.DataFrame:
+    """Per (dataset, classifier, region, distance): the means over the test bags of that pair and region."""
+    return df.groupby(KEYS + ["region", "distance"], as_index=False)[COLUMNS].mean()
 
 
 def summary_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -112,7 +148,7 @@ def summary_table(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for distance in _ordered(df["distance"], DISTANCE_ORDER):
         row = {"distance": distance, "n_bags": int((df["distance"] == distance).sum())}
-        row |= {m: float(df.loc[df["distance"] == distance, m].mean()) for m in MEASURES}
+        row |= {m: float(df.loc[df["distance"] == distance, m].mean()) for m in COLUMNS}
         row["n_pairs"] = int(winkler[distance].notna().sum())
         row["n_best"] = int(best[distance].sum())
         if distance == REFERENCE or REFERENCE not in winkler:
@@ -129,7 +165,7 @@ def summary_table(df: pd.DataFrame) -> pd.DataFrame:
 def region_table(df: pd.DataFrame) -> pd.DataFrame:
     """The means of the measures per (region, distance), over the test bags of that region."""
     table = df.groupby(["region", "distance"], as_index=False).agg(
-        n_bags=("ci_winkler", "size"), **{m: (m, "mean") for m in MEASURES}
+        n_bags=("ci_winkler", "size"), **{m: (m, "mean") for m in COLUMNS}
     )
     region_rank = {r: i for i, r in enumerate(_ordered(table["region"], REGION_ORDER))}
     distance_rank = {d: i for i, d in enumerate(_ordered(table["distance"], DISTANCE_ORDER))}
@@ -163,7 +199,8 @@ def compute(df: pd.DataFrame):
     df = complete_pairs(df)
     if df.empty:
         raise RuntimeError("No predist pair has every distance on every test bag.")
-    return pair_means(df), summary_table(df), region_table(df)
+    df = add_diagnostics(df)
+    return pair_means(df), pair_region_means(df), summary_table(df), region_table(df)
 
 
 # --------------------------------------------------------------------------------------------------- LaTeX
@@ -184,15 +221,24 @@ def _bold_best(frame: pd.DataFrame, columns, groups=None) -> pd.DataFrame:
     return out
 
 
+def _format_diagnostics(frame: pd.DataFrame, formatted: pd.DataFrame) -> pd.DataFrame:
+    for column in DIAGNOSTICS:
+        formatted[column] = frame[column].map(lambda v: f"{v:.4f}")
+    return formatted
+
+
 def summary_latex(summary: pd.DataFrame) -> str:
     formatted = _bold_best(summary, list(MEASURES))
     formatted["distance"] = summary["distance"].map(lambda d: DISTANCE_LABELS.get(d, d))
     formatted["n_better_than_l1"] = summary["n_better_than_l1"].map(lambda v: "--" if pd.isna(v) else f"{int(v)}")
     formatted["p_wilcoxon"] = summary["p_wilcoxon"].map(lambda v: "--" if pd.isna(v) else f"{v:.3g}")
-    columns = {"distance": "Distance"} | {m: label for m, (label, _) in MEASURES.items()}
+    formatted = _format_diagnostics(summary, formatted)
+    columns = {"distance": "Distance"} | {m: label for m, (label, _) in MEASURES.items()} | DIAGNOSTICS
     columns |= {"n_best": "Best pairs", "n_better_than_l1": "Pairs $<L_1$", "p_wilcoxon": "$p$ vs $L_1$"}
     formatted = formatted[list(columns)].rename(columns=columns)
-    return booktabs_clines(formatted.style.hide(axis="index").to_latex(hrules=True, column_format="l" + "r" * 8))
+    return booktabs_clines(
+        formatted.style.hide(axis="index").to_latex(hrules=True, column_format="l" + "r" * (len(columns) - 1))
+    )
 
 
 def region_latex(table: pd.DataFrame) -> str:
@@ -201,7 +247,8 @@ def region_latex(table: pd.DataFrame) -> str:
     formatted["region"] = table["region"].map(lambda r: REGION_LABELS.get(r, r))
     formatted["distance"] = table["distance"].map(lambda d: DISTANCE_LABELS.get(d, d))
     columns = {"region": "Region", "distance": "Distance", "n_bags": "Bags"}
-    columns |= {m: label for m, (label, _) in MEASURES.items()}
+    formatted = _format_diagnostics(table, formatted)
+    columns |= {m: label for m, (label, _) in MEASURES.items()} | DIAGNOSTICS
     formatted = formatted[list(columns)].rename(columns=columns).set_index(["Region", "Distance"])
     latex = formatted.style.to_latex(hrules=True, clines="skip-last;data", multirow_align="naive")
     return booktabs_clines(latex)
@@ -215,7 +262,9 @@ CAPTIONS = {
     "bag; best value in bold. \\textit{Best pairs}: pairs where the distance has the lowest per-pair mean Winkler "
     "score (ties count for every tied distance); \\textit{Pairs $<L_1$}: pairs where its per-pair mean Winkler score is "
     "lower than that of $L_1$; $p$: two-sided paired Wilcoxon signed-rank test over the per-pair mean Winkler scores "
-    "against $L_1$.",
+    "against $L_1$. Diagnostics, not in bold: \\textit{Test-prev.\\ error}, the $L_1$ error of the estimated "
+    "prevalence of the test bag (the same for every distance); \\textit{Estimated-space $L_1$}, the mean $L_1$ distance "
+    "between the estimated prevalences of the selected bags and that of the test bag.",
     "region": "The means of the summary table split by the position of the test bag on the simplex (centre, the three "
     "vertices at $1-0.01$, the random point farthest from them); best value of each region in bold.",
 }
@@ -264,11 +313,12 @@ def gen_tables(pargs):
     df = load_results(pargs.domain, pargs.acc_name)
     if df.empty:
         raise RuntimeError(f"No {EXPERIMENT} results with schema_version >= {RESULT_SCHEMA_VERSION} found.")
-    pairs, summary, region = compute(df)
+    pairs, pair_region, summary, region = compute(df)
     out_dir = table_dir(pargs)
     tabular_dir = os.path.join(out_dir, "tabular")
     os.makedirs(tabular_dir, exist_ok=True)
     pairs.to_csv(os.path.join(out_dir, f"{TABLE_NAME}_pairs.csv"), index=False)
+    pair_region.to_csv(os.path.join(out_dir, f"{TABLE_NAME}_pair_region.csv"), index=False)
     latex = {"summary": lambda: summary_latex(summary), "region": lambda: region_latex(region)}
     frames = {"summary": summary, "region": region}
     for name in pargs.tables_set:
