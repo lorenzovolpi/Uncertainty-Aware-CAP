@@ -261,6 +261,7 @@ This part tracks all implementation and experimentation work of the project: wha
 |---|---|---|---|---|---|
 | FIX-8 | Classes of poker_hand too small for $V$: drop classes with an expected count in $V$ below $10$, re-pretrain and re-run poker_hand | fix | Scheduled | none | 2026-11-10 |
 | WP-17 | E6.2: the allocation $\rho$ of SQS-S on the `main` protocol | experiment | Scheduled | WP-15 (done), FIX-8 | 2026-11-10 |
+| WP-18 | E3.3: SQS-B on BayesKDEy with an MLP input | experiment | Scheduled | FIX-8, FIX-2 + FIX-3 | 2026-11-10 |
 | FIX-2 + FIX-3 | SQS-H as in the paper and `RQBS` renamed `SQS-Hbs`; seeded randomness of `QuAcc_NxN`, `O-LEAP`, `SQS-H(bs)` and `PQ` (`cap-ml` and UNCAWE), pin bump, re-run in `main` | fix | In progress | none | 2026-11-10 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
@@ -360,6 +361,27 @@ Entry template:
 - **Done when:** the code and tests are merged; the pilot ($3$ datasets, e.g. `mammographic`, `wine-quality` and a large dataset, with the five classifiers) and the full run (about $4$ hours on `bcuda`, from the $47$ minutes of the `PQ` re-run of 2026-11-09) are done at the user's request and the tables and plots are stored; the Analysis section of E6.2 is written.
 - **Commands:** filled when the code exists.
 - **Log:** 2026-11-10: card added (user's decision).
+- **Outcome:** —
+
+### WP-18 E3.3: SQS-B on BayesKDEy with an MLP input, on the `main` protocol
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext3_posterior_propagation]] E3.3 (former candidate E3.c1), decided by the user on 2026-11-10.
+- **Goal:** add SQS-B, an SQS method that draws one validation bag of $N^Q=1000$ instances from $V$ for each draw $\pi^{(r)}$ of the posterior of BayesKDEy (Gaussian kernel, $b=0.1$, $\lambda=0$, $\pi\sim\operatorname{Dir}(\mathbf 1)$, $\tau=1$) on an MLP trained on $V$ (validation outputs cross-fitted on $5$ folds), and returns the tables of $h$ on these bags; run it on the $75$ pairs of `main` and compare it with `BayCAP-KDEy-mlp-real` (same prevalence draws, only the bridge from prevalence to table differs), `SQS-Hbs`, `SQS-H` and `BayesCAP-Hf-real`.
+- **Estimand:** realised table of the target sample; scored against `true_cts`.
+- **Scope:**
+  - `methods/sqs_b.py:SQSB` (`CAPContingencyTable`, `CTCAPWithConfidence`, as `cap-ml`'s `RQBS`): quantifier fitted on $V$; prevalence draws from `BayCAPKDEy(c_prior="fixed", input_classifier="mlp")` (reused, not copied); draws smoothed as `RQBS` ($\epsilon=10^{-5}$); one bag per draw with QuaPy's `sampling_index` on all of $V$ (class counts rounded, remainder at random, sampling with replacement), all bags drawn sequentially from the NumPy state seeded by `random_state` at each call; tables in the `cap-ml` layout; per-bag summaries `prev_mean`, `acc_sd`, `sigma_g`, `sigma_f`, `val_ece`, $S_{\text{rec}}$, $S_{\text{prec}}$, and NUTS diagnostics.
+  - `experiments/methods.py`: factory entry `SQS-B` (NUTS: $500$ warm-up, $1000$ draws, the seed and MLP `random_state` of `BayCAP-KDEy-mlp-real`), in `BAYES_POOL_METHODS` (`BAYES_ENV`, JAX on CPU).
+  - `tables/main.py`: `SQS-B` in `MAIN_METHODS` (main tables, rank tables, coverage vs amplitude plot), LaTeX macro `\sqsb`.
+  - New table and plot scripts for E3.3: per-pair comparison table (coverage, amplitude, Winkler score of the five methods; AE of `SQS-B` and `BayCAP-KDEy-mlp`; observed and predicted amplitude ratio $\sqrt{(\sigma_p^2+\bar\sigma_f^2)/(\sigma_p^2+\bar\sigma_g^2)}$; paired bootstrap Winkler tests, $10{,}000$ resamples, Holm-adjusted over the $75$ pairs, against `BayCAP-KDEy-mlp-real` and `SQS-Hbs`), the two coverage scatters and the width scatter; `Makefile` targets.
+  - Tests: draws equal to those of `BayCAPKDEy` for the same seeds; bag sizes and class counts; tables of $h$ on the bags, summing to one; determinism; `sigma_f` and the identity $a(1-a)=N^Q\sigma_f^2+S_{\text{rec}}$; factory configuration and inclusion in the tables of `main`.
+  - This document: §II.12 entry (code to move to `cap-ml`).
+- **Depends on:** FIX-8 (the classes of `poker_hand` too small for $V$), and the re-run of `main` in FIX-2 + FIX-3 (`SQS-H`, `SQS-Hbs` after the seeding fix).
+- **Comparability:** adds one method to `main` and leaves the stored results of every other method untouched; adding it to `MAIN_METHODS` changes the mean ranks of the other methods in the rank tables of `main` (not their scores), which are regenerated. Comparable with the CPU results of E3.1 and `BayesCAP-Hf-real`, and with `SQS-H(bs)` after FIX-2 + FIX-3, all after FIX-8.
+- **Deviations from Part V:** none expected.
+- **Done when:** the code and tests are merged, the pilot (two datasets) and the full run ($7500$ NUTS runs) are stored under `<OUT_DIR>/uncawe/main/`, and the tables and plots of E3.3 and of `main` are regenerated.
+- **Commands:** filled when the code exists.
+- **Log:** 2026-11-10: card added and scheduled by the user, after E3.3 was written into [[ext3_posterior_propagation]] (`ecb51fa`).
 - **Outcome:** —
 
 ## III.3 Completed cards
