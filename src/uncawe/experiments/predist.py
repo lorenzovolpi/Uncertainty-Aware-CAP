@@ -1,16 +1,22 @@
-"""Run the implemented diagnostic experiment for PrediQuant distance choices.
+"""Run the implemented diagnostic experiment for PrediQuant distance choices (E6.1 of
+``docs/ext6_sqs_s_design.md``, card WP-16).
 
-The experiment covers selected three-class UCI datasets and one requested
-pre-trained classifier (LR by default).  It places three to five test
-prevalences at informative locations of the ternary simplex, fits PrediQuant
-with KDEy on the validation data, and evaluates each configured distance on the
-same deterministic test bags.
+The experiment covers the three-class UCI datasets of ``THREE_CLASS_DATASETS``
+and the requested pre-trained classifiers (the five of ``main`` by default), with
+all (dataset, classifier) pairs in one parallel pool.  It places three to five
+test prevalences at informative locations of the ternary simplex (the centre,
+the three vertices at $1-0.01$, the random point farthest from them), fits
+PrediQuant once per pair on the validation data with PACC(MLP) and the other
+settings of ``PQ`` in ``main``, and evaluates each configured distance on the
+same deterministic test bags.  Every score is computed against the realised
+table of the test bag.
 
 Its purpose is to study how the distance used by PrediQuant changes the chosen
 validation-prevalence neighbourhood and, consequently, its point estimate and
 confidence interval.  Each record therefore retains requested, actual, and
 predicted test prevalences; selected predicted and true validation prevalences;
-distance summaries; accuracy error; interval coverage, amplitude, and Winkler
+distance summaries, among them the mean $L_1$ distance between the true
+prevalences of the selected bags and the true prevalence of the test bag; accuracy error; interval coverage, amplitude, and Winkler
 score; and runtime.  This is a diagnostic of one method's selection mechanism,
 not a general comparison among CAP methods.
 """
@@ -27,21 +33,24 @@ from cap.models.confidence import PrediQuant
 from cap.utils.commons import contingency_table, parallel
 
 from uncawe.experiments.execution import shutdown_parallel_workers, worker_environment
-from uncawe.experiments.methods import CONFIDENCE_LEVEL, THREAD_LIMITS, kdey
+from uncawe.experiments.methods import CONFIDENCE_LEVEL, THREAD_LIMITS, pacc
 from uncawe.experiments.metrics import acc_from_ct
 from uncawe.experiments.predist_config import (
     DEFAULT_ACC_NAME,
-    DEFAULT_CLASSIFIER,
+    DEFAULT_CLASSIFIERS,
     DEFAULT_DOMAIN,
     DEFAULT_N_JOBS,
+    DEFAULT_NUM_SAMPLES,
     DEFAULT_NUM_TEST,
     DEFAULT_SAMPLE_SIZE,
     DEFAULT_SEED,
     EXPERIMENT,
-    LR_ALIASES,
     METHOD_NAME,
+    PREDIQUANT_ALPHA,
     PREDIQUANT_DISTANCE_FNS,
+    QUANTIFIER_NAME,
     RESULT_SCHEMA_VERSION,
+    SAMPLE_REGIONS,
     THREE_CLASS_DATASETS,
 )
 from uncawe.experiments.predist_io import (
@@ -64,6 +73,9 @@ from uncawe.experiments.predist_sampling import (
 )
 from uncawe.experiments.predist_sampling import (
     make_test_samples as _make_test_samples,
+)
+from uncawe.experiments.predist_sampling import (
+    parse_classifiers as _parse_classifiers,
 )
 from uncawe.experiments.predist_sampling import (
     simplex_points as _simplex_points,
@@ -140,13 +152,35 @@ def _interval_metrics(
     return coverage, amplitude, float(winkler)
 
 
+def build_prediquant(acc_fn, num_samples: int, sample_size: int, distance: str, seed: int) -> PrediQuant:
+    """PrediQuant with the settings of ``PQ`` in ``main`` (``experiments/methods.py:gen_methods``): PACC(MLP) with the
+    MLP seeded by ``qp.environ["_R_SEED"]``, $\\alpha=0.1$ (``num_samples / alpha`` candidate bags), estimated
+    prevalences of the candidates; the split of $V$ and the candidate bags are seeded by ``seed``."""
+    return PrediQuant(
+        acc_fn,
+        pacc(),
+        alpha=PREDIQUANT_ALPHA,
+        num_samples=num_samples,
+        sample_size=sample_size,
+        distance=distance,
+        predict_train_prev=True,
+        random_state=seed,
+    )
+
+
 def _prediquant_predict_with_val_prevs(method: PrediQuant, sample: TestSample):
-    test_prior = method._predict_test_prior(sample.collection.X)
-    closest_idx = method._predict_closest_idx(test_prior)[: method.num_samples]
+    accs = method.predict_range(sample.collection.X, sample.posteriors)
+    closest_idx = method.last_selected_bags
     val_prevs = np.asarray(method.sigma_pred_prevs, dtype=float)[closest_idx]
     val_true_prevs = np.asarray(method.sigma_true_prevs, dtype=float)[closest_idx]
-    accs = np.array([method.acc(ct) for ct in method.sigma_ct])[closest_idx]
-    return accs, test_prior, val_prevs, val_true_prevs
+    return accs, method.last_test_prev, val_prevs, val_true_prevs
+
+
+def true_space_l1(val_true_prev: np.ndarray, actual_prev: np.ndarray) -> float:
+    """Mean $L_1$ distance between the true prevalences of the selected bags and the true prevalence of the test bag
+    (how well the selection works in true-prevalence space, §T.2 of ``docs/ext6_sqs_s_design.md``)."""
+    val_true_prev = np.asarray(val_true_prev, dtype=float)
+    return float(np.abs(val_true_prev - np.asarray(actual_prev, dtype=float).reshape(1, -1)).sum(axis=1).mean())
 
 
 def _record(
@@ -175,9 +209,11 @@ def _record(
         "classifier_full_name": p.h_info.full_name,
         "acc_name": acc_name,
         "method": METHOD_NAME,
+        "quantifier": QUANTIFIER_NAME,
         "schema_version": RESULT_SCHEMA_VERSION,
         "distance": distance,
         "sample_id": sample.sample_id,
+        "region": SAMPLE_REGIONS[sample.sample_id],
         "requested_test_prev": _plain_prev(sample.requested_prev),
         "actual_test_prev": _plain_prev(sample.actual_prev),
         "predicted_test_prev": _plain_prev(predicted_test_prev),
@@ -190,6 +226,7 @@ def _record(
         "dist_median": float(np.median(distances)),
         "dist_max": float(np.max(distances)),
         "dist_p95": float(np.percentile(distances, 95)),
+        "true_dist_l1_mean": true_space_l1(val_true_prev, sample.actual_prev),
         "true_acc": float(true_acc),
         "pred_acc": pred_acc,
         "acc_abs_error": None if pred_acc is None else float(abs(true_acc - pred_acc)),
@@ -237,14 +274,7 @@ def _run_one_pretrain(
         sample_size,
         seed,
     )
-    method = PrediQuant(
-        acc_fn,
-        kdey(),
-        num_samples=num_samples,
-        sample_size=sample_size,
-        distance=distances[0],
-        random_state=seed,
-    )
+    method = build_prediquant(acc_fn, num_samples, sample_size, distances[0], seed)
     method.fit(dataset.V, val_posteriors)
 
     rows = []
@@ -319,15 +349,22 @@ def run(args) -> None:
     log = get_logger(EXPERIMENT)
     distances = _parse_distances(args.distances)
     datasets = _three_class_dataset_names(args.datasets)
+    classifiers = _parse_classifiers(args.classifiers)
     log.info(
-        f"starting {EXPERIMENT}: domain={args.domain}, classifier={args.classifier}, acc={args.acc_name}, "
+        f"starting {EXPERIMENT}: domain={args.domain}, classifiers={classifiers}, quantifier={QUANTIFIER_NAME}, "
+        f"acc={args.acc_name}, "
         f"datasets={datasets}, distances={distances}, num_test={args.num_test}, sample_size={args.sample_size}, "
         f"num_samples={args.num_samples}, n_jobs={args.n_jobs}, plot={not args.no_plot}, overwrite={args.overwrite}"
     )
-    pretrains = _load_filtered_pretrains(args.domain, args.classifier, datasets)
+    pretrains = _load_filtered_pretrains(args.domain, classifiers, datasets)
+    missing = sorted(
+        {(d, h) for d in datasets for h in classifiers}.difference((p.d_info.name, p.h_info.name) for p in pretrains)
+    )
+    if missing:
+        log.warning(f"no pretrain artifact for the pairs {missing}")
     if not pretrains:
         raise RuntimeError(
-            f"No pretrain artifacts found for domain={args.domain!r}, classifier={args.classifier!r}, "
+            f"No pretrain artifacts found for domain={args.domain!r}, classifiers={classifiers}, "
             f"datasets={datasets}. Run the pretrain pipeline first or check the classifier name."
         )
 
@@ -371,11 +408,21 @@ def run(args) -> None:
 def parse_args():
     parser = ArgumentParser(description="PrediQuant simplex-distance experiment on 3-class UCI datasets.")
     parser.add_argument("--domain", default=DEFAULT_DOMAIN)
-    parser.add_argument("--classifier", default=DEFAULT_CLASSIFIER)
+    parser.add_argument(
+        "--classifiers",
+        nargs="*",
+        default=None,
+        help=f"Classifiers (names or comma-separated lists; default: {', '.join(DEFAULT_CLASSIFIERS)})",
+    )
     parser.add_argument("--acc-name", default=DEFAULT_ACC_NAME)
     parser.add_argument("--num-test", type=int, default=DEFAULT_NUM_TEST)
     parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE)
-    parser.add_argument("--num-samples", type=int, default=1000)
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=DEFAULT_NUM_SAMPLES,
+        help=f"Selected bags m (num_samples / {PREDIQUANT_ALPHA} candidates)",
+    )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--distances", nargs="*", default=None)
     parser.add_argument("--datasets", nargs="*", default=None)
