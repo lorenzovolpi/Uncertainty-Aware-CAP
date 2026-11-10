@@ -48,7 +48,7 @@ rather than the recall $d_j$. This changes the finite-$U$ term of the budget of
 [[ext4_uncertainty_budget|Extension 4]], because it conditions on observed
 predictions instead of true class counts.
 
-*Note:* the crisp-prediction variant (realised-table posterior predictive) is now part of [[ext2_baycap|Extension 2]], where it is studied as a correction of the estimand; its comparison with tempering is in [[ext5_baycap_priors_tempering|Extension 5]]. This proposal retains the soft-posterior variant and its link to CBPE.
+*Note:* the crisp-prediction variant (realised-table posterior predictive) is now part of [[ext2_baycap|Extension 2]], where it is studied as a correction of the estimand; its comparison with tempering, proposed in the earlier version of [[ext5_baycap_priors_tempering|Extension 5]], is set aside ([[optional_extensions]] §12). This proposal retains the soft-posterior variant and its link to CBPE.
 
 ### What needs evaluation
 

@@ -494,7 +494,7 @@ which is negative whenever the classifier beats guessing ($r_j>1/K$): every reca
 
 **Why the interval is displaced and not just wide.** By the variance of a Beta distribution (T.9), $ab/\big((a+b)^2(a+b+1)\big)$ with $a=f_{jj}+1$ and $b=n^s_j-f_{jj}+K-1$, so $a+b=n^s_j+K$, the posterior standard deviation of a recall is $\sqrt{\tilde r_j(1-\tilde r_j)/(n^s_j+K+1)}$, the usual standard error of a proportion with the imaginary counts included. The shift shrinks like $K/n^s_j$, the standard deviation only like $1/\sqrt{n^s_j}$, so with large $K$ the shift is several standard deviations. Averaging into accuracy makes it worse. If the random errors $\varepsilon_j$ of the recalls are independent with standard deviation $\sigma$, the error of the accuracy, $\sum_j\pi_j\varepsilon_j$, has variance $\sum_j\pi_j^2\sigma^2$, which is smaller than $\sigma^2$ because $\sum_j\pi_j^2<1$ when more than one class is present ($1/K$ for equal prevalences): the random errors partly cancel. The prior instead pushes every recall in the same direction, so with shifts $\delta_j$ of the same sign the shift of the accuracy, $\sum_j\pi_j\delta_j$, is a weighted average of them and does not shrink. The result is a narrow interval in the wrong place, and the predictive, which only adds spread around the same centre, cannot repair it.
 
-Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$ (one imaginary count per column instead of $K$), are studied in [[ext5_baycap_priors_tempering|Extension 5]]. E2.4 tests instead a prior whose centre and weight are estimated from $V$ (§T.9): $\operatorname{Dir}(1/K)$ puts most of its mass near the edges of the simplex, which is hard to justify as a description of the classifier, while a prior estimated from the data says what $V$ says.
+Other symmetric priors with less total weight, such as $\operatorname{Dir}(1/K)$ (one imaginary count per column instead of $K$), were proposed in the earlier version of [[ext5_baycap_priors_tempering|Extension 5]] and are set aside ([[optional_extensions]] §12). E2.4 tests instead a prior whose centre and weight are estimated from $V$ (§T.9): $\operatorname{Dir}(1/K)$ puts most of its mass near the edges of the simplex, which is hard to justify as a description of the classifier, while a prior estimated from the data says what $V$ says.
 
 **The prior on $\pi^Q$ is not a cause.** `main` draws the target prevalences uniformly over all possible prevalence vectors (quapy's `UPP`), which is exactly BayCAP's default prior $\operatorname{Dir}(\mathbf 1)$ on $\pi^Q$. When the prior matches how the bags are generated, the interval for $\pi^Q$ covers at the nominal rate on average over the bags, so this prior alone cannot explain the under-coverage.
 
@@ -1280,7 +1280,7 @@ Limits: the prevalences of the bags are known, so the toy does not include the e
 
 ## B. Relation to other extensions
 
-- **[[ext5_baycap_priors_tempering|Extension 5]]**: priors (on $\pi^Q$ and on $C$) and tempering of BayCAP (temperature $\tau$); it compares tempering with the realised-table predictive and studies priors on $C$ that avoid the shift of §T.5, such as $\operatorname{Dir}(1/K)$; the empirical-Bayes prior of E2.4 is tested here, because it is the fix suggested by E2.2.
+- **[[ext5_baycap_priors_tempering|Extension 5]]**: the prior on $\pi^Q$ and tempering (temperature $\tau$) of BayCAP-Hf (E2.8) and of BayCAP-KDEy; the priors on $C$ are studied here (E2.4–E2.9), and those of the earlier version of Extension 5, such as $\operatorname{Dir}(1/K)$, are set aside ([[optional_extensions]] §12).
 - **[[ext1_metrics|Extension 1]]**: supplies the metrics.
 - **[[ext4_uncertainty_budget|Extension 4]]**: the estimand gap is its luck of the bag $e_3$, and cause 4 is merged into its recall part $e_2$ (its separate study, E4.c1 and E4.c2, is set aside in [[optional_extensions]] §10); its E4.2 varies $\lvert U\rvert$ and $\lvert V\rvert$ for BayCAP-Hf.
 - **[[extensions_to_evaluate#B. Transductive BayCAP and the link to CBPE [new]|Proposal B]]**: keeps the soft-posterior (CBPE mixture) variant of the realised-table predictive.
@@ -1289,7 +1289,7 @@ Limits: the prevalences of the bags are known, so the toy does not include the e
 
 ## C. Out of scope
 
-- tempering, informative priors, and priors on $C$ other than the empirical-Bayes prior of E2.4 and its hierarchical version of E2.6 ([[ext5_baycap_priors_tempering|Extension 5]]);
+- tempering and informative priors on $\pi^Q$ ([[ext5_baycap_priors_tempering|Extension 5]]); priors on $C$ other than the empirical-Bayes prior of E2.4 and its hierarchical versions ([[optional_extensions]] §12);
 - cause 4 in E2.5: the size of the test pool is not a factor of E2.5 (user's decision of 2026-10-28); cause 4 beyond the explanation of §T.13 (its study in [[ext4_uncertainty_budget|Extension 4]] is set aside in [[optional_extensions]] §10);
 - the soft-posterior variant of the realised-table predictive (Proposal B);
 - post-hoc interval recalibration;
