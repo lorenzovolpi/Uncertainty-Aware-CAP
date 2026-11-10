@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 
+import quapy as qp
 from cap.models.confidence import (
     CBPE,
     RQBS,
@@ -51,7 +52,8 @@ METHOD_CLASS = {
     "QuAcc_NxN": QuAccNxN,
     "O-LEAP": O_LEAP,
     "L-CBPE": CBPE,
-    "RQBS": RQBS,
+    "SQS-H": RQBS,
+    "SQS-Hbs": RQBS,
     "PQ": PrediQuant,
     "BayesCAP": BayCAP,
     "BayesCAP-real": BayCAP,
@@ -107,12 +109,13 @@ KDEY_SETTINGS = {"kernel": "gaussian", "bandwidth": 0.1, "shrinkage": 0.0}
 BAYES_POOL_METHODS = frozenset(BAYCAP_VARIANTS) | frozenset(FIXED_C_VARIANTS) | frozenset(KDEY_HF_VARIANTS)
 
 
+# the MLPs of the quantifiers are seeded with the experiment seed, so that every fit trains the same MLP (FIX-3)
 def kdey():
-    return KDEyML(MLP())
+    return KDEyML(MLP(random_state=qp.environ["_R_SEED"]))
 
 
 def pacc():
-    return PACC(MLP())
+    return PACC(MLP(random_state=qp.environ["_R_SEED"]))
 
 
 def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
@@ -127,7 +130,10 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     )
     yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
     yield "L-CBPE", CBPE(acc_name, calib_method="lascal")
-    yield "RQBS", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE)
+    # SQS-H as in the paper (one estimate of the target prevalence) and with a bootstrap of the prevalence (one bag per
+    # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
+    yield "SQS-H", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=False)
+    yield "SQS-Hbs", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=True)
     yield (
         "PQ",
         PrediQuant(

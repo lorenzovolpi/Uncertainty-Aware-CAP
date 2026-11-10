@@ -18,6 +18,7 @@ METHOD_LATEX_LABELS = {
     "BayCAP-EMQ-mlp-real": "\\bcap{}-EMQ-mlp-real",
     "BayCAP-KDEy-Hf-h-real": "\\bcap{}-KDEy-Hf-h-real",
     "BayCAP-KDEy-Hf-mlp-real": "\\bcap{}-KDEy-Hf-mlp-real",
-    "RQBS": "\\rqbs",
+    "SQS-H": "\\sqsh",
+    "SQS-Hbs": "\\sqshbs",
     "O-LEAP": "LEAP",
 }

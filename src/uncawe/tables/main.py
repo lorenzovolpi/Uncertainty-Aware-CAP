@@ -79,13 +79,15 @@ metrics_map = {
 # the methods of the main tables (user's decision of 2026-11-09): the baselines and SQS methods of the paper without
 # L-CBPE, and the Bayesian methods with the realised-table predictive only: BayCAP (E2.3), BayCAP-Hf (E2.8) and
 # BayCAP-KDEy with an MLP as input classifier and a fixed rate matrix (E3.1); every other method stored in main is
-# left out. Before, the tables showed the methods of the paper (L-CBPE and BayesCAP with the population pushforward
+# left out. Since FIX-2 (2026-11-10) the SQS-H of the paper is SQS-H and the variant with a bootstrap of the
+# prevalence, called RQBS before, is SQS-Hbs; both are shown. Before, the tables showed the methods of the paper (L-CBPE and BayesCAP with the population pushforward
 # included) plus BayesCAP-EB-real, BayesCAP-Hf-real, BayCAP-KDEy-h-real and BayCAP-KDEy-mlp-real.
 MAIN_METHODS = (
     "DoC",
     "QuAcc_NxN",
     "O-LEAP",
-    "RQBS",
+    "SQS-H",
+    "SQS-Hbs",
     "PQ",
     "BayesCAP-real",
     "BayesCAP-Hf-real",
@@ -711,7 +713,8 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
         f"\\setlength{{\\tabcolsep}}{{{TABLE_COLUMN_SEP}}}",
         "",
         "\\newcommand{\\pq}{SQS-S}",
-        "\\newcommand{\\rqbs}{SQS-H}",
+        "\\newcommand{\\sqsh}{SQS-H}",
+        "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
         "\\newcommand{\\bcap}{BayesCAP}",
         "",
         "\\begin{document}",

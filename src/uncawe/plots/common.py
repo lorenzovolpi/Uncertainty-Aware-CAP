@@ -13,8 +13,7 @@ from uncawe.results import Results
 
 EXPERIMENT = "main"
 DEFAULT_DOMAIN = "classic"
-# DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "B-CBPE", "BE-CBPE", "L-CBPE", "RQBS", "PQ", "BayesCAP"]
-DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "RQBS", "PQ", "BayesCAP"]
+DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "SQS-H", "SQS-Hbs", "PQ", "BayesCAP"]
 METHOD_COLORS = {
     "O-LEAP": "#4C78A8",
     "BayesCAP": "#F58518",
@@ -37,7 +36,8 @@ METHOD_COLORS = {
     "BayCAP-KDEy-Hf-h-real": "#17BECF",
     "BayCAP-KDEy-Hf-mlp-real": "#BCBD22",
     "PQ": "#E45756",
-    "RQBS": "#B279A2",
+    "SQS-H": "#6B3D9A",
+    "SQS-Hbs": "#B279A2",
     "DoC": "#54A24B",
     "QuAcc_NxN": "#72B7B2",
     "B-CBPE": "#FF0000",
@@ -47,7 +47,8 @@ METHOD_COLORS = {
 METHOD_PLOT_LABELS = {
     "QuAcc_NxN": "QuAcc",
     "PQ": "SQS-S",
-    "RQBS": "SQS-H",
+    "SQS-H": "SQS-H",
+    "SQS-Hbs": "SQS-Hbs",
     "O-LEAP": "LEAP",
     "BayesCAP": "BayCAP",
     "BayesCAP-real": "BayCAP-real",

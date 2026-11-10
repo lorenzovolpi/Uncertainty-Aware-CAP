@@ -1,5 +1,6 @@
 import unittest
 
+import quapy as qp
 from cap.models.confidence import ACC_BayesCAP
 
 from uncawe.experiments.methods import (
@@ -11,6 +12,7 @@ from uncawe.experiments.methods import (
     FIXED_C_VARIANTS,
     KDEY_HF_VARIANTS,
     METHOD_CLASS,
+    SAMPLE_SIZE,
     gen_methods,
     get_method_names,
 )
@@ -38,7 +40,8 @@ MAIN_SET = [
     "DoC",
     "QuAcc_NxN",
     "O-LEAP",
-    "RQBS",
+    "SQS-H",
+    "SQS-Hbs",
     "PQ",
     "BayesCAP-real",
     "BayesCAP-Hf-real",
@@ -148,6 +151,39 @@ class BayCAPFactoryTest(unittest.TestCase):
                 self.assertIn(name, METHOD_PLOT_LABELS)
                 self.assertIn(name, METHOD_LATEX_LABELS)
                 self.assertIn(name, METHOD_LABELS)
+
+
+class SeededQuantifierTest(unittest.TestCase):
+    """The quantifiers of the non-Bayesian methods are seeded with the experiment seed (FIX-3); the two SQS-H (FIX-2)."""
+
+    def test_quantifier_mlps_are_seeded(self):
+        methods = dict(gen_methods())
+        quantifiers = {
+            "QuAcc_NxN": methods["QuAcc_NxN"].base_method.q_class,
+            "O-LEAP": methods["O-LEAP"].base_method.q_class,
+            "SQS-H": methods["SQS-H"].q,
+            "SQS-Hbs": methods["SQS-Hbs"].q,
+            "PQ": methods["PQ"].q,
+        }
+        for name, quantifier in quantifiers.items():
+            with self.subTest(method=name):
+                self.assertEqual(quantifier.classifier.random_state, qp.environ["_R_SEED"])
+
+    def test_sqs_h_variants(self):
+        # FIX-2: SQS-H as in the paper (one estimate of the prevalence) and SQS-Hbs (bootstrap of the prevalence)
+        methods = dict(gen_methods())
+        self.assertFalse(methods["SQS-H"].bootstrap)
+        self.assertTrue(methods["SQS-Hbs"].bootstrap)
+        for name in ("SQS-H", "SQS-Hbs"):
+            with self.subTest(method=name):
+                self.assertEqual(methods[name].num_samples, BOOTSTRAP_ITERS)
+                self.assertEqual(methods[name].sample_size, SAMPLE_SIZE)
+
+    def test_sqs_h_and_pq_use_the_experiment_seed(self):
+        methods = dict(gen_methods())
+        for name in ("SQS-H", "SQS-Hbs", "PQ"):
+            with self.subTest(method=name):
+                self.assertEqual(methods[name].random_state, qp.environ["_R_SEED"])
 
 
 if __name__ == "__main__":

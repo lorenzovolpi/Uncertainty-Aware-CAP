@@ -5,7 +5,7 @@ The two methods ``BayCAP-KDEy-Hf-<s>-real`` (``methods/baycap_kdey.py:BayCAPKDEy
 input classifier $s\\in\\{h$, mlp$\\}$) sample $(\\pi,C)$ jointly, with the class densities of BayesKDEy written as
 mixtures of the kernel densities of the cells of $V$ and the Hf prior on $C$. They are compared bag by bag with the
 realised BayCAP-KDEy of E3.1 with the same input classifier (``BayCAP-KDEy-<s>-real``, fixed $\\hat C$), with
-``BayesCAP-Hf-real`` (E2.8, the same prior on $C$ with the counts of the predictions as likelihood) and with ``RQBS``.
+``BayesCAP-Hf-real`` (E2.8, the same prior on $C$ with the counts of the predictions as likelihood) and with ``SQS-Hbs`` (called ``RQBS`` until 2026-11-10).
 All six target the realised table of the target bag and are scored against it (``true_cts``). Vanilla accuracy,
 $|U|=1000$, the pairs where the six have stored results (so it also works on the pilot).
 
@@ -65,8 +65,8 @@ NEW = {source: f"BayCAP-KDEy-Hf-{source}-real" for source in SOURCES}
 assert sorted(NEW.values()) == sorted(KDEY_HF_VARIANTS)
 FIXED = {source: f"BayCAP-KDEy-{source}-real" for source in SOURCES}
 HF = baycap_fixed.HF
-RQBS = baycap_fixed.RQBS
-METHODS = [*NEW.values(), *FIXED.values(), HF, RQBS]
+SQS_HBS = baycap_fixed.SQS_HBS
+METHODS = [*NEW.values(), *FIXED.values(), HF, SQS_HBS]
 # the methods whose failed bags (no NUTS draws) are left out of their scores and tests
 HIERARCHICAL = (*NEW.values(), HF)
 SCORES = ("ae", "coverage", "amplitude", "winkler")
@@ -335,7 +335,7 @@ SHORT_LABELS = {
     FIXED["h"]: "KDEy h",
     FIXED["mlp"]: "KDEy mlp",
     HF: "Hf",
-    RQBS: "SQS-H",
+    SQS_HBS: "SQS-H\\textsubscript{bs}",
 }
 # the scores of the comparison table, in the order of E3.1
 TABLE_SCORES = baycap_fixed.TABLE_SCORES

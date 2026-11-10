@@ -63,7 +63,7 @@ def _results():
         counts = np.full((n_classes, n_classes), 5) + 40 * np.eye(n_classes, dtype=int)
         val_counts[(dataset, classifier)] = counts
         for method in bf.METHODS:
-            realised = method.endswith("-real") or method == "RQBS"
+            realised = method.endswith("-real") or method == "SQS-Hbs"
             width = 0.03 if realised else 0.01
             shift = 0.02 if "EMQ" in method else 0.0
             results[method].append(_frame(method, dataset, classifier, n_classes, true_cts, rng, shift, width))
@@ -123,9 +123,9 @@ class FixedCTablesTest(unittest.TestCase):
 
     def test_bags_must_be_paired(self):
         results = dict(self.results)
-        broken = results["RQBS"].copy()
+        broken = results["SQS-Hbs"].copy()
         broken.at[0, "true_cts"] = np.diag([0.1, 0.0]) + 0.45
-        results["RQBS"] = broken
+        results["SQS-Hbs"] = broken
         with self.assertRaises(ValueError):
             bf.pair_table(results, self.val_counts)
 

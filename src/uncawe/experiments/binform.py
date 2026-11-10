@@ -6,7 +6,7 @@ Dirichlet distribution whose concentration is obtained from validation
 prevalence $p$ through $q_i = c(1-p_i)/(K-1)$, then constructs one test bag for
 each prevalence.
 
-The experiment compares O-LEAP and RQBS with two BayesCAP variants: a uniform
+The experiment compares O-LEAP and SQS-Hbs (called RQBS until 2026-11-10) with two BayesCAP variants: a uniform
 prior and a prior derived from the transformed validation prevalence.  Its
 purpose is to isolate how BayesCAP's prior choice affects point estimates and
 confidence intervals under this controlled prevalence-shift regime.  It emits
@@ -64,7 +64,7 @@ BAYESCAP_PRIOR_C = 3.0
 TEST_PRIOR_C = 10.0
 
 CLASSIFIERS = frozenset({"LR", "kNN", "SVM", "MLP", "RF"})
-REGULAR_METHOD_NAMES = ("O-LEAP", "RQBS")
+REGULAR_METHOD_NAMES = ("O-LEAP", "SQS-Hbs")
 METHOD_PRIOR_KINDS = {
     "BayesCAP_uniform": "uniform",
     "BayesCAP_transformed_val": "transformed_val",
