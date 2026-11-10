@@ -259,7 +259,8 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
-| WP-17 | E6.2: the allocation $\rho$ of SQS-S on the `main` protocol | experiment | Scheduled | WP-15 (done) | 2026-11-10 |
+| FIX-8 | Classes of poker_hand too small for $V$: drop classes with an expected count in $V$ below $10$, re-pretrain and re-run poker_hand | fix | Scheduled | none | 2026-11-10 |
+| WP-17 | E6.2: the allocation $\rho$ of SQS-S on the `main` protocol | experiment | Scheduled | WP-15 (done), FIX-8 | 2026-11-10 |
 | FIX-2 + FIX-3 | SQS-H as in the paper and `RQBS` renamed `SQS-Hbs`; seeded randomness of `QuAcc_NxN`, `O-LEAP`, `SQS-H(bs)` and `PQ` (`cap-ml` and UNCAWE), pin bump, re-run in `main` | fix | In progress | none | 2026-11-10 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
@@ -302,6 +303,28 @@ Entry template:
 - **Log:** <dated notes on progress: pilot run, problems, decisions>
 - **Outcome:** <filled when the branch is merged: merge commit; decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card>
 ```
+
+### FIX-8 The smallest class of poker_hand is too small for the validation set
+
+- **Kind / status:** fix / Scheduled
+- **Source:** Part IV, FIX-8, scheduled by the user on 2026-11-10, after the run of E6.2 (card WP-17), where `poker_hand` failed at $\rho=0.1$ and $\rho=0.9$ with every classifier.
+- **Goal:** keep only the classes of a multiclass dataset that have, in expectation, at least $k=10$ instances in $V$, and re-run what uses `poker_hand`. quapy drops the classes with fewer than `min_class_support=100` instances of the full collection, but the training part is then capped at $25{,}000$ instances and halved into $T$ and $V$, so a class with $s_j$ instances of the $n$ of the collection has about $\lvert V_j\rvert\approx s_j\,n_{\text{train}}/(2n)$ instances in $V$, with $n_{\text{train}}=\min(0.7\,n,25{,}000)$. The rule keeps class $\omega_j$ when $s_j\,n_{\text{train}}/(2n)\ge k$, that is, it uses the threshold $s_j\ge\lceil 2k\,n/n_{\text{train}}\rceil$ (user's decisions of 2026-11-10: $k=10$, applied to every multiclass dataset, the cap of $25{,}000$ unchanged). On the datasets of `main` it changes only `poker_hand` ($n=1{,}024{,}985$, threshold $820$): class 7 ($236$ instances, $3$ in $V$) is dropped, $K$ goes from $8$ to $7$, and the smallest class (class 6, $1{,}460$ instances) has about $18$ instances in $V$. The smallest class in $V$ of every other multiclass dataset of `main` has at least $37$ instances (`shuttle`; counts of 2026-11-10 from the current pipeline, see the Log), so nothing else changes; binary datasets are not filtered.
+- **Estimand:** unchanged for every method; the fix changes the data of `poker_hand`, not what the methods estimate.
+- **Scope:**
+  - `cap-ml` (owned by the user; committed by the user): `fetch_UCIMulticlassDataset` (`cap/data/datasets.py`) takes a `min_class_support` and passes it to quapy's `fetch_UCIMulticlassDataset`; pin bump in UNCAWE (`pyproject.toml`, `uv.lock`).
+  - UNCAWE: a function that computes the threshold of the rule for a dataset, used by every call of `fetch_UCIMulticlassDataset`: `pretrain/classic.py`, `experiments/datasets.py`, `pretrain/dataset.py:sort_datasets_by_size`, `plots/binform_simplex.py`; tests (the threshold of `poker_hand` is $820$, the classes kept, every other multiclass dataset of `main` unchanged).
+  - Pretraining: the five `poker_hand` classifiers (LR, kNN, SVM, MLP, RF) are moved to a backup and pretrained again (`pretrain/classic.py` skips the classifiers already stored and has no dataset filter); $T$, $V$ and $U$ of `poker_hand` all change, since they are stratified splits of a different collection.
+  - Stored results: every `poker_hand` file of `main` (all methods, the three metrics) is moved to `<OUT_DIR>/uncawe/main_pre_fix8/`, same tree. The files of `B-CBPE`, `BE-CBPE` and `QuAcc_1xN2`, which the code no longer builds (§II.7), are moved and not re-run. The other backup trees (`main_pre_fix3`, `main_22_10_26`, `main_03_06_26`, `main_pq_pre_fix1`, `main_pq_pre_wp14`) are not touched.
+  - Runs in `main` on `poker_hand` ($5$ pairs, $100$ bags, three metrics), with the methods grouped by source: §I.2 (`DoC`, `L-CBPE`, `BayesCAP`); FIX-2 + FIX-3 (`QuAcc_NxN`, `O-LEAP`, `SQS-H`, `SQS-Hbs`, `PQ`), covered by the re-run of that card if it runs after this fix; Extension 2 (`BayesCAP-real`, E2.3; `BayesCAP-EB`, `BayesCAP-EB-real`, E2.4; `BayesCAP-H-real`, E2.7; `BayesCAP-Hf-real`, E2.8; `BayesCAP-Hfn-real`, E2.9, on `poker_hand` × LR only, the pair of its pilot); Extension 3 (the eight methods of E3.1, `BayCAP-{KDEy,EMQ}-{h,mlp}` and their `-real` variants; the two of E3.2, `BayCAP-KDEy-Hf-{h,mlp}-real`); Extension 6 (`PQ-rho0.1`, …, `PQ-rho0.9`, E6.2, card WP-17). $29$ methods in all.
+  - Tables and plots regenerated (no new runs): `main` (main tables, rank tables, coverage vs amplitude, AE vs Winkler, rank heatmap); E2.1 (`tables/estimand_gap.py`); E2.2 (`tables/displacement.py`, `plots/displacement.py`); E2.3 (`tables/pushforward.py`, `plots/pushforward.py`); E2.4 (`tables/eb_prior.py`, `plots/eb_prior.py`); E2.6 (`tables/hierarchical.py`, `plots/hierarchical.py`, which read the counts of $V$); E2.7, E2.8, E2.9 (`tables/baycap_h.py`, `tables/baycap_hf.py`, `tables/baycap_hfn.py` with `--check`, and their plots); E3.1, E3.2 (`tables/baycap_fixed.py`, `tables/baycap_kdey_hf.py`, their plots); E4.1 and E4.3 (`tables/error_split.py`, `plots/error_split.py`); E6.2 (`tables/pq_rho.py`, `plots/pq_rho.py`, then on $75$ pairs). Not affected: E2.5 (`eb_binary`, binary datasets), Extension 5 (`binform`, three-class datasets), E6.1 (`predist`, three-class datasets), the toy simulations; E4.2 has not been run.
+  - Documents: the numbers of Part I, Part II and of the Analysis sections of the extensions that include `poker_hand` are updated from the regenerated tables, marked as after FIX-8; a conclusion that changes is reported to the user, not rewritten silently. This document: the Part IV entry FIX-8 removed when done, the change noted in Part I (§I.1) and in the Part II sections of the experiments re-run.
+- **Depends on:** none. Order with FIX-2 + FIX-3 (In progress, re-run of `main` pending): FIX-8 first, so that `poker_hand` is re-run once and the tables of `main` are regenerated once for both fixes.
+- **Comparability:** the results on `poker_hand` before and after the fix are not comparable ($K=8$ against $K=7$, different $T$, $V$, $U$ and classifiers); the old ones stay in `main_pre_fix8/`, and the paper's `poker_hand` rows change. The other $70$ pairs of `main` and every other experiment are unchanged. The ranking of the datasets by size, which selects the datasets of `main`, is unchanged ($n$ drops by $236$).
+- **Deviations from Part V:** none.
+- **Done when:** the `cap-ml` code is committed and pinned, the UNCAWE code and tests pass, `poker_hand` is pretrained again, the runs above are stored, the tables and plots are regenerated, the documents are updated, and the branch is merged.
+- **Commands:** filled when the code exists.
+- **Log:** 2026-11-10: card added and scheduled by the user, after the run of E6.2 (WP-17), which is paused until this fix is done. The class counts in $V$ of the datasets of `main` were computed with a scratch script on the current pipeline (`cap-ml` `637fdd5`, threshold $100$): smallest class in $V$ $3$ (`poker_hand`, then $18$, $25$, $48$), $37$ (`shuttle`), $67$ (`wine-quality`), $69$ (`chess`), $104$ (`isolet`), $115$ (`nursery`), $182$ (`dry-bean`), $257$ (`letter`), $369$ (`hand_digits`), $1{,}193$ (`connect-4`); binary: $56$ (`semeion`) and at least $105$ for the others. Raising the cap of $25{,}000$ was discussed and set aside: it would change only `poker_hand`, `connect-4` and `shuttle` (the datasets with $0.7\,n>25{,}000$), but it would give them a larger $V$ than every other dataset, and `poker_hand` would need $n_{\text{train}}\approx217{,}000$ for $25$ instances of class 7 in $V$.
+- **Outcome:** —
 
 ### FIX-2 + FIX-3 SQS-H as in the paper, `RQBS` renamed `SQS-Hbs`, seeded randomness of the surrogate quantifiers, pin bump, re-run in `main`
 
@@ -706,6 +729,15 @@ Coverage, amplitude and Winkler score are computed separately in `tables/main.py
 ## IV.7 (FIX-7) README
 
 `README.md` is in Italian and documents only `main`, its tables and the coverage–amplitude plot. It does not cover `binform`, `predist`, `BayCAPFixed`, the extra plots or the tests.
+
+## IV.8 (FIX-8) The smallest class of poker_hand is too small for the validation set
+
+Scheduled on 2026-11-10 (entry FIX-8 in §III.2); the code below is the code of `devel`, until the fix is merged.
+
+- **Problem.** `cap-ml`'s `fetch_UCIMulticlassDataset` calls quapy's `fetch_UCIMulticlassDataset` without `min_class_support`, so quapy drops the classes with fewer than $100$ instances of the full collection. The training part is then capped at `max_train_instances=25000` and halved into $T$ and $V$ (`split_train`, `train_val_split=0.5`), so a class with $s_j$ instances of the $n$ of the collection has about $\lvert V_j\rvert\approx s_j\,n_{\text{train}}/(2n)$ instances in $V$. On `poker_hand` ($n=1{,}024{,}985$, $n_{\text{train}}=25{,}000$) this is $s_j/82$: class 7 ($236$ instances) has $3$ instances in $V$. With so few instances the recalls of $h$ on that class are estimated on almost nothing, and the split of SQS-S with $\rho\in\{0.1,0.9\}$ leaves the class empty in $V_q$ or $V_b$ (E6.2, card WP-17: $10$ failed (pair, level), every classifier of `poker_hand`). The smallest class in $V$ of every other multiclass dataset of `main` has at least $37$ instances.
+- **Fix.** A class is kept when its expected count in $V$ is at least $k=10$, $s_j\ge\lceil2k\,n/n_{\text{train}}\rceil$, for every multiclass dataset; the cap is unchanged. Only `poker_hand` changes (threshold $820$; class 7 dropped, $K=7$).
+- **Where:** `cap-ml` (a `min_class_support` parameter of `fetch_UCIMulticlassDataset`, pin bump); UNCAWE (the threshold of the rule passed by every caller).
+- **Comparability:** `poker_hand` changes ($K$, $T$, $V$, $U$, classifiers): its five classifiers are pretrained again and its results in `main` re-run for every method, and every table, plot and analysis that includes it is regenerated (the list is in the entry FIX-8 of §III.2). The other pairs and experiments are unchanged.
 
 # Part V: Implementation conventions
 
