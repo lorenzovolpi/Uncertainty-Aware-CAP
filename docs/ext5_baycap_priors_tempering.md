@@ -13,7 +13,7 @@ The two Bayesian CAP methods kept by Extensions 2 and 3, BayCAP-Hf (`BayesCAP-Hf
 | BayCAP-KDEy: `methods/baycap_kdey.py:BayCAPKDEy` with `c_prior="fixed"`, MLP input, `estimand="realised"`; arguments `prior` and `temperature` (the latter divides the log-likelihood of the bag) | [implemented]; evaluated with the uniform prior and $\tau=1$ only ([[ext3_posterior_propagation|Extension 3]] E3.1) |
 | `binform` experiment: bags at prevalences drawn from a non-uniform $G$ (built from $\pi^V$), `connect-4` only, the old `BayesCAP` with two priors on $\pi^Q$, $\lvert U\rvert=1000$ | [implemented] ([[work_plan]] §II.2); to be extended for E5.1, with the $G$ of E5.1 |
 | Toy simulation of §T.3 (`scripts/toys/ext5_prior_calibration.py`) | [implemented] |
-| E5.1 (prior on $\pi^Q$), E5.2 (tempering) | [proposal], no card |
+| E5.1 (prior on $\pi^Q$), E5.2 (tempering) | [proposal]; cards WP-19 (E5.1) and WP-20 (E5.2), Scheduled ([[work_plan]] §III) |
 | Candidates E5.c1 (tempering of one likelihood term), E5.c2 (selection of $\tau$ on validation bags), E5.c3 (prior $\times$ temperature) | [proposal], not scheduled |
 | Prior on $C$ ($\operatorname{Dir}(1/K)$, diagonal-aware prior), comparison of tempering with the realised-table predictive, the full grid of priors on $\pi^Q$, hypotheses H1, H4, H5, H7, H8 and the paper outline of the earlier version | set aside on 2026-11-10, in [[optional_extensions]] §12 |
 

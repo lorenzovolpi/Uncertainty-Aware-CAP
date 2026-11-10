@@ -262,6 +262,8 @@ This part tracks all implementation and experimentation work of the project: wha
 | FIX-8 | Classes of poker_hand too small for $V$: drop classes with an expected count in $V$ below $10$, re-pretrain and re-run poker_hand | fix | Scheduled | none | 2026-11-10 |
 | WP-17 | E6.2: the allocation $\rho$ of SQS-S on the `main` protocol | experiment | Scheduled | WP-15 (done), FIX-8 | 2026-11-10 |
 | WP-18 | E3.3: SQS-B on BayesKDEy with an MLP input | experiment | Scheduled | FIX-8, FIX-2 + FIX-3 | 2026-11-10 |
+| WP-19 | E5.1: the prior on $\pi^Q$ for BayCAP-Hf and BayCAP-KDEy (extended `binform`) | experiment | Scheduled | FIX-8 | 2026-11-10 |
+| WP-20 | E5.2: tempering BayCAP-Hf and BayCAP-KDEy, $\tau$ chosen by leaving one dataset out | experiment | Scheduled | FIX-8 | 2026-11-10 |
 | FIX-2 + FIX-3 | SQS-H as in the paper and `RQBS` renamed `SQS-Hbs`; seeded randomness of `QuAcc_NxN`, `O-LEAP`, `SQS-H(bs)` and `PQ` (`cap-ml` and UNCAWE), pin bump, re-run in `main` | fix | In progress | none | 2026-11-10 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
@@ -382,6 +384,45 @@ Entry template:
 - **Done when:** the code and tests are merged, the pilot (two datasets) and the full run ($7500$ NUTS runs) are stored under `<OUT_DIR>/uncawe/main/`, and the tables and plots of E3.3 and of `main` are regenerated.
 - **Commands:** filled when the code exists.
 - **Log:** 2026-11-10: card added and scheduled by the user, after E3.3 was written into [[ext3_posterior_propagation]] (`ecb51fa`).
+- **Outcome:** —
+
+### WP-19 E5.1: the prior on $\pi^Q$ for BayCAP-Hf and BayCAP-KDEy (extended `binform`)
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext5_baycap_priors_tempering]] (E5.1)
+- **Goal:** measure how much the knowledge of the distribution $G$ of the target prevalences improves the realised intervals of `BayesCAP-Hf-real` (BayCAP with the Hf prior on $C$, realised pushforward) and `BayCAP-KDEy-mlp-real` (BayesKDEy with an MLP input and a fixed $\hat C$, realised pushforward), and what a prior with a wrong mean costs. Under the protocol of `main` the bags are uniform on the simplex, so the default uniform prior is already the well-specified one; E5.1 draws its bags from a non-uniform $G=\operatorname{Dir}(3K\mu^\star)$, whose concentration grows with the number of classes $K$ so that $G$ is about three times less spread than the uniform distribution on every dataset. For each dataset (shared by its five classifiers) two means $\mu^\star$ and $\mu^\dagger$ are drawn from $\operatorname{Dir}(\mathbf 1)$ with a seed fixed per dataset, and drawn again until each is at $L_1$ distance at least $0.5$ from the centre $\mathbf 1/K$ and they are at $L_1$ distance at least $0.5$ from each other. Three priors on $\pi^Q$: uniform $\operatorname{Dir}(\mathbf 1)$; well specified, $\operatorname{Dir}(3K\mu^\star)=G$; misspecified, $\operatorname{Dir}(3K\mu^\dagger)$. All $75$ pairs of `main`, bag sizes $\lvert U\rvert\in\{100,1000\}$, $\tau=1$, $100$ bags per (pair, bag size), drawn from the test pool with seeded generators and the same for every prior and method. Measures (vanilla accuracy, macro-F1, macro-K): AE, coverage, amplitude, Winkler score at $\alpha=0.05$; per pair the value of the knowledge $\Delta W_{\text{know}}=W_{\text{uniform}}-W_{\text{well-specified}}$, the cost of wrong knowledge $\Delta W_{\text{wrong}}=W_{\text{misspecified}}-W_{\text{uniform}}$, and the ratio of the amplitudes of the well-specified and uniform priors; paired Wilcoxon tests over the $75$ per-pair means. No decision rule.
+- **Estimand:** the realised table of each bag (`true_cts`), for every prior and method.
+- **Scope:**
+  - `experiments/binform.py`: options for the datasets (all those of `main`), the bag size (written in the output path) and the methods; the $G$ of E5.1, with the seeded rule for the two means, which are stored with the results; factory entries for the two methods with each of the three priors. The default configuration (`connect-4`, the old `BayesCAP` with its two priors, $c=10$, $\lvert U\rvert=1000$) is unchanged.
+  - new table module: per method, metric and bag size, the means over the pairs of AE, coverage, amplitude and Winkler score for each prior, $\Delta W_{\text{know}}$, $\Delta W_{\text{wrong}}$, the number of pairs with a lower Winkler score than the uniform prior and the $p$-values of the paired tests, also split by $K$ ($K=2$, $3\le K\le7$, $K\ge8$);
+  - new plot module: per method, the per-pair Winkler score with the uniform prior against that with each informative prior, coloured by $K$, one panel per bag size, with the diagonal;
+  - `Makefile` targets; tests: the means are reproducible for a seed, lie on the simplex and satisfy the distance conditions; the concentrations are $3K\mu$; `binform` with its default arguments builds the same tasks and bags as before; the table and the plot on a synthetic result.
+- **Depends on:** FIX-8 (the classes of `poker_hand` too small for $V$; its pre-trained classifiers and splits change).
+- **Comparability:** new bags, so the results are comparable within E5.1 only, not with `main` nor with the stored `binform` results, which are unchanged. Cost: $2$ methods $\times$ $3$ priors $\times$ $2$ bag sizes on the $75$ pairs ($900$ runs of $100$ bags); BayCAP-KDEy samples $\pi$ alone and is cheap, BayCAP-Hf costs about one run of `BayesCAP-Hf-real` in `main` per (prior, bag size).
+- **Deviations from Part V:** to be stated when the code exists.
+- **Done when:** the code and tests are merged; the pilot ($3$ datasets with the five classifiers) and the full run are done with stored results.
+- **Commands:** filled when the code exists.
+- **Log:** 2026-11-10: card added (user's decision).
+- **Outcome:** —
+
+### WP-20 E5.2: tempering BayCAP-Hf and BayCAP-KDEy, $\tau$ chosen by leaving one dataset out
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext5_baycap_priors_tempering]] (E5.2)
+- **Goal:** measure whether tempering lowers the Winkler score of `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real` when the temperature $\tau$ is chosen without the labels of the target dataset. Tempering divides the log-likelihood by $\tau$, which counts the data $\tau$ times less and widens the posterior by about $\sqrt\tau$ without moving its centre. Sweep $\tau\in\{0.5,1,2,4,8\}$ on the protocol of `main` ($75$ pairs, $100$ bags of size $1000$, uniform prior on $\pi^Q$); BayCAP-Hf is tempered jointly, its log-likelihoods of the validation counts and of the predicted counts of the bag both divided by $\tau$ and its priors unchanged; BayCAP-KDEy on the log-likelihood of the bag, its only one. For each of the $15$ datasets $d$ and per method and metric, $\tau_{-d}$ is the value with the lowest mean, over the $70$ pairs of the other $14$ datasets, of the per-pair mean Winkler score, and the pairs of $d$ are scored at $\tau_{-d}$. Decision rule (user's decision of 2026-11-10): for each method and for vanilla accuracy, tempering is retained if $\tau_{-d}$ lowers the per-dataset mean Winkler score (mean over the five pairs of the dataset) with respect to $\tau=1$, by a paired Wilcoxon signed-rank test over the $15$ datasets with $p<0.05$; otherwise $\tau=1$ is kept. References, chosen with the target labels: the oracle-best $\tau$ of each pair and the global best $\tau$ over all pairs. Also measured: for BayCAP-KDEy, the observed widening of the amplitude with respect to $\tau=1$ against the prediction $\sqrt{(\tau+r^2)/(1+r^2)}$ with $r=\bar\sigma_g/\sigma_p$ stored per bag; for BayCAP-Hf, the NUTS diagnostics at every $\tau$.
+- **Estimand:** the realised table of each bag (`true_cts`), for every $\tau$.
+- **Scope:**
+  - `methods/baycap.py`: argument `temperature` (positive, default $1$) of `BayCAP`, scaling by $1/\tau$ the log-likelihoods of the validation counts and of the bag counts (e.g. `numpyro.handlers.scale` on the two observed sites), for every `c_prior`, the priors unscaled; its entry in §II.12 updated;
+  - `experiments/methods.py`: entries `BayesCAP-Hf-real-t<τ>` and `BayCAP-KDEy-mlp-real-t<τ>` for $\tau\in\{0.5,2,4,8\}$ (`BayCAPKDEy` already has `temperature`), excluded from the tables, ranks and default plots of `main`; the NUTS diagnostics of the Hf entries stored as for `BayesCAP-Hf-real`;
+  - new table module: per method and metric, the means over the pairs at every $\tau$, the leave-one-dataset-out selection and the test of the decision rule, $\tau_{-d}$ per dataset, the global best $\tau$ and the oracle-best $\tau$ per pair (references), and for BayCAP-KDEy the observed and predicted widening;
+  - new plot module: the measures against $\tau$, the mean over the pairs in bold and each pair as a faint line, also split by $K$; for BayCAP-KDEy, observed against predicted widening;
+  - `Makefile` targets; tests: `temperature=1` reproduces the current draws for every `c_prior` and the same `random_state`; with `c_prior="uniform"`, a large $V$ and a large $\tau$, the posterior mean of each column of $C$ matches $(f_{\cdot j}/\tau+1)/(n^s_j/\tau+K)$ within Monte Carlo error; $\tau_{-d}$ never depends on the scores of $d$; the table and the plot on a synthetic result.
+- **Depends on:** FIX-8 (the classes of `poker_hand` too small for $V$; the stored runs at $\tau=1$ of `poker_hand` are re-run by it).
+- **Comparability:** adds methods to `main`; the stored results of every other method are unchanged. The runs at $\tau=1$ are the stored `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real` if the reproduction test passes with the code that produced them, otherwise they are run again. Cost: $4$ values of $\tau$ $\times$ $2$ methods on the $75$ pairs ($600$ runs of $100$ bags); for BayCAP-Hf each value costs about one run of `BayesCAP-Hf-real`; at $\tau=0.5$ the sampler may diverge more.
+- **Deviations from Part V:** to be stated when the code exists.
+- **Done when:** the code and tests are merged; the pilot ($3$ datasets with the five classifiers) and the full run are done with stored results.
+- **Commands:** filled when the code exists.
+- **Log:** 2026-11-10: card added (user's decision).
 - **Outcome:** —
 
 ## III.3 Completed cards
