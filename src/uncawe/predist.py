@@ -7,14 +7,13 @@ os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matpl
 
 from uncawe.experiments.predist import (
     DEFAULT_ACC_NAME,
-    DEFAULT_CLASSIFIER,
+    DEFAULT_CLASSIFIERS,
     DEFAULT_DOMAIN,
     DEFAULT_N_JOBS,
     DEFAULT_NUM_TEST,
     DEFAULT_SAMPLE_SIZE,
     DEFAULT_SEED,
     EXPERIMENT,
-    LR_ALIASES,
     METHOD_NAME,
     PREDIQUANT_DISTANCE_FNS,
     RESULT_SCHEMA_VERSION,
@@ -27,14 +26,13 @@ from uncawe.experiments.predist import (
 
 __all__ = [
     "DEFAULT_ACC_NAME",
-    "DEFAULT_CLASSIFIER",
+    "DEFAULT_CLASSIFIERS",
     "DEFAULT_DOMAIN",
     "DEFAULT_N_JOBS",
     "DEFAULT_NUM_TEST",
     "DEFAULT_SAMPLE_SIZE",
     "DEFAULT_SEED",
     "EXPERIMENT",
-    "LR_ALIASES",
     "METHOD_NAME",
     "PREDIQUANT_DISTANCE_FNS",
     "RESULT_SCHEMA_VERSION",

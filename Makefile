@@ -66,6 +66,7 @@ EXP_tables-baycap-hfn := python -m uncawe.tables.baycap_hfn
 EXP_tables-baycap-fixed := python -m uncawe.tables.baycap_fixed
 EXP_tables-baycap-kdey-hf := python -m uncawe.tables.baycap_kdey_hf
 EXP_tables-error-split := python -m uncawe.tables.error_split
+EXP_tables-predist   := python -m uncawe.tables.predist
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic

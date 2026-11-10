@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 from quapy.data import LabelledCollection
 
-from uncawe.experiments.predist_config import LR_ALIASES, THREE_CLASS_DATASETS
+from uncawe.experiments.predist_config import DEFAULT_CLASSIFIERS, THREE_CLASS_DATASETS
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.pretrain.dataset import sort_datasets_by_size
 
@@ -19,35 +19,38 @@ class TestSample:
     posteriors: np.ndarray
 
 
-def _normalise_name(name: str) -> str:
-    return name.lower().replace("-", "").replace("_", "").replace(" ", "")
-
-
-def is_lr_classifier(p: PretrainInfo, requested: str) -> bool:
-    requested_norm = _normalise_name(requested)
-    accepted = {_normalise_name(alias) for alias in LR_ALIASES | {requested}}
-    candidates = [p.h_info.name, p.h_info.full_name, p.h_info.class_name]
-    return requested_norm in accepted and any(_normalise_name(str(candidate)) in accepted for candidate in candidates)
-
-
 def three_class_dataset_names(requested: list[str] | None = None) -> list[str]:
     return sort_datasets_by_size("uci_multiclass", THREE_CLASS_DATASETS if requested is None else requested)
 
 
-def load_filtered_pretrains(domain: str, classifier: str, datasets: list[str]) -> list[PretrainInfo]:
+def load_filtered_pretrains(domain: str, classifiers: list[str], datasets: list[str]) -> list[PretrainInfo]:
+    """The pretrains of the three-class ``datasets`` and the ``classifiers`` (by ``ClassifierInfo.name``), one per
+    (dataset, classifier) pair, ordered by dataset as in ``datasets`` and by classifier as in ``classifiers``."""
     wanted = set(datasets)
     pretrains = []
     for path in load_info_paths(domain=domain):
         p = PretrainInfo.load(path, fast=True)
         if p.d_info.collection != "uci_multiclass" or p.d_info.n_classes != 3:
             continue
-        if p.d_info.name not in wanted or not is_lr_classifier(p, classifier):
+        if p.d_info.name not in wanted or p.h_info.name not in classifiers:
             continue
         pretrains.append(p)
 
-    order = {name: index for index, name in enumerate(datasets)}
-    pretrains.sort(key=lambda p: (order[p.d_info.name], p.h_info.full_name))
+    dataset_order = {name: index for index, name in enumerate(datasets)}
+    classifier_order = {name: index for index, name in enumerate(classifiers)}
+    pretrains.sort(key=lambda p: (dataset_order[p.d_info.name], classifier_order[p.h_info.name], p.h_info.full_name))
     return pretrains
+
+
+def parse_classifiers(requested: list[str] | None) -> list[str]:
+    """The classifiers of ``--classifiers`` (names or comma-separated lists); the five of ``main`` by default."""
+    if not requested:
+        return list(DEFAULT_CLASSIFIERS)
+    classifiers = [part.strip() for item in requested for part in item.split(",") if part.strip()]
+    invalid = sorted(set(classifiers).difference(DEFAULT_CLASSIFIERS))
+    if invalid:
+        raise ValueError(f"Invalid classifiers {invalid}; valid values are {list(DEFAULT_CLASSIFIERS)}")
+    return list(dict.fromkeys(classifiers))
 
 
 def simplex_points(rng: np.random.RandomState, n_points: int, eps: float = 0.01) -> list[np.ndarray]:
