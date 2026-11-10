@@ -2,10 +2,18 @@
 ``docs/ext4_uncertainty_budget.md``).
 
 Reads the per-pair table of :mod:`uncawe.tables.error_split` (vanilla accuracy, $|U|=1000$, every method scored against
-the realised table of each bag). One panel per dataset, one bar per method; each bar stacks the mean square over the
-bags of $e_1$ (prevalence), $e_2$ (recalls against the pool) and $e_3$ (luck of the bag, on the bags the method kept),
-averaged over the classifiers of the dataset; a black dot marks the mean square of the total error $\\hat A-A$. The
-stacked height differs from the dot by twice the mean cross products of the parts, which can be negative.
+the realised table of each bag). Each bar stacks the mean square over the bags of $e_1$ (prevalence), $e_2$ (recalls
+against the pool) and $e_3$ (luck of the bag, on the bags the method kept), averaged over the classifiers of the
+dataset; a black dot marks the mean square of the total error $\\hat A-A$. The stacked height differs from the dot by
+twice the mean cross products of the parts, which can be negative. The scale is linear, so that the stacked segments
+are comparable.
+
+Figures (``--figures``):
+
+- ``bars``: one panel per dataset, one bar per method, every method of the split except ``QuAcc_NxN``, whose errors are
+  one to two orders of magnitude larger and would flatten the other bars (user's decision of 2026-11-10; ``O-LEAP``
+  stays as the baseline);
+- ``bars-quacc``: ``QuAcc_NxN`` alone, one panel, one bar per dataset.
 
 Output: ``<OUT_DIR>/uncawe/plots/main/error_split/``.
 """
@@ -28,10 +36,13 @@ from uncawe.tables import main as main_tables
 from uncawe.tables.error_split import METHODS, compute
 
 PLOT_NAME = "error_split"
-FIGURES = ("bars",)
+FIGURES = ("bars", "bars-quacc")
 PART_COLORS = {"e1": "#4C78A8", "e2": "#F58518", "e3": "#BAB0AC"}
 PART_NAMES = {"e1": "$e_1$ prevalence", "e2": "$e_2$ recalls", "e3": "$e_3$ luck of the bag"}
 COL_WRAP = 5
+# the method plotted on its own (figure ``bars-quacc``) and left out of the figure ``bars``
+SEPARATE = "QuAcc_NxN"
+MAIN_METHODS = tuple(m for m in METHODS if m != SEPARATE)
 
 
 def mean_squares(table: pd.DataFrame, methods=METHODS) -> pd.DataFrame:
@@ -50,7 +61,7 @@ def mean_squares(table: pd.DataFrame, methods=METHODS) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def plot_bars(table: pd.DataFrame, methods=METHODS):
+def plot_bars(table: pd.DataFrame, methods=MAIN_METHODS):
     data = mean_squares(table, methods)
     datasets = list(dict.fromkeys(data["dataset"]))
     ncols = min(COL_WRAP, len(datasets))
@@ -74,15 +85,47 @@ def plot_bars(table: pd.DataFrame, methods=METHODS):
         ax.set_axisbelow(True)
     for ax in list(axes.flat)[len(datasets) :]:
         ax.set_visible(False)
-    handles = [Patch(color=c, label=PART_NAMES[p]) for p, c in PART_COLORS.items()]
-    handles.append(Line2D([], [], marker="o", color="black", linestyle="", label="total $\\hat A-A$"))
-    fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=font_size(9), frameon=False)
+    _legend(fig)
     fig.supylabel("mean square over the bags", fontsize=font_size(10))
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     return fig
 
 
-PLOTTERS = {"bars": plot_bars}
+def _legend(fig):
+    handles = [Patch(color=c, label=PART_NAMES[p]) for p, c in PART_COLORS.items()]
+    handles.append(Line2D([], [], marker="o", color="black", linestyle="", label="total $\\hat A-A$"))
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=font_size(9), frameon=False)
+
+
+def plot_bars_single(table: pd.DataFrame, method=SEPARATE):
+    """One panel for ``method``: one stacked bar per dataset, as the bars of :func:`plot_bars`."""
+    data = mean_squares(table, (method,))
+    datasets = list(dict.fromkeys(data["dataset"]))
+    part = data.set_index("dataset").loc[datasets]
+    fig, ax = plt.subplots(figsize=(max(6.0, 0.6 * len(datasets) + 2.0), 4.2))
+    x = np.arange(len(datasets))
+    bottom = np.zeros(len(datasets))
+    for name, color in PART_COLORS.items():
+        ax.bar(x, part[name].to_numpy(), bottom=bottom, color=color, width=0.75, linewidth=0)
+        bottom += part[name].to_numpy()
+    ax.scatter(x, part["total"].to_numpy(), color="black", s=14, zorder=3)
+    labels = [
+        f"{main_tables.dataset_map.get(d, d)} ($K={int(k)}$)" for d, k in zip(datasets, part["n_classes"].to_numpy())
+    ]
+    ax.set_xticks(x, labels, rotation=60, ha="right")
+    ax.tick_params(labelsize=font_size(7))
+    ax.ticklabel_format(axis="y", style="sci", scilimits=(-2, 2))
+    ax.yaxis.get_offset_text().set_fontsize(font_size(7))
+    ax.grid(axis="y", color="#d9d9d9", linewidth=0.6)
+    ax.set_axisbelow(True)
+    ax.set_title(method_plot_label(method).replace("-real", ""), fontsize=font_size(9))
+    ax.set_ylabel("mean square over the bags", fontsize=font_size(10))
+    _legend(fig)
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
+    return fig
+
+
+PLOTTERS = {"bars": plot_bars, "bars-quacc": plot_bars_single}
 
 
 def generate_plots(args):
@@ -100,7 +143,7 @@ def generate_plots(args):
 
 
 def parse_args():
-    parser = ArgumentParser(description="Bar plot of the error split of the main-table methods (E4.1).")
+    parser = ArgumentParser(description="Bar plots of the error split of the main-table methods (E4.1).")
     parser.add_argument("--figures", nargs="+", choices=FIGURES, default=list(FIGURES))
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)

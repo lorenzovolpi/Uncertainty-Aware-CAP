@@ -241,8 +241,20 @@ class TestTables(unittest.TestCase):
     def test_bar_plot(self):
         fig = plots.plot_bars(self.table)
         self.assertEqual(sum(ax.get_visible() for ax in fig.axes), 2)
+        # QuAcc_NxN is left out of the main figure: one bar per other method
+        self.assertNotIn("QuAcc_NxN", plots.MAIN_METHODS)
+        self.assertEqual(len(plots.MAIN_METHODS), len(tables.METHODS) - 1)
+        self.assertEqual(len(fig.axes[0].get_xticklabels()), len(plots.MAIN_METHODS))
         ms = plots.mean_squares(self.table)
         self.assertEqual(len(ms), 2 * len(tables.METHODS))
+        plt.close(fig)
+
+    def test_separate_bar_plot(self):
+        fig = plots.plot_bars_single(self.table)
+        self.assertEqual(len(fig.axes), 1)
+        # one bar per dataset, stacking the three parts
+        self.assertEqual(len(fig.axes[0].get_xticklabels()), 2)
+        self.assertEqual(len(fig.axes[0].patches), 2 * len(plots.PART_COLORS))
         plt.close(fig)
 
 
