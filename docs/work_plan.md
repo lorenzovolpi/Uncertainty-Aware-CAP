@@ -646,8 +646,9 @@ Every entry is **[fix]**. Each one states where it is fixed (UNCAWE or upstream 
 ## IV.3 (FIX-3) Unseeded randomness
 
 - `RQBS.predict_ct_range` calls `sampling_index` without a `random_state` (`cap-ml`, `cap/models/confidence.py`), so its bags depend on the global NumPy state.
-- **Where:** `cap-ml`.
-- **Comparability:** seeding changes the draws. `RQBS` results become reproducible but differ from the stored ones within Monte Carlo error.
+- The quantifiers built by `experiments/methods.py` use an unseeded `MLPClassifier()`: `kdey()` (`KDEyML(MLP())`, in `QuAcc_NxN` and `O-LEAP`) and `pacc()` (`PACC(MLP())`, in `RQBS` and `PQ`). `main` never seeds the global NumPy state before fitting a method (the only seeding, `util.py:temp_np_seed`, is temporary and limited to building the dataset), so every fit trains a different MLP. For `PQ` this was observed on 2026-11-10 (card WP-14): two runs of `PQ` on `spambase` × `MLP` with the same code and seeds (`cap-ml` `87b4d9b`) agree on only $3$–$8\%$ of the bags, with differences of the estimate up to $3\cdot10^{-4}$ (vanilla accuracy), $1.2\cdot10^{-3}$ (macro-K) and $0.027$ (macro-F1), and the same MAE; the re-run of `PQ` in `main` for WP-14 differs from the FIX-1 run by as much. `BayCAPKDEy` and `BayCAPMAPLS` are not affected: they pass their `random_state` to their MLP (`methods/baycap_quantifier.py`). Not checked: whether the bootstrap wrappers of `QuAcc_NxN` and `O-LEAP` (`BootstrapCTCAP`) seed their resampling.
+- **Where:** `cap-ml` for `RQBS`'s draws; UNCAWE (`experiments/methods.py`, `MLPClassifier(random_state=qp.environ["_R_SEED"])`) for the MLPs of the quantifiers.
+- **Comparability:** seeding changes the draws and the fitted MLPs. The results of `RQBS`, `PQ`, `QuAcc_NxN` and `O-LEAP` become reproducible but differ from the stored ones within the run-to-run variation (for `PQ`, measured above); their stored results cannot be reproduced bag by bag, and a fix needs them re-run in `main`.
 
 ## IV.5 (FIX-5) Interval scores are implemented three times
 
