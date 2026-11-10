@@ -10,7 +10,7 @@ SQS-S estimates the accuracy of $h$ on a target bag $U$ by finding, among many l
 |---|---|
 | SQS-S (`PQ`, `cap-ml` `PrediQuant`) as in the paper: quantifier trained on $V_1$ only, bags and target estimated by the same surrogate pipeline | [implemented], fixed by FIX-1 + FIX-4 (`cap-ml` `e9e77cd`, [[work_plan]] §I.2), stored in `main`, re-run on 2026-11-09 |
 | `predist`, the distance diagnostic ($L_1$, Hellinger, Jensen–Shannon; LR, KDEy(MLP), $8$ three-class datasets, $5$ test bags) | [implemented] ([[work_plan]] §II.3); the results computed before FIX-1 are kept in `<OUT_DIR>/uncawe/predist_pre_fix1/`; re-run with the fixed `PrediQuant` on 2026-11-09 (LR, KDEy(MLP), completed), superseded by E6.1, which uses PACC(MLP) |
-| E6.1 (distances, PACC(MLP), five classifiers, summary tables) | [implemented], run and analysed on 2026-11-10 (card WP-16, [[work_plan]] Part III): $L_1$ kept |
+| E6.1 (distances, PACC(MLP), five classifiers, summary tables) | [implemented], run and analysed on 2026-11-10 (card WP-16, done, [[work_plan]] §II.22): $L_1$ kept |
 | Allocation $\rho$ as a parameter of `PrediQuant`, nested splits | [implemented], not evaluated (card WP-15, `cap-ml` `0f25e9e`, [[work_plan]] §II.21); `PQ` keeps `rho=None` |
 | E6.2 (allocation $\rho$ on the `main` protocol) | [proposal], scheduled as card WP-17, after WP-15 |
 | Candidates E6.c1 (cross-fitting), E6.c2 (sensitivity to $\gamma$), E6.c3 (kernel weights) | [proposal], not scheduled |
