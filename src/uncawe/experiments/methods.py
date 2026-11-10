@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 
+import quapy as qp
 from cap.models.confidence import (
     CBPE,
     RQBS,
@@ -107,12 +108,13 @@ KDEY_SETTINGS = {"kernel": "gaussian", "bandwidth": 0.1, "shrinkage": 0.0}
 BAYES_POOL_METHODS = frozenset(BAYCAP_VARIANTS) | frozenset(FIXED_C_VARIANTS) | frozenset(KDEY_HF_VARIANTS)
 
 
+# the MLPs of the quantifiers are seeded with the experiment seed, so that every fit trains the same MLP (FIX-3)
 def kdey():
-    return KDEyML(MLP())
+    return KDEyML(MLP(random_state=qp.environ["_R_SEED"]))
 
 
 def pacc():
-    return PACC(MLP())
+    return PACC(MLP(random_state=qp.environ["_R_SEED"]))
 
 
 def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:

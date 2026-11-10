@@ -1,5 +1,6 @@
 import unittest
 
+import quapy as qp
 from cap.models.confidence import ACC_BayesCAP
 
 from uncawe.experiments.methods import (
@@ -148,6 +149,28 @@ class BayCAPFactoryTest(unittest.TestCase):
                 self.assertIn(name, METHOD_PLOT_LABELS)
                 self.assertIn(name, METHOD_LATEX_LABELS)
                 self.assertIn(name, METHOD_LABELS)
+
+
+class SeededQuantifierTest(unittest.TestCase):
+    """The MLPs of the quantifiers of the non-Bayesian methods are seeded with the experiment seed (FIX-3)."""
+
+    def test_quantifier_mlps_are_seeded(self):
+        methods = dict(gen_methods())
+        quantifiers = {
+            "QuAcc_NxN": methods["QuAcc_NxN"].base_method.q_class,
+            "O-LEAP": methods["O-LEAP"].base_method.q_class,
+            "RQBS": methods["RQBS"].q,
+            "PQ": methods["PQ"].q,
+        }
+        for name, quantifier in quantifiers.items():
+            with self.subTest(method=name):
+                self.assertEqual(quantifier.classifier.random_state, qp.environ["_R_SEED"])
+
+    def test_rqbs_and_pq_use_the_experiment_seed(self):
+        methods = dict(gen_methods())
+        for name in ("RQBS", "PQ"):
+            with self.subTest(method=name):
+                self.assertEqual(methods[name].random_state, qp.environ["_R_SEED"])
 
 
 if __name__ == "__main__":
