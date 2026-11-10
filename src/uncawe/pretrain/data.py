@@ -7,7 +7,7 @@ from typing import Any, Dict, Self, Tuple
 
 import numpy as np
 import quapy as qp
-from cap.data.datasets import fetch_UCIBinaryDataset, fetch_UCIMulticlassDataset
+from cap.data.datasets import fetch_UCIBinaryDataset
 from cap.utils.commons import contingency_table
 from numba import njit
 from quapy.data import LabelledCollection
@@ -15,6 +15,7 @@ from quapy.protocol import UPP
 from sklearn.base import BaseEstimator, ClassifierMixin
 
 from uncawe.pretrain.dataset import load_dataset
+from uncawe.pretrain.uci import fetch_uci_multiclass
 from uncawe.util import pretrain_basedir, split_validation
 
 # BASEDIR = os.path.join("output", "tms", "pretrain")
@@ -306,7 +307,7 @@ def load_from_collection(p_info: PretrainInfo):
         L, V, U = fetch_UCIBinaryDataset(dataset_name)
         return L.prevalence(), V, U
     elif dataset_collection == "uci_multiclass":
-        L, V, U = fetch_UCIMulticlassDataset(dataset_name)
+        L, V, U = fetch_uci_multiclass(dataset_name)
         return L.prevalence(), V, U
     elif dataset_collection in ["text", "image"]:
         return load_dataset(dataset_collection, dataset_name, p_info.h_info.full_name)

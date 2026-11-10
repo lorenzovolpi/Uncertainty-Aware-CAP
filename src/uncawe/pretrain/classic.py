@@ -6,7 +6,7 @@ from typing import Iterable, Literal, Tuple
 
 import cap
 import numpy as np
-from cap.data.datasets import fetch_UCIBinaryDataset, fetch_UCIMulticlassDataset
+from cap.data.datasets import fetch_UCIBinaryDataset
 from cap.utils.commons import parallel
 from quapy.data import LabelledCollection
 from quapy.data.datasets import UCI_BINARY_DATASETS, UCI_MULTICLASS_DATASETS
@@ -19,6 +19,7 @@ from sklearn.svm import SVC
 
 from uncawe.pretrain.data import ClassifierInfo, DatasetInfo, PretrainInfo
 from uncawe.pretrain.dataset import sort_datasets_by_size
+from uncawe.pretrain.uci import fetch_uci_multiclass
 from uncawe.util import get_logger
 
 EXPERIMENT = "pretrain"
@@ -109,9 +110,9 @@ def gen_datasets(
         yield dn, coll, dval
     _uci_mul_names = [d for d in UCI_MULTICLASS_DATASETS]
     coll = "uci_multiclass"
-    _sorted_mul_names = sort_datasets_by_size(coll, _uci_mul_names, fetch_UCIMulticlassDataset)
+    _sorted_mul_names = sort_datasets_by_size(coll, _uci_mul_names, fetch_uci_multiclass)
     for dn in _sorted_mul_names:
-        dval = None if only_names else fetch_UCIMulticlassDataset(dn)
+        dval = None if only_names else fetch_uci_multiclass(dn)
         yield dn, coll, dval
 
 

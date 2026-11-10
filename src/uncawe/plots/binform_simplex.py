@@ -8,7 +8,6 @@ os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matpl
 import matplotlib.pyplot as plt
 import numpy as np
 import quapy as qp
-from cap.data.datasets import fetch_UCIMulticlassDataset
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Polygon
 
@@ -21,6 +20,7 @@ from uncawe.binform import (
     _transform_prior,
 )
 from uncawe.config import SAMPLE_SIZE
+from uncawe.pretrain.uci import fetch_uci_multiclass
 
 PLOT_NAME = "simplex_prior"
 SEED = 0
@@ -67,7 +67,7 @@ def _normalize_prev(prev: np.ndarray) -> np.ndarray:
 
 
 def _validation_prior() -> np.ndarray:
-    _, V, _ = fetch_UCIMulticlassDataset(DATASET)
+    _, V, _ = fetch_uci_multiclass(DATASET)
     return V.prevalence()
 
 

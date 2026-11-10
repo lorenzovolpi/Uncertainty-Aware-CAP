@@ -12,12 +12,13 @@ import datasets
 import numpy as np
 import quapy as qp
 import requests
-from cap.data.datasets import fetch_UCIBinaryDataset, fetch_UCIMulticlassDataset
+from cap.data.datasets import fetch_UCIBinaryDataset
 from datasets import Dataset, DatasetDict, Image, concatenate_datasets
 from quapy.data import LabelledCollection
 from quapy.data.datasets import UCI_BINARY_DATASETS, UCI_MULTICLASS_DATASETS
 from tqdm import tqdm
 
+from uncawe.pretrain.uci import fetch_uci_multiclass
 from uncawe.util import get_dataset_path, temp_np_seed
 
 
@@ -832,7 +833,7 @@ def sort_datasets_by_size(dataset_coll: str | list[str], dataset_names: list[str
             L, V, U = fetch_UCIBinaryDataset(name)
             _len = len(L) + len(V) + len(U)
         elif coll == "uci_multiclass":
-            L, V, U = fetch_UCIMulticlassDataset(name)
+            L, V, U = fetch_uci_multiclass(name)
             _len = len(L) + len(V) + len(U)
         elif coll == "text":
             _, V, U = load_dataset("text", name)
