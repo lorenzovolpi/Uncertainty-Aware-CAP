@@ -73,6 +73,12 @@ METHOD_CLASS = {
     "BayCAP-KDEy-Hf-h-real": BayCAPKDEy,
     "BayCAP-KDEy-Hf-mlp-real": BayCAPKDEy,
 }
+# the allocations of SQS-S of E6.2 of docs/ext6_sqs_s_design.md (card WP-17): PQ with cap-ml's nested split at the share
+# rho of V that trains the quantifier (PrediQuant(rho=...)); the level 0.5 is run too, since the nested split differs
+# from the train_test_split of PQ (rho=None). Outside the main tables, ranks and default plots (tables/main.py)
+PQ_RHO_LEVELS = (0.1, 0.3, 0.5, 0.7, 0.9)
+PQ_RHO_VARIANTS = {f"PQ-rho{rho}": rho for rho in PQ_RHO_LEVELS}
+METHOD_CLASS |= {name: PrediQuant for name in PQ_RHO_VARIANTS}
 # estimand and prior on the columns of C of the BayCAP methods of main (methods/baycap.py:BayCAP): BayesCAP-real is
 # E2.3, the EB methods are E2.4, BayesCAP-H-real is E2.7, BayesCAP-Hf-real is E2.8 and BayesCAP-Hfn-real is E2.9 of
 # docs/ext2_baycap.md; all share the priors on pi, NUTS settings and default seed
@@ -118,6 +124,20 @@ def pacc():
     return PACC(MLP(random_state=qp.environ["_R_SEED"]))
 
 
+def sqs_s(acc, rho: float | None = None) -> PrediQuant:
+    """SQS-S as in ``PQ`` (PACC(MLP), 10,000 candidates, gamma=0.1, L1, m=1000), with the allocation ``rho``."""
+    return PrediQuant(
+        acc,
+        pacc(),
+        num_samples=BOOTSTRAP_ITERS,
+        sample_size=SAMPLE_SIZE,
+        alpha=0.1,
+        distance="l1",
+        predict_train_prev=True,
+        rho=rho,
+    )
+
+
 def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     acc_name, acc = next(gen_acc_measure(True))
     yield "DoC", BootstrapDirectCAP(DoC(acc), num_samples=BOOTSTRAP_ITERS)
@@ -134,18 +154,7 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
     yield "SQS-H", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=False)
     yield "SQS-Hbs", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=True)
-    yield (
-        "PQ",
-        PrediQuant(
-            acc,
-            pacc(),
-            num_samples=BOOTSTRAP_ITERS,
-            sample_size=SAMPLE_SIZE,
-            alpha=0.1,
-            distance="l1",
-            predict_train_prev=True,
-        ),
-    )
+    yield "PQ", sqs_s(acc)
     # BayesCAP is built from BayCAP, with the draws of cap-ml's ACC_BayesCAP, so that it stores the NUTS diagnostics
     for name, (estimand, c_prior) in BAYCAP_VARIANTS.items():
         yield (
@@ -185,6 +194,9 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
                 num_warmup=BAYES_WARMUPS,
             ),
         )
+
+    for name, rho in PQ_RHO_VARIANTS.items():
+        yield name, sqs_s(acc, rho)
 
 
 def get_method_names() -> list[str]:

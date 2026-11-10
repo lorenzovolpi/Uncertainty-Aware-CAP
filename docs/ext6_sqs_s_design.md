@@ -12,7 +12,7 @@ SQS-S estimates the accuracy of $h$ on a target bag $U$ by finding, among many l
 | `predist`, the distance diagnostic ($L_1$, Hellinger, Jensen–Shannon; LR, KDEy(MLP), $8$ three-class datasets, $5$ test bags) | [implemented] ([[work_plan]] §II.3); the results computed before FIX-1 are kept in `<OUT_DIR>/uncawe/predist_pre_fix1/`; re-run with the fixed `PrediQuant` on 2026-11-09 (LR, KDEy(MLP), completed), superseded by E6.1, which uses PACC(MLP) |
 | E6.1 (distances, PACC(MLP), five classifiers, summary tables) | [implemented], run and analysed on 2026-11-10 (card WP-16, done, [[work_plan]] §II.22): $L_1$ kept |
 | Allocation $\rho$ as a parameter of `PrediQuant`, nested splits | [implemented], not evaluated (card WP-15, `cap-ml` `0f25e9e`, [[work_plan]] §II.21); `PQ` keeps `rho=None` |
-| E6.2 (allocation $\rho$ on the `main` protocol) | [proposal], scheduled as card WP-17, after WP-15 |
+| E6.2 (allocation $\rho$ on the `main` protocol) | [implemented], not run (card WP-17, in progress): the methods `PQ-rho<ρ>` of `main`, `tables/pq_rho.py`, `plots/pq_rho.py` |
 | Candidates E6.c1 (cross-fitting), E6.c2 (sensitivity to $\gamma$), E6.c3 (kernel weights) | [proposal], not scheduled |
 | Adaptive bandwidth, Aitchison geometry, factorial $\rho\times\lvert V\rvert\times\lvert U\rvert$, Neyman allocation across classes, label-free selection of $\rho$ | set aside on 2026-11-09, in [[optional_extensions]] §11 |
 

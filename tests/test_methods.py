@@ -1,7 +1,7 @@
 import unittest
 
 import quapy as qp
-from cap.models.confidence import ACC_BayesCAP
+from cap.models.confidence import ACC_BayesCAP, PrediQuant
 
 from uncawe.experiments.methods import (
     BAYCAP_OPTIONS,
@@ -12,6 +12,7 @@ from uncawe.experiments.methods import (
     FIXED_C_VARIANTS,
     KDEY_HF_VARIANTS,
     METHOD_CLASS,
+    PQ_RHO_VARIANTS,
     SAMPLE_SIZE,
     gen_methods,
     get_method_names,
@@ -184,6 +185,47 @@ class SeededQuantifierTest(unittest.TestCase):
         for name in ("SQS-H", "SQS-Hbs", "PQ"):
             with self.subTest(method=name):
                 self.assertEqual(methods[name].random_state, qp.environ["_R_SEED"])
+
+
+class PQRhoFactoryTest(unittest.TestCase):
+    """The five methods of E6.2 (card WP-17): SQS-S as PQ with the nested split at rho, outside the main set."""
+
+    NAMES = ("PQ-rho0.1", "PQ-rho0.3", "PQ-rho0.5", "PQ-rho0.7", "PQ-rho0.9")
+
+    def setUp(self):
+        self.methods = dict(gen_methods())
+
+    def test_five_levels_with_their_rho(self):
+        self.assertEqual(tuple(PQ_RHO_VARIANTS), self.NAMES)
+        self.assertEqual(list(PQ_RHO_VARIANTS.values()), [0.1, 0.3, 0.5, 0.7, 0.9])
+        self.assertIsNone(self.methods["PQ"].rho)
+        for name, rho in PQ_RHO_VARIANTS.items():
+            with self.subTest(method=name):
+                self.assertIs(METHOD_CLASS[name], PrediQuant)
+                self.assertIsInstance(self.methods[name], PrediQuant)
+                self.assertEqual(self.methods[name].rho, rho)
+
+    def test_same_configuration_as_pq(self):
+        pq = self.methods["PQ"]
+        for name in self.NAMES:
+            with self.subTest(method=name):
+                method = self.methods[name]
+                for attribute in ("num_samples", "sample_size", "alpha", "predict_train_prev", "random_state"):
+                    self.assertEqual(getattr(method, attribute), getattr(pq, attribute))
+                self.assertIs(method.error, pq.error)
+                self.assertIs(type(method.q), type(pq.q))
+                self.assertEqual(method.q.classifier.random_state, qp.environ["_R_SEED"])
+                self.assertIsNot(method.q, pq.q)
+
+    def test_excluded_from_main_tables_ranks_and_default_plots(self):
+        for name in self.NAMES:
+            with self.subTest(method=name):
+                self.assertNotIn(name, MAIN_SET)
+                self.assertIn(name, main_tables.EXCLUDED_METHODS)
+                self.assertIn(name, rank.EXCLUDED_METHODS)
+                self.assertNotIn(name, DEFAULT_METHODS)
+                self.assertNotIn(name, AVC_METHODS)
+                self.assertNotIn(name, BAYES_POOL_METHODS)
 
 
 if __name__ == "__main__":

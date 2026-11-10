@@ -28,7 +28,7 @@ import numpy as np
 import quapy as qp
 from cap import env as capenv
 from cap.models.base import NeedsValidationProtocol
-from cap.models.confidence import BootstrapCAP, CAPWithConfidence
+from cap.models.confidence import BootstrapCAP, CAPWithConfidence, PrediQuant
 from cap.models.cont_table import CAPContingencyTable
 from cap.models.direct import CAPDirect
 from cap.utils.commons import get_shift
@@ -111,6 +111,23 @@ def _prepare_evaluation(p: PretrainInfo, method: CAPWithConfidence):
     return dataset, validation, validation_posteriors, context
 
 
+def allocation_columns(method: PrediQuant) -> dict:
+    """The per-bag columns of the methods of E6.2 (``PQ-rho*``, card WP-17), after a prediction: the estimated
+    prevalence of the target, $\\hat\\pi^Q$ (``pq_test_prev``), and the class support of the selected bags, per class
+    (``pq_class_support``) and its minimum over the classes (``pq_min_class_support``)."""
+    support = method.class_support()
+    return {
+        "pq_test_prev": np.asarray(method.last_test_prev, dtype=float).tolist(),
+        "pq_class_support": support.tolist(),
+        "pq_min_class_support": float(support.min()),
+    }
+
+
+def _stores_allocation(method) -> bool:
+    """The SQS-S methods with an explicit allocation ``rho`` (E6.2); ``PQ`` (``rho=None``) stores no extra column."""
+    return isinstance(method, PrediQuant) and method.rho is not None
+
+
 def _evaluate_contingency_method(
     p: PretrainInfo,
     method_name: str,
@@ -128,7 +145,7 @@ def _evaluate_contingency_method(
 
         # the time of the NUTS diagnostics of BayCAP (E2.4 of docs/ext2_baycap.md), of the posterior summaries of its
         # hierarchical prior (E2.7) and of the summaries of BayCAPKDEy and BayCAPMAPLS (E3.1 and E3.2 of
-        # docs/ext3_posterior_propagation.md) is
+        # docs/ext3_posterior_propagation.md) and of the columns of the methods of E6.2 (docs/ext6_sqs_s_design.md) is
         # left out of the test time
         started, t_diagnostics = time(), 0.0
         estim_ct_ranges, diagnostics = [], []
@@ -137,6 +154,10 @@ def _evaluate_contingency_method(
             if isinstance(method, (BayCAP, QuantifierBayCAP)):
                 started_diagnostics = time()
                 diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
+                t_diagnostics += time() - started_diagnostics
+            elif _stores_allocation(method):
+                started_diagnostics = time()
+                diagnostics.append(allocation_columns(method))
                 t_diagnostics += time() - started_diagnostics
         t_test_ave = (time() - started - t_diagnostics) / dataset.test_prot.total()
         estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
