@@ -264,6 +264,8 @@ This part tracks all implementation and experimentation work of the project: wha
 | WP-18 | E3.3: SQS-B on BayesKDEy with an MLP input | experiment | Scheduled | FIX-8, FIX-2 + FIX-3 | 2026-11-10 |
 | WP-19 | E5.1: the prior on $\pi^Q$ for BayCAP-Hf and BayCAP-KDEy (extended `binform`) | experiment | Scheduled | FIX-8 | 2026-11-10 |
 | WP-20 | E5.2: tempering BayCAP-Hf and BayCAP-KDEy, $\tau$ chosen by leaving one dataset out | experiment | Scheduled | FIX-8 | 2026-11-10 |
+| WP-21 | E4.2b: the error split across $\lvert V\rvert$, with seeded subsamples of $V$, at $\lvert U\rvert=1000$ (new study `target_size`) | experiment | Scheduled | none | 2026-11-11 |
+| WP-22 | E4.2a: the error split across $\lvert U\rvert$ with the full $V$ (study `target_size`) | experiment | Scheduled | WP-21 | 2026-11-11 |
 | FIX-2 + FIX-3 | SQS-H as in the paper and `RQBS` renamed `SQS-Hbs`; seeded randomness of `QuAcc_NxN`, `O-LEAP`, `SQS-H(bs)` and `PQ` (`cap-ml` and UNCAWE), pin bump, re-run in `main` | fix | In progress | none | 2026-11-10 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
@@ -423,6 +425,52 @@ Entry template:
 - **Done when:** the code and tests are merged; the pilot ($3$ datasets with the five classifiers) and the full run are done with stored results.
 - **Commands:** filled when the code exists.
 - **Log:** 2026-11-10: card added (user's decision).
+- **Outcome:** —
+
+### WP-21 E4.2b: the error split across $\lvert V\rvert$, with seeded subsamples of $V$, at $\lvert U\rvert=1000$ (new study `target_size`)
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext4_uncertainty_budget]] (E4.2b, §T.4)
+- **Goal:** measure how the error that comes from the validation set $V$ grows as $V$ shrinks, for `BayesCAP-Hf-real` (BayCAP with the Hf prior on $C$, realised pushforward) and `BayCAP-KDEy-mlp-real` (BayesKDEy with an MLP input and a fixed $\hat C$, realised pushforward), with the settings of `main`. It tests the hypothesis that the offset of the recall part on the binary datasets of `main` (positive and shared by every method, largest on `mammographic`, $\lvert V\rvert=291$, about $+0.05$) comes from the finite $V$. The error of each bag splits exactly as $e_1+e_2+e_3$, with $e_1=\sum_j(\tilde\pi_j-\pi^Q_j)\tilde d_j$ (prevalences), $e_2=\sum_j\pi^Q_j(\tilde d_j-d^{\text{pool}}_j)$ (recalls against the recalls of $h$ on the test pool) and $e_3=\sum_j\pi^Q_j(d^{\text{pool}}_j-c_j/n_j)$ (luck of the bag), as in `error_split.py`. A cell is (prevalence, $\lvert V\rvert$ level, $V$ seed) with $R$ bags; within a cell each part splits into a fixed part (its mean over the bags) and a bag part (the deviation of each bag). Grid:
+  - datasets: `mammographic` ($K=2$, $\lvert V\rvert=291$, the offset case), `german` ($K=2$, $350$, ill-conditioned, offset of $e_2$ for BayCAP-Hf only), `spambase` ($K=2$, $1610$, binary control without offset, whose subsamples reach the size of the small binary validation sets), `wine-quality` ($K=5$, $2262$, ill-conditioned, $e_1$ dominates), `dry-bean` ($K=7$, $4764$, well-conditioned, near the floor), `letter` ($K=26$, $7000$, large $K$; chosen over `isolet`, where BayCAP-Hf diverges, and `poker_hand`, which depends on FIX-8); classifiers LR and RF (user's decision of 2026-11-11);
+  - $\lvert V\rvert$ levels: the full $V$ and a stratified subsample of $1/4$, plus $1/16$ where every class keeps at least $10$ validation instances; nested ($V_{1/16}\subset V_{1/4}\subset V$) and seeded; the methods are refitted on each subsample, $h$ is not retrained, and the split $L/V$ is unchanged;
+  - $V$ seeds: $S_V$ per subsampled level (the full $V$ has one);
+  - prevalence: three fixed vectors per dataset: uniform $\mathbf 1/K$, one skewed vector (a seeded draw from $\operatorname{Dir}(\mathbf 1)$), one near-vertex vector ($0.9$ on the rarest validation class, the rest uniform);
+  - bags: $R$ per cell, drawn with replacement from the test pool, $\lvert U\rvert=1000$;
+  - $R$ and $S_V$ fixed by the pilot (proposal: $R=30$, $S_V=3$), and used also by WP-22; the pilot also checks the per-class counts of the subsamples (`wine-quality` has rare classes; `letter` has about $17$ instances per class at $1/16$).
+- **Estimand:** the realised table of each bag (`true_cts`), for both methods; the split uses the true prevalence of the bag and the labels of the pool (an analysis, not a method).
+- **Scope:**
+  - new `experiments/target_size.py`: the grid (dataset, classifier, method, prevalence, $\lvert U\rvert$, $\lvert V\rvert$ level, $V$ seed); a sampler of bags with fixed prevalence at any $\lvert U\rvert$, drawn with replacement from the pool, seeded per bag from the dataset, prevalence, $\lvert U\rvert$, $\lvert V\rvert$ level, $V$ seed and bag index; nested seeded stratified subsampling of $V$; the two methods built as in `main` and refitted on each subsample; output in `<OUT_DIR>/uncawe/target_size/`, every row with $\lvert U\rvert$, $\lvert V\rvert$ level, $V$ seed, prevalence, bag seed, `config_hash` and `schema_version`;
+  - `error_split.py`: the fixed and bag parts of a cell; the mean and standard deviation over the $V$ seeds;
+  - new table module: per method, dataset and $\lvert V\rvert$ level, the RMS of the fixed and bag parts of $e_1$, $e_2$, $e_3$, and the mean and standard deviation over the seeds of the fixed part of $e_2$, next to its value at the full $V$;
+  - new plot module: RMS of the fixed part of each part against $\lvert V\rvert$ (log–log), one panel per method, one line per dataset (LR), one point per seed and the line through the means over the seeds;
+  - `Makefile` targets; tests: the bags have the requested class counts and size; the subsamples are nested, stratified and reproducible for a seed; the bag parts of a cell sum to $0$; over many subsamples the mean of a count-based recall tends to its value on the full $V$; the table and the plot on a synthetic result;
+  - this document: Part II (and §II.12 if a method changes; none is expected).
+- **Depends on:** none (FIX-8 is not needed: `poker_hand` is not in the grid).
+- **Comparability:** new study; `main` and its outputs are unchanged. Its bags have fixed prevalences instead of APP ones, so the cell with the full $V$ is comparable with `main` in distribution, not bag by bag. Cost with the proposal: $6\times2\times3\times(1+S_V)\times R=4\,320$ NUTS runs per method for the full $V$ and the $1/4$ level, plus $1\,080$ per method for each dataset with the $1/16$ level, at the cost per run of `main` ($\lvert U\rvert=1000$); the cells with the full $V$ are reused by WP-22.
+- **Deviations from Part V:** to be stated when the code exists.
+- **Done when:** the code and tests are merged; the pilot (which fixes $R$ and $S_V$ and checks the per-class counts) and the full run are done with stored results.
+- **Commands:** filled when the code exists.
+- **Log:** 2026-11-11: card added (user's decision), with the datasets above.
+- **Outcome:** —
+
+### WP-22 E4.2a: the error split across $\lvert U\rvert$ with the full $V$ (study `target_size`)
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext4_uncertainty_budget]] (E4.2a, §T.3, §T.4)
+- **Goal:** measure how the parts $e_1$, $e_2$, $e_3$ of the error (defined in WP-21) change with the size $\lvert U\rvert$ of the target bag when $V$ is held fixed (the full one), for `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real`, to see which part dominates on small and on large bags. The bag parts should shrink as the bag grows; the fixed part of $e_2$ of BayCAP-KDEy, whose recalls come from $V$ alone, should not move, while that of BayCAP-Hf, whose recalls are updated by the bag, may. Grid: $\lvert U\rvert\in\{100,300,1000,3000,10000\}$ (bags larger than the pool repeat instances); the datasets, classifiers, prevalences and $R$ of WP-21; a cell is (prevalence, $\lvert U\rvert$). Measures: the RMS over the cells of the fixed parts and over the bags of the bag parts, and their fitted log–log slope against $\lvert U\rvert$ (descriptive).
+- **Estimand:** the realised table of each bag (`true_cts`), as in WP-21.
+- **Scope:**
+  - `experiments/target_size.py` (WP-21): the grid over $\lvert U\rvert$ with the full $V$; the cell at $\lvert U\rvert=1000$ is reused from WP-21, not run again;
+  - table: per method and dataset, the RMS of the fixed and bag parts of $e_1$, $e_2$, $e_3$ at each $\lvert U\rvert$;
+  - plot: RMS of each part against $\lvert U\rvert$ (log–log), one panel per method, one line per dataset (LR), solid for the fixed part and dashed for the bag part;
+  - `Makefile` targets; tests: the grid builds the requested sizes; bags larger than the pool repeat instances; the table and the plot on a synthetic result.
+- **Depends on:** WP-21 (the study, the sampler, the split within a cell, $R$).
+- **Comparability:** as WP-21; same output directory, rows distinguished by $\lvert U\rvert$. Cost: $6\times2\times4\times3\times R=4\,320$ new NUTS runs per method with $R=30$. The likelihood of BayCAP-Hf uses the counts of the bag, so its cost should barely depend on $\lvert U\rvert$; that of BayCAP-KDEy has one term per instance of the bag, so its cost should grow about linearly with $\lvert U\rvert$, about $10$ times at $\lvert U\rvert=10000$; the pilot measures both.
+- **Deviations from Part V:** to be stated when the code exists.
+- **Done when:** the code and tests are merged; the pilot (one dataset, every $\lvert U\rvert$, to measure the cost) and the full run are done with stored results.
+- **Commands:** filled when the code exists.
+- **Log:** 2026-11-11: card added (user's decision).
 - **Outcome:** —
 
 ## III.3 Completed cards

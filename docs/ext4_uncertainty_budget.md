@@ -13,7 +13,7 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 | Error split with the pool recalls (§T.1, §T.2) and oracle $2\times2$ (§T.5) | [implemented] by WP-14 (`error_split.py`, `tables/error_split.py`, `plots/error_split.py`; [[work_plan]] §II.20), run on the stored results of `main` (2026-11-10) |
 | Fixed and bag parts within a cell (§T.4) | [proposal], not implemented |
 | E4.1 (split on stored results), E4.3 (oracle $2\times2$ on stored results) | run and analysed on 2026-11-10 (`PQ` re-run in `main` with `cap-ml` `87b4d9b`, which stores its table); card WP-14 done ([[work_plan]] §II.20, §III.3) |
-| E4.2a (parts across $\lvert U\rvert$, full $V$), E4.2b (parts across $\lvert V\rvert$ with $S_V$ seeds, $\lvert U\rvert=1000$); split of E4.2 into two parts on 2026-11-11 | [proposal], not implemented, no card; the FIX-1 gate is met |
+| E4.2a (parts across $\lvert U\rvert$, full $V$), E4.2b (parts across $\lvert V\rvert$ with $S_V$ seeds, $\lvert U\rvert=1000$); split of E4.2 into two parts on 2026-11-11 | [proposal], not implemented; cards WP-21 (E4.2b) and WP-22 (E4.2a), Scheduled ([[work_plan]] §III.2); the FIX-1 gate is met |
 | Bounds on the parts: on $e_1$ (brought back from the earlier §T.11), on the cross term $x$, on $e_2$ and $e_3$ (§T.6) | derived; tightness not measured |
 | Candidates E4.c11 (oracles fed into the methods), E4.c12 (tightness of the bounds), E4.c13 (interaction of $\lvert U\rvert$ and $\lvert V\rvert$) | [proposal], not scheduled |
 | Variance model of the parts and everything built on it, pool term, protocol without replacement, toy simulation of the budget | set aside on 2026-11-09, in [[optional_extensions]] §10 |
@@ -36,7 +36,7 @@ New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before. 
 
 **Common settings.** Methods: the methods of the main table whose estimate comes from an estimated contingency table, i.e. all except `DoC`, which estimates accuracy directly (§T.2). Every split is computed against the realised table of each bag (`true_cts`), with the true prevalence of the bag and the recalls of $h$ on the test pool; it uses target labels, so it is an analysis, not a method. The Bayesian methods are taken with the realised-table predictive; for the split only their mean table matters (§T.2).
 
-**Order.** E4.1 and E4.3 first, on the stored results of `main`, at no run cost; then E4.2, with one pilot for both parts and then the full runs of E4.2b and E4.2a (E4.2b first, since it tests the hypothesis of E4.1 at the cost per run of `main`).
+**Order.** E4.1 and E4.3 first, on the stored results of `main`, at no run cost; then E4.2b (card WP-21: pilot, which fixes $R$ and $S_V$, then full run), first since it tests the hypothesis of E4.1 at the cost per run of `main`, and E4.2a (card WP-22: pilot on one dataset to measure the cost at large $\lvert U\rvert$, then full run).
 
 ## E4.1: The error split on stored results
 
@@ -64,7 +64,7 @@ New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before. 
 
 **Common settings.**
 
-- **Datasets:** a subset of the datasets of `main` (binary and multiclass, small and large $\lvert V_j\rvert$, well- and ill-conditioned $C$, one large-$K$ dataset; the list is fixed with the pilot) and their test pools; classifiers LR and RF.
+- **Datasets:** six datasets of `main` and their test pools (user's decision of 2026-11-11), chosen from the results of E4.1 (`tables/error_split/error_split.csv`): `mammographic` ($K=2$, $\lvert V\rvert=291$), the binary offset case; `german` ($K=2$, $350$), small and ill-conditioned, with an offset of $e_2$ for BayCAP-Hf only ($+0.021$ to $+0.029$, against $-0.000$ to $+0.006$ for BayCAP-KDEy); `spambase` ($K=2$, $1610$), a binary control without offset, whose subsamples ($\approx400$ and $\approx100$) reach the size of the small binary validation sets; `wine-quality` ($K=5$, $2262$), ill-conditioned, where $e_1$ dominates; `dry-bean` ($K=7$, $4764$), well-conditioned, with every part near the floor; `letter` ($K=26$, $7000$), large $K$ (chosen over `isolet`, where BayCAP-Hf diverges, E2.8 of [[ext2_baycap]], and `poker_hand`, which depends on FIX-8). Classifiers LR and RF.
 - **Methods:** `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real`, with the settings of `main`.
 - **Prevalence:** three fixed vectors per dataset: uniform $\mathbf 1/K$, one skewed vector (a seeded draw from $\operatorname{Dir}(\mathbf 1)$), one near-vertex vector ($0.9$ on the rarest validation class, the rest uniform).
 - **Bags:** $R$ bags per cell, drawn with replacement from the test pool, as in `main` (bags larger than the pool repeat instances); $R$ is fixed with the pilot (proposal: $R=30$).
@@ -92,7 +92,7 @@ New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before. 
 
 - **Design.**
   - **Inputs:** the common settings; nested seeded stratified subsamples of $V$ ($V_{1/16}\subset V_{1/4}\subset V$), with the methods refitted on each subsample and $h$ not retrained.
-  - **Varied:** $\lvert V\rvert$ level: the full $V$ and a subsample of $1/4$ (and $1/16$ on the largest datasets); $V$ seed: $S_V$ seeds for each subsampled level (the full $V$ has one); prevalence; dataset, classifier, method. A cell is a combination of prevalence, $\lvert V\rvert$ level and $V$ seed (§T.4). Held fixed: $\lvert U\rvert=1000$. $S_V$ is fixed with the pilot (proposal: $S_V=3$).
+  - **Varied:** $\lvert V\rvert$ level: the full $V$ and a subsample of $1/4$, plus $1/16$ where every class keeps at least $10$ validation instances (the threshold of FIX-8; checked by the pilot); $V$ seed: $S_V$ seeds for each subsampled level (the full $V$ has one); prevalence; dataset, classifier, method. A cell is a combination of prevalence, $\lvert V\rvert$ level and $V$ seed (§T.4). Held fixed: $\lvert U\rvert=1000$. $S_V$ is fixed with the pilot (proposal: $S_V=3$).
   - **Measures:** per bag, the parts $e_1$, $e_2$, $e_3$ (§T.2); per cell, the fixed part and the bag part of each (§T.4); per dataset, classifier, method, prevalence and subsampled level, the mean and the standard deviation over the $V$ seeds of each fixed part; against the $\lvert V\rvert$ level, the RMS over the cells of the fixed parts and over the bags of the bag parts, and the fitted log–log slope of the RMS of the fixed parts against $\lvert V\rvert$ (descriptive).
   - **Estimand:** as E4.2a.
   - **Cost:** $D\times2\times3\times S_V\times R$ NUTS runs per method for each subsampled level (the full-$V$ cell is shared with E4.2a); with $D=6$, $S_V=3$, $R=30$ and the level $1/4$ only, $3\,240$ runs per method, at the cost per run of `main`.
