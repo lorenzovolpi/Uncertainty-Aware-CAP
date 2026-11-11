@@ -13,9 +13,9 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 | Error split with the pool recalls (§T.1, §T.2) and oracle $2\times2$ (§T.5) | [implemented] by WP-14 (`error_split.py`, `tables/error_split.py`, `plots/error_split.py`; [[work_plan]] §II.20), run on the stored results of `main` (2026-11-10) |
 | Fixed and bag parts within a cell (§T.4) | [proposal], not implemented |
 | E4.1 (split on stored results), E4.3 (oracle $2\times2$ on stored results) | run and analysed on 2026-11-10 (`PQ` re-run in `main` with `cap-ml` `87b4d9b`, which stores its table); card WP-14 done ([[work_plan]] §II.20, §III.3) |
-| E4.2 (parts across $\lvert U\rvert$ and $\lvert V\rvert$) | [proposal], not implemented; the FIX-1 gate is met |
+| E4.2a (parts across $\lvert U\rvert$, full $V$), E4.2b (parts across $\lvert V\rvert$ with $S_V$ seeds, $\lvert U\rvert=1000$); split of E4.2 into two parts on 2026-11-11 | [proposal], not implemented, no card; the FIX-1 gate is met |
 | Bounds on the parts: on $e_1$ (brought back from the earlier §T.11), on the cross term $x$, on $e_2$ and $e_3$ (§T.6) | derived; tightness not measured |
-| Candidates E4.c11 (oracles fed into the methods), E4.c12 (tightness of the bounds) | [proposal], not scheduled |
+| Candidates E4.c11 (oracles fed into the methods), E4.c12 (tightness of the bounds), E4.c13 (interaction of $\lvert U\rvert$ and $\lvert V\rvert$) | [proposal], not scheduled |
 | Variance model of the parts and everything built on it, pool term, protocol without replacement, toy simulation of the budget | set aside on 2026-11-09, in [[optional_extensions]] §10 |
 
 # Experiments
@@ -25,18 +25,18 @@ A quantification-based CAP method estimates accuracy as "estimated prevalence of
 | Old | New |
 |---|---|
 | — | E4.1 (new) |
-| E4.1a, the parts across $\lvert U\rvert$ and $\lvert V\rvert$ | E4.2, restricted to two Bayesian methods, without the coverage rule and with the pool term merged into $e_2$ |
+| E4.1a, the parts across $\lvert U\rvert$ and $\lvert V\rvert$ | E4.2, restricted to two Bayesian methods, without the coverage rule and with the pool term merged into $e_2$; split on 2026-11-11 into E4.2a ($\lvert U\rvert$) and E4.2b ($\lvert V\rvert$) |
 | oracle ladder of E4.1a | E4.3, a $2\times2$ design on stored results |
 | E4.1c, the bound on the prevalence part | candidate E4.c12 (2026-11-09), extended to the bounds of §T.6 |
-| E4.1b, E4.2a–E4.2f, E4.3a, E4.3b, candidates E4.c1, E4.c2 | set aside ([[optional_extensions]] §10) |
+| E4.1b, E4.2a–E4.2f, E4.3a, E4.3b, candidates E4.c1, E4.c2 | set aside ([[optional_extensions]] §10), where the old experiment numbers are prefixed with `s` since 2026-11-11 (E4.s1b, E4.s2a–E4.s2f, E4.s3a, E4.s3b), so that E4.2a and E4.2b name the parts of the current E4.2 |
 
-New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before.
+New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before. In this table the column "Old" keeps the names of that version (E4.1a, E4.2a–E4.2f, …), which are E4.s1a, E4.s2a–E4.s2f, … in [[optional_extensions]] §10.
 
-**Gate.** No experiment of this extension runs before FIX-1 is resolved in `uncawe`: the `cap-ml` commit with the fix pinned, the effect of the new pin on the other methods taken from `cap-ml` checked, and `PQ` re-run in `main` (user's decision of 2026-11-09). The gate is met (user's confirmation of 2026-11-09): the fix is pinned (`cap-ml` `e9e77cd`, in which only `PrediQuant` changes from the previous pin, so no other method of `main` is affected), `PQ` was re-run in `main` on 2026-11-09, and the change is merged into `devel` (`fcdabf2`). E4.2 does not use `PQ`; the gate applies to it too, so that all the results of the extension come from the same `cap-ml`.
+**Gate.** No experiment of this extension runs before FIX-1 is resolved in `uncawe`: the `cap-ml` commit with the fix pinned, the effect of the new pin on the other methods taken from `cap-ml` checked, and `PQ` re-run in `main` (user's decision of 2026-11-09). The gate is met (user's confirmation of 2026-11-09): the fix is pinned (`cap-ml` `e9e77cd`, in which only `PrediQuant` changes from the previous pin, so no other method of `main` is affected), `PQ` was re-run in `main` on 2026-11-09, and the change is merged into `devel` (`fcdabf2`). E4.2 (both parts) does not use `PQ`; the gate applies to it too, so that all the results of the extension come from the same `cap-ml`.
 
 **Common settings.** Methods: the methods of the main table whose estimate comes from an estimated contingency table, i.e. all except `DoC`, which estimates accuracy directly (§T.2). Every split is computed against the realised table of each bag (`true_cts`), with the true prevalence of the bag and the recalls of $h$ on the test pool; it uses target labels, so it is an analysis, not a method. The Bayesian methods are taken with the realised-table predictive; for the split only their mean table matters (§T.2).
 
-**Order.** E4.1 and E4.3 first, on the stored results of `main`, at no run cost; then E4.2 (pilot, then full run).
+**Order.** E4.1 and E4.3 first, on the stored results of `main`, at no run cost; then E4.2, with one pilot for both parts and then the full runs of E4.2b and E4.2a (E4.2b first, since it tests the hypothesis of E4.1 at the cost per run of `main`).
 
 ## E4.1: The error split on stored results
 
@@ -54,29 +54,51 @@ New candidates are numbered from E4.c11, since E4.c3–E4.c10 were used before.
   - **Bar plot:** mean square of each part, stacked, on a linear scale, one bar per method, one panel per dataset, without `QuAcc_NxN` (`O-LEAP` stays as the baseline); `QuAcc_NxN`, whose errors are one to two orders of magnitude larger and would flatten the other bars, in a separate figure with one bar per dataset (user's decision of 2026-11-10).
 - **Analysis.** Source: the tables and the bar plots of `tables/error_split.py` and `plots/error_split.py`, run on `bcuda` on 2026-11-10 from commit `24b6776` (bar plots from `45a69b5`), on the stored results of `main` with `PQ` re-run with `cap-ml` `87b4d9b`; the per-pair values are in `<OUT_DIR>/uncawe/tables/error_split/error_split.csv`. Values below are means over the pairs of a block ($25$ binary pairs, $50$ multiclass pairs) of per-pair quantities over the $100$ bags. The identity $e_1+e_2+e_3=\hat A-A$ holds on every bag within $10^{-14}$ for every method except `O-LEAP` (within $8.1\cdot10^{-11}$) and `QuAcc_NxN`, whose stored estimate differs from the trace of its stored mean table by up to $1.5\cdot10^{-6}$ (11 pairs); no bag is dropped (no NUTS failure); bags with at least one empty estimated column: `QuAcc_NxN` 838, `RQBS` 910, BayCAP-KDEy 11, none for the other methods.
   - **The luck of the bag is a common floor.** $e_3$ has RMS $0.0099$ (binary) and $0.0089$ (multiclass) and mean $\approx0$, as §T.3 predicts. Where the methods are accurate it is a large part of their error: its mean square is $72$–$75\%$ of the mean square of the total error on `spambase` for every method except `PQ` ($38\%$), $65$–$72\%$ on `hand_digits` except `PQ` ($56\%$) and `BayesCAP-real` ($5\%$), $89\%$ for BayCAP-KDEy on `letter`; there little is left that a better estimate of the table could remove.
-  - **Binary datasets: the recalls dominate, and their error is systematic.** $e_2$ is the part with the largest RMS on $44$–$88\%$ of the binary pairs, depending on the method (e.g. `RQBS`: $e_1$ RMS $0.0068$, $e_2$ $0.0287$; BayCAP-KDEy: $0.0071$ and $0.0201$). For every method $\lvert\text{mean of }e_2\rvert/\text{RMS of }e_2$ is $0.77$–$0.88$ (median over the pairs), so $e_2$ is mostly an offset that repeats on every bag of a pair; §T.3 predicts this for the methods that take $\tilde d$ from $V$ (`RQBS`, `PQ`, BayCAP-KDEy), but it holds for `O-LEAP` and the BayesCAP variants too. The offset has the same sign for every method: the mean of $e_2$ is $+0.014$ to $+0.020$, mostly from `mammographic` ($+0.051$ to $+0.059$ for every method, $\lvert V\rvert=291$, the smallest validation set) and `german` (up to $+0.024$, $\lvert V\rvert=350$). It is smaller for RF and kNN ($+0.009$ to $+0.017$) than for LR, SVM and MLP ($+0.013$ to $+0.026$). Since methods with different estimators of the recalls share it, the hypothesis is that it comes from the finite $V$: on these validation sets the recalls of $h$ are higher than on the pool (for a recall near $0.8$ measured on about $145$ instances the standard error is $\sqrt{0.8\cdot0.2/145}\approx0.033$, so a gap of $0.058$ is within reach of a single $V$). E4.2, which varies $\lvert V\rvert$, tests it.
+  - **Binary datasets: the recalls dominate, and their error is systematic.** $e_2$ is the part with the largest RMS on $44$–$88\%$ of the binary pairs, depending on the method (e.g. `RQBS`: $e_1$ RMS $0.0068$, $e_2$ $0.0287$; BayCAP-KDEy: $0.0071$ and $0.0201$). For every method $\lvert\text{mean of }e_2\rvert/\text{RMS of }e_2$ is $0.77$–$0.88$ (median over the pairs), so $e_2$ is mostly an offset that repeats on every bag of a pair; §T.3 predicts this for the methods that take $\tilde d$ from $V$ (`RQBS`, `PQ`, BayCAP-KDEy), but it holds for `O-LEAP` and the BayesCAP variants too. The offset has the same sign for every method: the mean of $e_2$ is $+0.014$ to $+0.020$, mostly from `mammographic` ($+0.051$ to $+0.059$ for every method, $\lvert V\rvert=291$, the smallest validation set) and `german` (up to $+0.024$, $\lvert V\rvert=350$). It is smaller for RF and kNN ($+0.009$ to $+0.017$) than for LR, SVM and MLP ($+0.013$ to $+0.026$). Since methods with different estimators of the recalls share it, the hypothesis is that it comes from the finite $V$: on these validation sets the recalls of $h$ are higher than on the pool (for a recall near $0.8$ measured on about $145$ instances the standard error is $\sqrt{0.8\cdot0.2/145}\approx0.033$, so a gap of $0.058$ is within reach of a single $V$). E4.2b, which varies $\lvert V\rvert$, tests it.
   - **Multiclass datasets: the prevalences weigh more.** $e_1$ is the part with the largest RMS on $30$–$52\%$ of the multiclass pairs, and its RMS exceeds that of $e_2$ for every method except `QuAcc_NxN` (e.g. `RQBS`: $e_1$ $0.0242$, $e_2$ $0.0091$; BayCAP-KDEy: $0.0237$ and $0.0107$; `PQ`: $0.0347$ and $0.0159$). `BayesCAP-real` has a systematic negative $e_2$ that grows with $K$ (mean $-0.074$ on `letter`, $-0.167$ on `isolet`, $K=26$): it underestimates the recalls, consistent with the pull of the prior on $C$ ([[ext2_baycap|Extension 2]]); `BayesCAP-Hf-real` removes it (multiclass mean of $e_2$: $+0.001$; RMS $0.0088$ against $0.0355$).
   - **`QuAcc_NxN`** has the largest parts by one to two orders of magnitude (multiclass RMS: $e_1$ $0.071$, $e_2$ $0.241$, total $0.227$), and they partly cancel: the mean of the cross term $x$ is $-0.068$ (binary) and $-0.126$ (multiclass), against $\lvert\text{mean of }x\rvert\le0.0042$ for every other method, and the mean square of its total error is well below the sum of the mean squares of its parts. Its table cannot be read as prevalences times recalls that are each close to the truth.
 
 ## E4.2: The parts across $\lvert U\rvert$ and $\lvert V\rvert$
 
-**Why.** Each part has its own sources (§T.3): the luck of the bag depends on $U$ only; recalls estimated from $V$ alone depend on $V$ only; the prevalences, and in BayCAP-Hf also the recalls, depend on both. Varying the two sizes separates, within each part, what the bag contributes from what $V$ contributes (§T.4), and shows which part dominates when the bag or $V$ is small or large. The two Bayesian methods differ in one respect that matters here: BayCAP-KDEy keeps the recalls of $V$ fixed, while BayCAP-Hf updates them with the bag, so their $e_2$ should respond differently to $\lvert U\rvert$.
+**Why.** Each part has its own sources (§T.3): the luck of the bag depends on $U$ only; recalls estimated from $V$ alone depend on $V$ only; the prevalences, and in BayCAP-Hf also the recalls, depend on both. Varying the two sizes separates, within each part, what the bag contributes from what $V$ contributes (§T.4), and shows which part dominates when the bag or $V$ is small or large. The two Bayesian methods differ in one respect that matters here: BayCAP-KDEy keeps the recalls of $V$ fixed, while BayCAP-Hf updates them with the bag, so their $e_2$ should respond differently to $\lvert U\rvert$. The two sizes are varied in two parts, one size at a time (user's decision of 2026-11-11): E4.2a varies $\lvert U\rvert$ with the full $V$, E4.2b varies $\lvert V\rvert$ at the paper's $\lvert U\rvert=1000$. The interaction of the two sizes (whether a large bag makes up for a small $V$) is candidate E4.c13.
+
+**Common settings.**
+
+- **Datasets:** a subset of the datasets of `main` (binary and multiclass, small and large $\lvert V_j\rvert$, well- and ill-conditioned $C$, one large-$K$ dataset; the list is fixed with the pilot) and their test pools; classifiers LR and RF.
+- **Methods:** `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real`, with the settings of `main`.
+- **Prevalence:** three fixed vectors per dataset: uniform $\mathbf 1/K$, one skewed vector (a seeded draw from $\operatorname{Dir}(\mathbf 1)$), one near-vertex vector ($0.9$ on the rarest validation class, the rest uniform).
+- **Bags:** $R$ bags per cell, drawn with replacement from the test pool, as in `main` (bags larger than the pool repeat instances); $R$ is fixed with the pilot (proposal: $R=30$).
+- **Held fixed:** the pool, $h$, the split $L/V$, the methods' settings.
+- **Shared cell:** the cell with the full $V$ and $\lvert U\rvert=1000$ belongs to both parts and is run once.
+
+### E4.2a: The parts across $\lvert U\rvert$
+
+**Why.** With $V$ fixed, whatever changes with $\lvert U\rvert$ comes from the bag: the bag parts should shrink as the bag grows (§T.3), while the fixed part of $e_2$ of BayCAP-KDEy should not move. It shows which part dominates on small and on large bags.
 
 - **Design.**
-  - **Inputs:** a subset of the datasets of `main` (binary and multiclass, small and large $\lvert V_j\rvert$, well- and ill-conditioned $C$, one large-$K$ dataset; the list is fixed with the pilot) and their test pools; classifiers LR and RF; methods `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real`, with the settings of `main`.
-  - **Varied:**
-    - $\lvert U\rvert\in\{100,300,1000,3000,10000\}$, including the paper's $1000$; bags drawn with replacement from the test pool, as in `main` (bags larger than the pool repeat instances);
-    - $\lvert V\rvert$ level: the full $V$ and a stratified subsample of $1/4$ (and $1/16$ on the largest datasets), nested ($V_{1/16}\subset V_{1/4}\subset V$) and seeded; the methods are refitted on each subsample, $h$ is not retrained, and the split $L/V$ is unchanged;
-    - $V$ seed: $S_V$ seeds of the subsamples (the full $V$ has one);
-    - prevalence: three fixed vectors per dataset: uniform $\mathbf 1/K$, one skewed vector (a seeded draw from $\operatorname{Dir}(\mathbf 1)$), one near-vertex vector ($0.9$ on the rarest validation class, the rest uniform);
-    - $R$ bags per cell (prevalence, $\lvert U\rvert$, $\lvert V\rvert$ level, $V$ seed);
-    - held fixed: the pool, $h$, the methods' settings. $S_V$ and $R$ are fixed with the pilot (proposal: $S_V=3$, $R=30$).
-  - **Measures:** per bag, the parts $e_1$, $e_2$, $e_3$ (§T.2); per cell, the fixed part and the bag part of each (§T.4); against $\lvert U\rvert$ and $\lvert V\rvert$ level, the RMS over the cells of the fixed parts and over the bags of the bag parts, and the fitted log–log slope of each RMS against $\lvert U\rvert$ (descriptive, with no predicted value).
+  - **Inputs:** the common settings; the full $V$ of each dataset.
+  - **Varied:** $\lvert U\rvert\in\{100,300,1000,3000,10000\}$, including the paper's $1000$; prevalence; dataset, classifier, method. A cell is a combination of prevalence and $\lvert U\rvert$ (§T.4). Held fixed: $V$ (the full one, a single draw).
+  - **Measures:** per bag, the parts $e_1$, $e_2$, $e_3$ (§T.2); per cell, the fixed part and the bag part of each (§T.4); against $\lvert U\rvert$, the RMS over the cells of the fixed parts and over the bags of the bag parts, and the fitted log–log slope of each RMS against $\lvert U\rvert$ (descriptive, with no predicted value).
   - **Estimand:** the realised table of each bag; the split uses the true prevalence of the bag and the labels of the pool (an analysis).
-  - **Cost:** about $D\times2\times5\times L_V\times S_V\times3\times R$ NUTS runs per method, for $D$ datasets and $L_V$ levels of $\lvert V\rvert$ (the full $V$ has one seed, so this is an upper value); with the proposal, $D=6$, $L_V=2$: about $32\,000$ runs per method, about $4$ times a full run of `main` for one method. Reference times on `bcuda` at $\lvert U\rvert=1000$: a full run of `main` for `BayesCAP` ($7\,500$ NUTS runs) took about $46$ minutes ([[work_plan]] §I.2), one of `BayCAP-KDEy-Hf-mlp-real` ($6\,000$ runs) about $2$ hours (WP-13). The likelihood of BayCAP-Hf uses the counts of the predictions of $h$ on the bag, so its cost should barely depend on $\lvert U\rvert$; that of BayCAP-KDEy has one term per instance of the bag, so its cost should grow about linearly with $\lvert U\rvert$, about $10$ times at $\lvert U\rvert=10000$ (expectations, to be measured by the pilot).
+  - **Cost:** $D\times2\times5\times3\times R$ NUTS runs per method, for $D$ datasets; with $D=6$ and $R=30$, $5\,400$ runs per method. Reference times on `bcuda` at $\lvert U\rvert=1000$: a full run of `main` for `BayesCAP` ($7\,500$ NUTS runs) took about $46$ minutes ([[work_plan]] §I.2), one of `BayCAP-KDEy-Hf-mlp-real` ($6\,000$ runs) about $2$ hours (WP-13). The likelihood of BayCAP-Hf uses the counts of the predictions of $h$ on the bag, so its cost should barely depend on $\lvert U\rvert$; that of BayCAP-KDEy has one term per instance of the bag, so its cost should grow about linearly with $\lvert U\rvert$, about $10$ times at $\lvert U\rvert=10000$ (expectations, to be measured by the pilot).
 - **Representation.**
-  - **Log–log plot:** RMS of each part against $\lvert U\rvert$, one panel per method and $\lvert V\rvert$ level, one line per dataset (LR), solid for the fixed part and dashed for the bag part.
-  - **Table:** per method, dataset and $\lvert V\rvert$ level, the RMS of the fixed and bag parts of $e_1$, $e_2$, $e_3$ at each $\lvert U\rvert$.
+  - **Log–log plot:** RMS of each part against $\lvert U\rvert$, one panel per method, one line per dataset (LR), solid for the fixed part and dashed for the bag part.
+  - **Table:** per method and dataset, the RMS of the fixed and bag parts of $e_1$, $e_2$, $e_3$ at each $\lvert U\rvert$.
+- **Analysis.** Not run.
+
+### E4.2b: The parts across $\lvert V\rvert$
+
+**Why.** E4.1 found on the binary datasets an offset of $e_2$ shared by every method, largest on the smallest validation sets, and ascribed it, as a hypothesis, to the finite $V$. The full $V$ cannot be drawn again without changing the split $L/V$, so the offset of the full $V$ cannot be re-measured on other validation sets; what can be measured is how the error that comes from $V$ grows as $V$ shrinks. A single subsample gives one draw of that error, which mixes the effect of the size of $V$ with the luck of that subsample; several seeds per level give its spread, and their mean should reproduce the full-$V$ value (§T.4, across $V$ seeds). If the spread at the full $V$, extrapolated from the subsamples, is comparable with the offset, the hypothesis is supported. The bag is held at the paper's $\lvert U\rvert=1000$, so the results are comparable with `main` and BayCAP-KDEy stays at its cost in `main`.
+
+- **Design.**
+  - **Inputs:** the common settings; nested seeded stratified subsamples of $V$ ($V_{1/16}\subset V_{1/4}\subset V$), with the methods refitted on each subsample and $h$ not retrained.
+  - **Varied:** $\lvert V\rvert$ level: the full $V$ and a subsample of $1/4$ (and $1/16$ on the largest datasets); $V$ seed: $S_V$ seeds for each subsampled level (the full $V$ has one); prevalence; dataset, classifier, method. A cell is a combination of prevalence, $\lvert V\rvert$ level and $V$ seed (§T.4). Held fixed: $\lvert U\rvert=1000$. $S_V$ is fixed with the pilot (proposal: $S_V=3$).
+  - **Measures:** per bag, the parts $e_1$, $e_2$, $e_3$ (§T.2); per cell, the fixed part and the bag part of each (§T.4); per dataset, classifier, method, prevalence and subsampled level, the mean and the standard deviation over the $V$ seeds of each fixed part; against the $\lvert V\rvert$ level, the RMS over the cells of the fixed parts and over the bags of the bag parts, and the fitted log–log slope of the RMS of the fixed parts against $\lvert V\rvert$ (descriptive).
+  - **Estimand:** as E4.2a.
+  - **Cost:** $D\times2\times3\times S_V\times R$ NUTS runs per method for each subsampled level (the full-$V$ cell is shared with E4.2a); with $D=6$, $S_V=3$, $R=30$ and the level $1/4$ only, $3\,240$ runs per method, at the cost per run of `main`.
+- **Representation.**
+  - **Log–log plot:** RMS of the fixed part of each part against $\lvert V\rvert$, one panel per method, one line per dataset (LR), one point per seed and the line through the means over the seeds.
+  - **Table:** per method, dataset and $\lvert V\rvert$ level, the RMS of the fixed and bag parts of $e_1$, $e_2$, $e_3$, and the mean and the standard deviation over the seeds of the fixed part of $e_2$, next to its value at the full $V$.
 - **Analysis.** Not run.
 
 ## E4.3: Oracle substitutions on stored results
@@ -123,6 +145,7 @@ Ideas that came up in the discussions; they are not scheduled. One becomes an ex
 
 - **E4.c11, oracles fed into the methods.** *Why:* E4.3 substitutes the true components after estimation, which leaves the other component of each estimate unchanged; a method that receives the true prevalence or the pool recalls as input may change its other component too (with $\pi^Q$ known, the posterior of $C$ of BayCAP-Hf changes), and only a run with the oracle inside the method gives an interval, hence a coverage. *Needs:* oracle variants of the methods (true $\pi^Q$; recalls fixed at $d^{\text{pool}}$), run on the protocol of `main`; to limit the cost, a few methods only (user's remark of 2026-11-09), e.g. `RQBS` and one Bayesian method.
 - **E4.c12, tightness of the bounds.** *Why:* the bounds of §T.6 hold always; their ratio to the parts they bound says whether the error of the quantifier times the spread of the recalls (for $e_1$), or the product of the two errors (for the cross term $x$), is a good proxy of the error of accuracy, and how much of a part comes from the size of the per-class errors rather than from their arrangement across the classes. It is the former E4.1c, extended to $x$, $e_2$ and $e_3$. *Needs:* the per-bag quantities of E4.1 and E4.3 ($\tilde\pi$, $\tilde d$, $\pi^Q$, $d^{\text{pool}}$, $c_j/n_j$), no runs; per bag and method, each part, its bound and their ratio; per pair, the spread of the recalls $\max\tilde d-\min\tilde d$ and the median ratios; across pairs, the rank correlation between the accuracy error and the quantifier's AE, with and without the factor of the spread of the recalls.
+- **E4.c13, interaction of $\lvert U\rvert$ and $\lvert V\rvert$.** *Why:* E4.2a varies $\lvert U\rvert$ with the full $V$ and E4.2b varies $\lvert V\rvert$ at $\lvert U\rvert=1000$, so neither sees whether the error that comes from $V$ depends on the size of the bag. For BayCAP-KDEy it does not for $e_2$, whose recalls depend on $V$ only (§T.3); for BayCAP-Hf it may, since its recalls are updated by the counts of the bag, which grow with $\lvert U\rvert$ while the information from $V$ stays the same, so a large bag may partly make up for a small $V$; $e_1$ depends on both for both methods. *Needs:* the cells of E4.2b at the subsampled level, with the same $V$ seeds, at one more size, e.g. $\lvert U\rvert=10000$: $3\,240$ more runs per method with the proposal of E4.2 ($D=6$, $S_V=3$, $R=30$), cheap for BayCAP-Hf and about $10$ times the cost per run for BayCAP-KDEy, so possibly BayCAP-Hf only (discussion of 2026-11-11).
 
 # Theory
 
@@ -209,7 +232,7 @@ E4.2 separates the contributions of $U$ and $V$ for the two methods that differ 
 
 *Intuition.* If many bags are drawn with the same prevalence, the same size and the same $V$, whatever their errors have in common comes from $V$ (and the pool), and whatever differs between them comes from the bags.
 
-**Definition.** In E4.2, a *cell* is a combination of prevalence, $\lvert U\rvert$, $\lvert V\rvert$ level and $V$ seed, with $R$ bags $b=1,\dots,R$. For any part $e$ (one of $e_1$, $e_2$, $e_3$) with value $e^{(b)}$ on bag $b$, define its mean over the cell and the deviation of each bag from that mean:
+**Definition.** In E4.2, a *cell* is a combination of prevalence, $\lvert U\rvert$, $\lvert V\rvert$ level and $V$ seed, with $R$ bags $b=1,\dots,R$ (in E4.2a the $V$ is always the full one; in E4.2b $\lvert U\rvert=1000$). For any part $e$ (one of $e_1$, $e_2$, $e_3$) with value $e^{(b)}$ on bag $b$, define its mean over the cell and the deviation of each bag from that mean:
 
 $$
 \bar e=\frac1R\sum_{b=1}^Re^{(b)},\qquad e^{(b)}=\underbrace{\bar e}_{\text{fixed part}}+\underbrace{\big(e^{(b)}-\bar e\big)}_{\text{bag part}}.
@@ -218,6 +241,23 @@ $$
 The split is exact (add and subtract $\bar e$), and the bag parts of a cell sum to $0$ by construction, since $\sum_b(e^{(b)}-\bar e)=R\bar e-R\bar e=0$.
 
 **Reading.** The fixed part is shared by the bags of a cell: it varies only across cells, i.e. across $V$ seeds, prevalences and sizes. The bag part measures how much the part changes from one bag to another with everything else held fixed. From §T.3: the fixed part of $e_3$ should be close to $0$ and its bag part should shrink as $\lvert U\rvert$ grows; for BayCAP-KDEy, $e_2$ should have no bag part at all (its $\tilde d$ is fixed given $V$) and a fixed part that does not change with $\lvert U\rvert$; for BayCAP-Hf, $e_2$ may have a bag part, since its recalls are updated by each bag.
+
+**Across $V$ seeds (E4.2b).** *Intuition.* A subsample of $V$ inherits whatever the full $V$ gets wrong, and adds an error of its own that changes from one subsample to another; drawing several subsamples separates the two.
+
+Take a method whose recalls are shares counted on the validation set, as BayCAP-KDEy with its fixed $\hat C$ (§T.3). Write $\tilde d^V_j$ for the recall of class $\omega_j$ on the full $V$, with $n_j$ validation instances of that class, and $\tilde d^{V'}_j$ for the recall on a stratified subsample $V'$ with $n'_j$ of them. Then:
+
+1. *Split.* Adding and subtracting $\tilde d^V_j$,
+$$
+\tilde d^{V'}_j-d^{\text{pool}}_j=\underbrace{\big(\tilde d^{V'}_j-\tilde d^V_j\big)}_{\text{error of the subsample}}+\underbrace{\big(\tilde d^V_j-d^{\text{pool}}_j\big)}_{\text{error of the full }V}.
+$$
+2. *The mean over subsamples.* Given $V$, the $n'_j$ instances of class $\omega_j$ are drawn without replacement from its $n_j$ instances, each instance with the same chance. A share counted on a sample drawn this way has expected value equal to the share in the set it is drawn from (each instance is in the sample with probability $n'_j/n_j$, so by linearity of the expectation the expected number of correct ones is $(n'_j/n_j)$ times the correct ones in $V$). So $\mathbb E\big[\tilde d^{V'}_j\mid V\big]=\tilde d^V_j$: the error of the subsample has mean $0$, and the mean over many seeds of the recall error is the error of the full $V$.
+3. *The spread over subsamples.* The variance of a share counted on a sample drawn without replacement is that of the binomial times the finite-population correction:
+$$
+\operatorname{Var}\big(\tilde d^{V'}_j\mid V\big)=\frac{\tilde d^V_j\big(1-\tilde d^V_j\big)}{n'_j}\cdot\frac{n_j-n'_j}{n_j-1}.
+$$
+The first factor is the variance of the share of successes in $n'_j$ independent trials; the second shrinks it because, without replacement, the sample cannot stray far from the set it exhausts (it is $0$ when $n'_j=n_j$).
+
+So, in E4.2b, the mean over the $V$ seeds of the fixed part of $e_2$ estimates the fixed part at the full $V$, up to the error of averaging $S_V$ seeds, and the standard deviation over the seeds measures the error that a validation set of size $n'_j$ adds. One seed gives one draw of that error, which cannot be told apart from the luck of that subsample. For BayCAP-Hf ($\tilde d$ also depends on the bag and on the prior) and for $e_1$ (the quantifier is refitted on $V'$) there is no such formula, and the seeds measure the spread directly.
 
 **A caveat.** $\bar e$ is the mean of $R$ bags, not of infinitely many, so the fixed part carries a share of the bag-to-bag noise, which gets smaller as $R$ grows; the fixed part of a part with a large bag part is therefore measured less precisely.
 
@@ -291,7 +331,7 @@ Components:
 
 - error split (`src/uncawe/error_split.py`, new, pure numpy; card WP-14): $\tilde\pi$ and $\tilde d$ from a stored `estim_cts` (transposed in storage: true classes on rows; normalised to sum to $1$), $\pi^Q$ and the shares $c_j/n_j$ from `true_cts`, $d^{\text{pool}}$ from the predictions and labels of $h$ on the test pool (pretrain files); the parts $e_1$, $e_2$, $e_3$ (§T.2), the cross term $x$ and the four oracle estimates (§T.5); the fixed and bag parts within a cell (§T.4);
 - analyses of E4.1 and E4.3 on the stored results of `main` (card WP-14): the tables of both in `tables/error_split.py` (a per-bag CSV, tables A and B of E4.1, the two tables of E4.3), the bar plot of E4.1 in `plots/error_split.py`, following [[work_plan]] Part V;
-- E4.2: a new study `target_size`, with bags of fixed prevalence at any $\lvert U\rvert$ drawn with replacement from the pool (per-bag seeds from the dataset, prevalence, $\lvert U\rvert$, $\lvert V\rvert$ level, $V$ seed and bag index), nested seeded stratified subsampling of $V$ with the methods refitted on each subsample and $h$ not retrained, and the methods `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real` built as in `main`.
+- E4.2a and E4.2b: a new study `target_size`, with two grids (E4.2a: $\lvert U\rvert$ with the full $V$; E4.2b: $\lvert V\rvert$ level and $V$ seed at $\lvert U\rvert=1000$; the shared cell run once), with bags of fixed prevalence at any $\lvert U\rvert$ drawn with replacement from the pool (per-bag seeds from the dataset, prevalence, $\lvert U\rvert$, $\lvert V\rvert$ level, $V$ seed and bag index), nested seeded stratified subsampling of $V$ with the methods refitted on each subsample and $h$ not retrained, and the methods `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real` built as in `main`.
 
 Tests:
 
@@ -304,7 +344,7 @@ Tests:
 Reproducibility and comparability:
 
 - E4.1 and E4.3 read stored results only and change no result; they run after the gate (FIX-1), on the `main` results of the pinned `cap-ml`;
-- E4.2 writes to `cap.env["OUT_DIR"]/uncawe/target_size`; `main` and its outputs are unchanged; every row records $\lvert U\rvert$, the $\lvert V\rvert$ level, the $V$ seed, the prevalence, the bag seed, `config_hash` and `schema_version`; its bags have fixed prevalences rather than APP ones, so its cells at $\lvert U\rvert=1000$ and the full $V$ are comparable with `main` in distribution, not bag by bag.
+- E4.2a and E4.2b write to `cap.env["OUT_DIR"]/uncawe/target_size`; `main` and its outputs are unchanged; every row records $\lvert U\rvert$, the $\lvert V\rvert$ level, the $V$ seed, the prevalence, the bag seed, `config_hash` and `schema_version`; its bags have fixed prevalences rather than APP ones, so its cells at $\lvert U\rvert=1000$ and the full $V$ are comparable with `main` in distribution, not bag by bag.
 
 # Appendix
 
