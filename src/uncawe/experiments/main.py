@@ -53,6 +53,7 @@ from uncawe.experiments.methods import (
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
+from uncawe.experiments.task_order import TaskKey, default_reference_experiments, sort_longest_first
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_quantifier import QuantifierBayCAP
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
@@ -289,9 +290,12 @@ def experiments(
     datasets: list[str] | None = None,
     classifiers: list[str] | None = None,
     methods: list[str] | None = None,
+    longest_first: list[str] | None = None,
 ) -> None:
     """Run every method on every pair of ``domain``; ``datasets``, ``classifiers`` and ``methods`` restrict the run
-    (e.g. a pilot) without changing the protocol of the pairs and methods that remain."""
+    (e.g. a pilot) without changing the protocol of the pairs and methods that remain. With ``longest_first`` (a list of
+    result folders, empty for ``main`` and its backups) the tasks of each pool run longest first, with the costs
+    estimated from the times stored in those folders; by default they run in the order of the pretrain files."""
     method_names = get_method_names() if methods is None else methods
     unknown = sorted(set(method_names) - set(get_method_names()))
     if unknown:
@@ -326,8 +330,19 @@ def experiments(
             args = (info_path, method_name, method)
             (bayes_args if method_name in BAYES_POOL_METHODS else regular_args).append(args)
 
+    if longest_first is not None:
+        references = longest_first or default_reference_experiments(experiment=EXPERIMENT)
+        regular_args = sort_longest_first(regular_args, _task_key, get_acc_names(), references, log)
+        bayes_args = sort_longest_first(bayes_args, _task_key, get_acc_names(), references, log)
+
     run_experiment_args(log, regular_args, n_jobs=capenv["N_JOBS"], env=THREAD_LIMITS)
     run_experiment_args(log, bayes_args, n_jobs=BAYES_N_JOBS, env=BAYES_ENV)
+
+
+def _task_key(task: tuple[str, str, CAPWithConfidence]) -> TaskKey:
+    info_path, method_name, _ = task
+    p = PretrainInfo.load(info_path, fast=True)
+    return TaskKey(p.domain, p.d_info.name, p.h_info.full_name, method_name)
 
 
 def main() -> None:
@@ -339,11 +354,20 @@ def main() -> None:
     parser.add_argument("--datasets", nargs="+", default=None, help="Run only these datasets (default: all)")
     parser.add_argument("--classifiers", nargs="+", default=None, help="Run only these classifiers (default: all)")
     parser.add_argument("--methods", nargs="+", default=None, help="Run only these methods (default: all)")
+    parser.add_argument(
+        "--longest-first",
+        nargs="*",
+        default=None,
+        metavar="EXPERIMENT",
+        help="Run the tasks of each pool longest first, with the costs estimated from the times stored in these result "
+        "folders of OUT_DIR/uncawe, the first that has a task (default with no names: main, then every main_* folder "
+        "by name); without the option, the tasks run in the order of the pretrain files",
+    )
     pargs = parser.parse_args()
 
     try:
         log.info("-" * 31 + "  start  " + "-" * 31)
-        experiments(log, pargs.domain, pargs.datasets, pargs.classifiers, pargs.methods)
+        experiments(log, pargs.domain, pargs.datasets, pargs.classifiers, pargs.methods, pargs.longest_first)
     except Exception as error:
         log.error(error)
         print_exception(error)
