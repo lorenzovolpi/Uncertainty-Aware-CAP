@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
+from cap.models.confidence import PrediQuant
 
 from uncawe.experiments import main
 from uncawe.experiments.records import EvaluationContext
@@ -74,6 +75,28 @@ class _HierarchicalBayCAP(_BayCAP):
 
     def last_posterior_summaries(self):
         return {"nuts_failed": 0, "h_pi_mean": np.full(2, self.predict_calls / 10)}
+
+
+class _PrediQuant(PrediQuant, _ContingencyMethod):
+    """A PrediQuant with known candidate bags: Vb has two instances per class, bag 0 uses positions 0 and 2, bag 1
+    positions 1 and 2; the first prediction selects bag 0, the second both; the estimated prevalence reports the bag."""
+
+    def __init__(self, rho):
+        _ContingencyMethod.__init__(self)
+        self.rho = rho
+        self.Vb_y = np.array([0, 0, 1, 1])
+        self.classes_ = np.array([0, 1])
+        self.sigma_indices = [np.array([0, 2]), np.array([1, 2])]
+
+    fit = _ContingencyMethod.fit
+    switch = _ContingencyMethod.switch
+    ci_from_cts = _ContingencyMethod.ci_from_cts
+
+    def predict_ct_range(self, X, posteriors):
+        tables = _ContingencyMethod.predict_ct_range(self, X, posteriors)
+        self.last_test_prev = np.array([self.predict_calls / 10, 1 - self.predict_calls / 10])
+        self.last_selected_bags = np.arange(self.predict_calls)
+        return tables
 
 
 class _DirectMethod:
@@ -167,6 +190,29 @@ class MainProtocolTest(unittest.TestCase):
         self.assertEqual(columns["nuts_divergences"], [1, 2])
         self.assertEqual(columns["nuts_failed"], [0, 0])
         np.testing.assert_allclose(np.stack(columns["h_pi_mean"]), [[0.1, 0.1], [0.2, 0.2]])
+
+    @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
+    @patch("uncawe.experiments.main.os.path.exists", return_value=False)
+    @patch("uncawe.experiments.main.build_result_frame", return_value=Mock())
+    def test_contingency_method_stores_allocation_columns_for_pq_rho_only(self, build, _exists, _path):
+        # E6.2 (WP-17): the PQ-rho methods store the estimated prevalence and the class support; PQ (rho=None) does not
+        main._evaluate_contingency_method(
+            self.pretrain, "PQ-rho0.3", _PrediQuant(0.3), self.dataset, Mock(), Mock(), self.context
+        )
+        self.assertEqual(build.call_count, 3)
+        for call in build.call_args_list:
+            columns = call.kwargs["extra_columns"]
+            self.assertEqual(list(columns), ["pq_test_prev", "pq_class_support", "pq_min_class_support"])
+            np.testing.assert_allclose(columns["pq_test_prev"], [[0.1, 0.9], [0.2, 0.8]])
+            np.testing.assert_allclose(columns["pq_class_support"], [[0.5, 0.5], [1.0, 0.5]])
+            self.assertEqual(columns["pq_min_class_support"], [0.5, 0.5])
+
+        build.reset_mock()
+        main._evaluate_contingency_method(
+            self.pretrain, "PQ", _PrediQuant(None), self.dataset, Mock(), Mock(), self.context
+        )
+        for call in build.call_args_list:
+            self.assertIsNone(call.kwargs["extra_columns"])
 
     @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
     @patch("uncawe.experiments.main.os.path.exists", return_value=False)
