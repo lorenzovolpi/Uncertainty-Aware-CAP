@@ -27,6 +27,9 @@ from uncawe.plots.common import font_size
 from uncawe.tables.pq_rho import KEYS, MEASURES, METRIC_LABELS, pairs_csv_path
 
 PLOT_NAME = "pq_rho"
+# measures that are shares in [0, 1], drawn on a fixed range
+SHARE_MEASURES = ("coverage", "class_support")
+
 PANEL_LABELS = {
     "quant_error": "quantification error",
     "acc_err": "absolute error",
@@ -68,6 +71,11 @@ def plot_metric(table: pd.DataFrame, acc_name: str):
             ax.plot(mean.index, mean.to_numpy(), **MEAN_LINE)
         if measure == "coverage":
             ax.axhline(CONFIDENCE_LEVEL, **REFERENCE_LINE)
+        if measure in SHARE_MEASURES:
+            # shares in [0, 1]; without a fixed range and offset, values within 1e-5 of 1
+            # are drawn as an offset axis that reads as a wide spread
+            ax.set_ylim(-0.05, 1.05)
+            ax.ticklabel_format(axis="y", useOffset=False)
         ax.set_title(PANEL_LABELS[measure], fontsize=font_size(11))
         ax.set_xticks(levels)
         ax.grid(True, color="#d9d9d9", linewidth=0.5)

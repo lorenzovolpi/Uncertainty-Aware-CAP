@@ -135,6 +135,18 @@ class PQRhoPlotTest(unittest.TestCase):
         )
         plt.close(fig)
 
+    def test_share_panels_have_a_fixed_range_and_no_offset_when_saturated(self):
+        pairs, _, _ = tables.compute("vanilla_accuracy", synthetic_results())
+        # class support within 1e-5 of 1, as in the run of E6.2: drawn at 1, not on an offset axis
+        pairs["class_support"] = 1 - 1e-5 * (pairs["rho"] == 0.1)
+        fig = plots.plot_metric(pairs.assign(acc_name="vanilla_accuracy"), "vanilla_accuracy")
+        fig.canvas.draw()
+        for measure in plots.SHARE_MEASURES:
+            ax = fig.axes[list(tables.MEASURES).index(measure)]
+            self.assertEqual(ax.get_ylim(), (-0.05, 1.05))
+            self.assertEqual(ax.yaxis.get_major_formatter().get_offset(), "")
+        plt.close(fig)
+
 
 if __name__ == "__main__":
     unittest.main()
