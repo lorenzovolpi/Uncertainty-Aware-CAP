@@ -378,6 +378,7 @@ def _rank_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\newcommand{\\bcap}{BayesCAP}",
         "\\newcommand{\\sqsh}{SQS-H}",
         "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
+        "\\newcommand{\\sqsb}{SQS-B}",
         "",
         "\\begin{document}",
         "",

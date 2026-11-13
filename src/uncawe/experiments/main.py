@@ -56,6 +56,7 @@ from uncawe.experiments.records import EvaluationContext, build_result_frame
 from uncawe.experiments.task_order import TaskKey, default_reference_experiments, sort_longest_first
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_quantifier import QuantifierBayCAP
+from uncawe.methods.sqs_b import SQSB
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.util import all_results_exist, get_logger, get_plain_prev, local_path
 
@@ -146,13 +147,13 @@ def _evaluate_contingency_method(
 
         # the time of the NUTS diagnostics of BayCAP (E2.4 of docs/ext2_baycap.md), of the posterior summaries of its
         # hierarchical prior (E2.7) and of the summaries of BayCAPKDEy and BayCAPMAPLS (E3.1 and E3.2 of
-        # docs/ext3_posterior_propagation.md) and of the columns of the methods of E6.2 (docs/ext6_sqs_s_design.md) is
-        # left out of the test time
+        # docs/ext3_posterior_propagation.md), of SQS-B (E3.3) and of the columns of the methods of E6.2
+        # (docs/ext6_sqs_s_design.md) is left out of the test time
         started, t_diagnostics = time(), 0.0
         estim_ct_ranges, diagnostics = [], []
         for sample, posteriors in zip(dataset.test_prot(), dataset.test_prot_posteriors):
             estim_ct_ranges.append(method.predict_ct_range(sample.X, posteriors))
-            if isinstance(method, (BayCAP, QuantifierBayCAP)):
+            if isinstance(method, (BayCAP, QuantifierBayCAP, SQSB)):
                 started_diagnostics = time()
                 diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
                 t_diagnostics += time() - started_diagnostics

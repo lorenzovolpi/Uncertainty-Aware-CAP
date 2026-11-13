@@ -10,7 +10,7 @@ A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, no
 |---|---|
 | `methods/baycap_kdey.py:BayCAPKDEy` with `c_prior="fixed"` (BayesKDEy) and `methods/baycap_mapls.py:BayCAPMAPLS` (BayesianMAPLS): fixed $\hat C$, $h$ or an MLP as input classifier, population or realised pushforward (work plan §II.4); one class, `methods/baycap_fixed.py:BayCAPFixed`, until the split of WP-13, which kept the draws | [implemented], evaluated by E3.1 |
 | E3.1, BayCAP with a fixed $\hat C$: quantifier × input classifier × pushforward, on the `main` protocol | run and analysed (card WP-8 of [[work_plan]], done): BayCAP-KDEy with the realised pushforward is the best of the eight methods |
-| E3.3, SQS-B on BayesKDEy with an MLP input (`methods/sqs_b.py:SQSB`, in the tables of `main`) | [proposal], not implemented; decided by the user on 2026-11-10; depends on FIX-8 and on the re-run of `main` of FIX-2 + FIX-3 ([[work_plan]]) |
+| E3.3, SQS-B on BayesKDEy with an MLP input (`methods/sqs_b.py:SQSB`, in the tables of `main`) | [implemented] on branch `wp-18/sqs-b` (card WP-18 of [[work_plan]], in progress), not run; decided by the user on 2026-11-10, with the MLP input kept after FIX-8 (user's decision of 2026-11-13) |
 | BayCAP with a fixed $\hat C$ and the posterior of BayesianCC | [proposal], not implemented |
 | E3.2, BayCAP-KDEy with a random $C$: the joint posterior of $(\pi,C)$ with a kernel likelihood and the Hf prior (§T.10–§T.13), with the split of `BayCAPFixed` into `BayCAPKDEy` and `BayCAPMAPLS` | run and analysed (card WP-13 of [[work_plan]], done): no improvement over E3.1 overall; it helps where the error is $e_2$ (`mammographic`, `semeion`) and fails elsewhere; not carried forward (user's decision of 2026-11-09) |
 | A random rate matrix for BayesKDEy (options 1–2 of Appendix B); BayesianMAPLS with a uniform prior or a random calibration map (Appendix E) | [new hypothesis] |
@@ -125,7 +125,7 @@ All experiments use the protocol of `main`: the $15$ datasets and $5$ classifier
     - per bag, label-free, from the draws: $\sigma_p$, the standard deviation of the population accuracies (§T.5); $\bar\sigma_f$, the bag term of the forward bag (§T.14); $\bar\sigma_g$, the bag term of the realised pushforward (§T.8); the spreads $S_{\text{rec}}$ of the recalls and $S_{\text{prec}}$ of the precisions at the posterior mean (§T.14); and the predicted ratio of the amplitudes of `SQS-B` and `BayCAP-KDEy-mlp-real`, $\sqrt{(\sigma_p^2+\bar\sigma_f^2)/(\sigma_p^2+\bar\sigma_g^2)}$, against the observed one;
     - paired bootstrap tests of the mean Winkler difference, as in E3.1 ($10{,}000$ seeded resamples of the $100$ per-bag differences, Holm-adjusted over the $75$ pairs, separately for each test): `SQS-B` against `BayCAP-KDEy-mlp-real` and against `SQS-Hbs`.
   - **Estimand:** realised table for `SQS-B`, as for every SQS method, scored against the realised table of each bag (`true_cts`), as every method of `main`; the comparison methods are scored the same way (`BayCAP-KDEy-mlp`, a population method, is used only for its AE). $\sigma_p$, $\bar\sigma_f$, $\bar\sigma_g$, $S_{\text{rec}}$ and $S_{\text{prec}}$ use no target labels.
-  - **Cost:** one run of `main` on `bcuda` with `JAX=cpu`, $75\times100=7500$ NUTS runs, as one method of E3.1, plus, per pair, one fit of the MLP and of the kernel densities, and, per bag, $1000$ bags of $1000$ instances drawn from $V$; a pilot on two datasets precedes the full run.
+  - **Cost:** one run of `main` on `bcuda` with `JAX=cpu`, $75\times100=7500$ NUTS runs, as one method of E3.1, plus, per pair, one fit of the MLP and of the kernel densities, and, per bag, $1000$ bags of $1000$ instances drawn from $V$; no pilot (user's decision of 2026-11-13).
 - **Representation.**
   - **Main tables:** `SQS-B` is added to the methods of the tables, rank tables and coverage vs amplitude plot of `main` (user's decision of 2026-11-10).
   - **Comparison table:** one row per pair, grouped by dataset and ordered by $K$: coverage, amplitude and Winkler score of `SQS-B`, `BayCAP-KDEy-mlp-real`, `SQS-Hbs`, `SQS-H` and `BayesCAP-Hf-real`; the AE of `SQS-B` and of `BayCAP-KDEy-mlp`; the observed and predicted ratio of the amplitudes; the bootstrap intervals and Holm-adjusted p-values of the two Winkler tests. CSV, LaTeX and landscape PDF, like the tables of E3.1.
@@ -740,13 +740,13 @@ Reproducibility and comparability (for E3.2):
 - E3.2 adds the rows of two methods to `main` and leaves the stored results of every other method untouched;
 - the two methods are comparable with the stored CPU results of E3.1 and of `BayesCAP-Hf-real` (same bags, same platform); a pilot on `mammographic`, `poker_hand` and `wine-quality` precedes the full run.
 
-Components (for E3.3), [proposal], not implemented:
+Components (for E3.3), all [implemented] (card WP-18), not run:
 
-- **`SQSB`** in `methods/sqs_b.py`, an SQS method with the structure of `cap-ml`'s `RQBS` and `PrediQuant` (`CAPContingencyTable`, `CTCAPWithConfidence`; user's decision of 2026-11-10), with parameters `acc`, a Bayesian quantifier, `num_samples`, `sample_size` and `random_state`. `fit(val, posteriors)` fits the quantifier on $V$ and keeps the outputs of $h$ on $V$ with their labels, as `RQBS`. `predict_ct_range(X, posteriors)` takes the `num_samples` prevalence draws of the quantifier on the bag, smooths them as `RQBS`, draws one bag of `sample_size` instances per draw with `sampling_index` of the kept collection, all bags sequentially from the NumPy state seeded by `random_state` at each call (as `RQBS`), and returns the tables of $h$ on the bags (normalised, true classes on rows, the `cap-ml` layout); `predict_ct` returns their mean.
+- **`SQSB`** in `methods/sqs_b.py`, an SQS method with the structure of `cap-ml`'s `RQBS` and `PrediQuant` (`CAPContingencyTable`, `CTCAPWithConfidence`; user's decision of 2026-11-10), with parameters `acc`, a Bayesian quantifier (a `QuantifierBayCAP` with a fixed $\hat C$; its `num_samples` is the number of bags), `sample_size` and `random_state`. `fit(val, posteriors)` fits the quantifier on $V$ and keeps the outputs of $h$ on $V$ with their labels, as `RQBS` (the labels as indices of `val.classes_`). `predict_ct_range(X, posteriors)` takes the `num_samples` prevalence draws of the quantifier on the bag, smooths them as `RQBS` (in double precision, since the draws of NUTS are single precision and `sampling_index` requires prevalences that sum to $1$), draws one bag of `sample_size` instances per draw with `sampling_index` of the kept collection, all bags sequentially from the NumPy state seeded by `random_state` at each call (as `RQBS`), and returns the tables of $h$ on the bags (normalised, true classes on rows, the `cap-ml` layout); `predict_ct` returns their mean.
 - **The quantifier:** the BayesKDEy of `methods/baycap_kdey.py:BayCAPKDEy` with `c_prior="fixed"` and `input_classifier="mlp"`, reused through its `fit`, `outputs` and `sample_prevalences`, not copied, so that `SQS-B` and `BayCAP-KDEy-mlp-real` share their prevalence draws for the same seeds.
-- **Summaries:** per bag, the summaries of E3.1 (`FIXED_SUMMARIES`: `prev_mean`, `acc_sd`$=\sigma_p$, `sigma_g`, `val_ece`), $\bar\sigma_f$ (`sigma_f`), $S_{\text{rec}}$ and $S_{\text{prec}}$ at the posterior mean, and the NUTS diagnostics, as for the BayCAP methods.
-- **Methods in `main`:** one factory entry, `SQS-B`, run in the BayCAP pool with `BAYES_ENV`; in `tables/main.py:MAIN_METHODS` (tables, rank tables, coverage vs amplitude plot), with a LaTeX macro `\sqsb`; listed in §II.12 of [[work_plan]] as code to move to `cap-ml`.
-- **Tables and plots of E3.3:** a table script and a plot script of their own, reusing the paired bootstrap of `tables/pushforward.py`.
+- **Summaries:** per bag, the summaries of E3.1 (`FIXED_SUMMARIES`: `prev_mean`, `acc_sd`$=\sigma_p$, `sigma_g`, `val_ece`), $\bar\sigma_f=\sqrt{\frac1R\sum_r\sigma_f^2(\pi^{(r)})}$ (`sigma_f`, `forward_bag_variances`), $S_{\text{rec}}$ and $S_{\text{prec}}$ at the posterior mean (`s_rec`, `s_prec`, `luck_spreads`), and the NUTS diagnostics, as for the BayCAP methods; computed on the draws as returned, as those of `BayCAPKDEy`.
+- **Methods in `main`:** one factory entry, `SQS-B` (`experiments/methods.py`, with the quantifier built by `fixed_c_method` as `BayCAP-KDEy-mlp-real`), run in the BayCAP pool with `BAYES_ENV`; in `tables/main.py:MAIN_METHODS` (tables, rank tables, coverage vs amplitude plot), after `SQS-Hbs`, with a LaTeX macro `\sqsb`; and in the tables and bar plots of E4.1 and E4.3 (`tables/error_split.py:METHODS`, user's decision of 2026-11-13); listed in §II.12 of [[work_plan]] as code to move to `cap-ml`.
+- **Tables and plots of E3.3:** `tables/sqs_b.py` (per-pair CSV; three tables: comparison, widths, tests), reusing the paired bootstrap of `tables/pushforward.py` and the bag scores of `tables/baycap_kdey_hf.py` (the failed bags of `BayesCAP-Hf-real` left out of its scores); the comparison table also shows the AE of `BayCAP-KDEy-mlp-real`, for the movement of the centre (P15); the observed and predicted amplitude ratios are medians over the bags, as the widening factors of E3.1, with the share of bags where they agree within $10\%$; the CSV also records the largest difference of the stored $\bar\pi$ of `SQS-B` and `BayCAP-KDEy-mlp-real`, a check that the run shares the prevalence draws. `plots/sqs_b.py`: `coverage` (two panels) and `width`.
 
 Tests (for E3.3):
 
@@ -754,14 +754,18 @@ Tests (for E3.3):
 - each bag has `sample_size` instances of $V$, with the class counts that `sampling_index` gives for its draw;
 - the tables are those of $h$ on the bags, in the `cap-ml` layout, and sum to one;
 - two calls with the same seed give the same tables;
-- for accuracy, `sigma_f` equals the mean over the draws of $\frac{1}{N^Q}\sum_j\pi_j\hat d_j(1-\hat d_j)$, and $a(1-a)=N^Q\sigma_f^2+S_{\text{rec}}$ on each draw;
-- the factory builds `SQS-B` with the configuration of E3.3, and the tables of `main` include it.
+- for accuracy, `sigma_f`$^2$ equals the mean over the draws of $\frac{1}{N^Q}\sum_j\pi_j\hat d_j(1-\hat d_j)$, and $a(1-a)=N^Q\sigma_f^2+S_{\text{rec}}=\sum_iq_i\rho_{ii}(1-\rho_{ii})+S_{\text{prec}}$ on each draw, with the example of §T.14;
+- the mean accuracy of the bags is within four standard errors of $\hat d^\top\bar\pi$; labels other than $0,\dots,K-1$ give the same tables;
+- the factory builds `SQS-B` with the configuration of E3.3, on a quantifier with the settings and seeds of `BayCAP-KDEy-mlp-real`; `main` stores its diagnostics and summaries; the tables, rank tables and coverage vs amplitude plot of `main` and the tables of E4.1 and E4.3 include it;
+- the table and plot scripts of E3.3 on synthetic results.
+
+All in `tests/test_sqs_b.py`, `tests/test_sqs_b_tables.py`, `tests/test_methods.py` and `tests/test_main_protocol.py`.
 
 Reproducibility and comparability (for E3.3):
 
 - E3.3 adds one method to `main` and leaves the stored results of every other method untouched; adding it to `MAIN_METHODS` changes the mean ranks of the other methods in the rank tables of `main` (not their scores), which are regenerated;
 - `SQS-B` is comparable with the stored CPU results of E3.1 and of `BayesCAP-Hf-real`, and with `SQS-H` and `SQS-Hbs` after the re-run of FIX-2 + FIX-3, all after FIX-8 (same bags, same platform);
-- a pilot on two datasets precedes the full run.
+- no pilot: the full run is started directly (user's decision of 2026-11-13).
 
 # Appendix
 

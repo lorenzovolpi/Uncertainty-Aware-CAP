@@ -2,9 +2,10 @@
 E4.1 and E4.3 of ``docs/ext4_uncertainty_budget.md``).
 
 Methods: the methods of the main table whose estimate comes from a contingency table, ``tables/main.py:MAIN_METHODS``
-without ``DoC`` (which estimates accuracy directly): ``QuAcc_NxN``, ``O-LEAP``, ``SQS-H``, ``SQS-Hbs`` (SQS-H with a bootstrap of the prevalence), ``PQ`` (SQS-S),
+without ``DoC`` (which estimates accuracy directly): ``QuAcc_NxN``, ``O-LEAP``, ``SQS-H``, ``SQS-Hbs`` (SQS-H with a bootstrap of the prevalence), ``SQS-B`` (E3.3, since card
+WP-18), ``PQ`` (SQS-S),
 ``BayesCAP-real``, ``BayesCAP-Hf-real`` and ``BayCAP-KDEy-mlp-real``. Vanilla accuracy, $|U|=1000$, the pairs of
-``main`` stored for all seven methods. Every method and every quantity is scored against the realised table of each bag
+``main`` stored for all the methods. Every method and every quantity is scored against the realised table of each bag
 (``true_cts``).
 
 Per bag and method (``uncawe.error_split``): the parts $e_1$ (prevalence), $e_2$ (recalls against the pool) and $e_3$
@@ -57,6 +58,7 @@ from uncawe.util import decorate_dataset
 
 TABLE_NAME = "error_split"
 KEYS = ["dataset", "classifier"]
+# since card WP-18 (user's decision of 2026-11-13) also SQS-B (E3.3), which MAIN_METHODS includes
 METHODS = tuple(m for m in main_tables.MAIN_METHODS if m != "DoC")
 IDENTITY_TOL = 1e-9
 TABLE_SETS = {"e4.1": ("rms", "signed"), "e4.3": ("oracle_realised", "oracle_pool")}
@@ -65,6 +67,7 @@ SHORT_LABELS = {
     "O-LEAP": "LEAP",
     "SQS-H": "SQS-H",
     "SQS-Hbs": "SQS-H\\textsubscript{bs}",
+    "SQS-B": "SQS-B",
     "PQ": "SQS-S",
     "BayesCAP-real": "\\bcap{}",
     "BayesCAP-Hf-real": "Hf",
@@ -402,7 +405,8 @@ COMMON_CAPTION = (
     "realised table of each bag. $e_1=\\sum_j(\\tilde\\pi_j-\\pi^Q_j)\\tilde d_j$ (prevalence), "
     "$e_2=\\sum_j\\pi^Q_j(\\tilde d_j-d^{\\mathrm{pool}}_j)$ (recalls against the test pool), "
     "$e_3=\\sum_j\\pi^Q_j(d^{\\mathrm{pool}}_j-c_j/n_j)$ (luck of the bag), with $e_1+e_2+e_3=\\hat A-A$; $e_3$ uses no "
-    "estimate and is the same for every method. Methods: QuAcc, LEAP, SQS-H, SQS-S, \\bcap{} (\\bcap{}-real), Hf "
+    "estimate and is the same for every method. Methods: QuAcc, LEAP, SQS-H, SQS-H\\textsubscript{bs}, SQS-B, SQS-S, "
+    "\\bcap{} (\\bcap{}-real), Hf "
     "(\\bcap{}-Hf-real), KDEy (\\bcap{}-KDEy-mlp-real). Bags where NUTS failed are dropped. "
 )
 COLOUR_NOTE = (

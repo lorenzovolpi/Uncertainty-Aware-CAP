@@ -81,13 +81,15 @@ metrics_map = {
 # BayCAP-KDEy with an MLP as input classifier and a fixed rate matrix (E3.1); every other method stored in main is
 # left out. Since FIX-2 (2026-11-10) the SQS-H of the paper is SQS-H and the variant with a bootstrap of the
 # prevalence, called RQBS before, is SQS-Hbs; both are shown. Before, the tables showed the methods of the paper (L-CBPE and BayesCAP with the population pushforward
-# included) plus BayesCAP-EB-real, BayesCAP-Hf-real, BayCAP-KDEy-h-real and BayCAP-KDEy-mlp-real.
+# included) plus BayesCAP-EB-real, BayesCAP-Hf-real, BayCAP-KDEy-h-real and BayCAP-KDEy-mlp-real. SQS-B (E3.3, card
+# WP-18) is shown since 2026-11-13 (user's decision of 2026-11-10).
 MAIN_METHODS = (
     "DoC",
     "QuAcc_NxN",
     "O-LEAP",
     "SQS-H",
     "SQS-Hbs",
+    "SQS-B",
     "PQ",
     "BayesCAP-real",
     "BayesCAP-Hf-real",
@@ -715,6 +717,7 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\newcommand{\\pq}{SQS-S}",
         "\\newcommand{\\sqsh}{SQS-H}",
         "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
+        "\\newcommand{\\sqsb}{SQS-B}",
         "\\newcommand{\\bcap}{BayesCAP}",
         "",
         "\\begin{document}",
