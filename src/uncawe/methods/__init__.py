@@ -10,8 +10,10 @@ from uncawe.methods.baycap import (
 )
 from uncawe.methods.baycap_kdey import BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
+from uncawe.methods.sqs_b import SQSB
 
 __all__ = [
+    "SQSB",
     "BayCAP",
     "BayCAPKDEy",
     "BayCAPMAPLS",

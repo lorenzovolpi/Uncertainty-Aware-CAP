@@ -14,12 +14,15 @@ from uncawe.experiments.methods import (
     METHOD_CLASS,
     PQ_RHO_VARIANTS,
     SAMPLE_SIZE,
+    SQS_B,
+    SQS_B_QUANTIFIER,
     gen_methods,
     get_method_names,
 )
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
+from uncawe.methods.sqs_b import SQSB
 from uncawe.plots.amplitude_vs_coverage import PLOT_METHODS as AVC_METHODS
 from uncawe.plots.common import DEFAULT_METHODS, METHOD_COLORS, METHOD_PLOT_LABELS
 from uncawe.tables import main as main_tables
@@ -43,6 +46,7 @@ MAIN_SET = [
     "O-LEAP",
     "SQS-H",
     "SQS-Hbs",
+    "SQS-B",
     "PQ",
     "BayesCAP-real",
     "BayesCAP-Hf-real",
@@ -123,10 +127,10 @@ class BayCAPFactoryTest(unittest.TestCase):
                 self.assertEqual(method.random_state, reference.random_state)
 
     def test_bayes_pool_holds_every_baycap_method(self):
-        self.assertEqual(BAYES_POOL_METHODS, set(BAYCAP_METHODS) | set(E31_METHODS) | set(E32_METHODS))
+        self.assertEqual(BAYES_POOL_METHODS, set(BAYCAP_METHODS) | set(E31_METHODS) | set(E32_METHODS) | {"SQS-B"})
         for name in get_method_names():
             self.assertEqual(
-                name in BAYES_POOL_METHODS, isinstance(self.methods[name], (BayCAP, BayCAPKDEy, BayCAPMAPLS))
+                name in BAYES_POOL_METHODS, isinstance(self.methods[name], (BayCAP, BayCAPKDEy, BayCAPMAPLS, SQSB))
             )
 
     def test_factory_names_match_method_class(self):
@@ -152,6 +156,36 @@ class BayCAPFactoryTest(unittest.TestCase):
                 self.assertIn(name, METHOD_PLOT_LABELS)
                 self.assertIn(name, METHOD_LATEX_LABELS)
                 self.assertIn(name, METHOD_LABELS)
+        for labels in (METHOD_COLORS, METHOD_PLOT_LABELS, METHOD_LATEX_LABELS):
+            self.assertIn("SQS-B", labels)
+
+    def test_factory_builds_sqs_b_on_the_quantifier_of_baycap_kdey_mlp_real(self):
+        # E3.3 (card WP-18): the quantifier has the configuration and seeds of BayCAP-KDEy-mlp-real, so the same draws
+        self.assertEqual((SQS_B, SQS_B_QUANTIFIER), ("SQS-B", "BayCAP-KDEy-mlp-real"))
+        method = self.methods["SQS-B"]
+        self.assertIs(METHOD_CLASS["SQS-B"], SQSB)
+        self.assertIsInstance(method, SQSB)
+        reference = self.methods[SQS_B_QUANTIFIER]
+        quantifier = method.quantifier
+        self.assertIs(type(quantifier), BayCAPKDEy)
+        self.assertIsNot(quantifier, reference)
+        for attribute in (
+            "input_classifier",
+            "c_prior",
+            "kernel",
+            "bandwidth",
+            "shrinkage",
+            "temperature",
+            "prior",
+            "num_samples",
+            "num_warmup",
+            "random_state",
+        ):
+            with self.subTest(attribute=attribute):
+                self.assertEqual(getattr(quantifier, attribute), getattr(reference, attribute))
+        self.assertEqual((quantifier.input_classifier, quantifier.c_prior), ("mlp", "fixed"))
+        self.assertEqual((method.num_samples, method.sample_size), (BOOTSTRAP_ITERS, SAMPLE_SIZE))
+        self.assertEqual(method.random_state, qp.environ["_R_SEED"])
 
 
 class SeededQuantifierTest(unittest.TestCase):

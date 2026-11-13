@@ -8,6 +8,7 @@ from cap.models.confidence import PrediQuant
 from uncawe.experiments import main
 from uncawe.experiments.records import EvaluationContext
 from uncawe.methods.baycap import NUTS_DIAGNOSTICS, BayCAP
+from uncawe.methods.sqs_b import SQSB
 
 
 class _Protocol:
@@ -97,6 +98,26 @@ class _PrediQuant(PrediQuant, _ContingencyMethod):
         self.last_test_prev = np.array([self.predict_calls / 10, 1 - self.predict_calls / 10])
         self.last_selected_bags = np.arange(self.predict_calls)
         return tables
+
+
+class _SQSB(SQSB, _ContingencyMethod):
+    """An SQS-B with fixed tables, whose diagnostics and summaries report the index of the bag."""
+
+    def __init__(self):
+        _ContingencyMethod.__init__(self)
+
+    fit = _ContingencyMethod.fit
+    switch = _ContingencyMethod.switch
+    ci_from_cts = _ContingencyMethod.ci_from_cts
+
+    def predict_ct_range(self, X, posteriors):
+        return _ContingencyMethod.predict_ct_range(self, X, posteriors)
+
+    def last_nuts_diagnostics(self):
+        return {"nuts_divergences": self.predict_calls, "nuts_max_rhat": 1.0, "nuts_min_ess": 500.0}
+
+    def last_posterior_summaries(self):
+        return {"sigma_f": self.predict_calls / 100, "s_rec": 0.01, "s_prec": 0.02}
 
 
 class _DirectMethod:
@@ -190,6 +211,17 @@ class MainProtocolTest(unittest.TestCase):
         self.assertEqual(columns["nuts_divergences"], [1, 2])
         self.assertEqual(columns["nuts_failed"], [0, 0])
         np.testing.assert_allclose(np.stack(columns["h_pi_mean"]), [[0.1, 0.1], [0.2, 0.2]])
+
+    @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
+    @patch("uncawe.experiments.main.os.path.exists", return_value=False)
+    @patch("uncawe.experiments.main.build_result_frame", return_value=Mock())
+    def test_contingency_method_stores_sqs_b_diagnostics_and_summaries_per_bag(self, build, _exists, _path):
+        # E3.3 (WP-18): SQS-B stores the NUTS diagnostics of its quantifier and its summaries, as the BayCAP methods
+        main._evaluate_contingency_method(self.pretrain, "SQS-B", _SQSB(), self.dataset, Mock(), Mock(), self.context)
+        columns = build.call_args_list[0].kwargs["extra_columns"]
+        self.assertEqual(list(columns), [*NUTS_DIAGNOSTICS, "sigma_f", "s_rec", "s_prec"])
+        self.assertEqual(columns["nuts_divergences"], [1, 2])
+        self.assertEqual(columns["sigma_f"], [0.01, 0.02])
 
     @patch("uncawe.experiments.main._result_path", return_value="result.parquet")
     @patch("uncawe.experiments.main.os.path.exists", return_value=False)

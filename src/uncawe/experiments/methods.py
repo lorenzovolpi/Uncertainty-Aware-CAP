@@ -20,6 +20,7 @@ from uncawe.experiments.metrics import gen_acc_measure
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
+from uncawe.methods.sqs_b import SQSB
 
 BAYES_WARMUPS = 500
 BAYES_N_JOBS = 16
@@ -54,6 +55,8 @@ METHOD_CLASS = {
     "L-CBPE": CBPE,
     "SQS-H": RQBS,
     "SQS-Hbs": RQBS,
+    # SQS-B of E3.3 (card WP-18), see SQS_B below
+    "SQS-B": SQSB,
     "PQ": PrediQuant,
     "BayesCAP": BayCAP,
     "BayesCAP-real": BayCAP,
@@ -111,8 +114,15 @@ FIXED_C_VARIANTS = {
 KDEY_HF_VARIANTS = {f"BayCAP-KDEy-Hf-{source}-real": source for source in ("h", "mlp")}
 # the settings of BayesKDEy in E3.1 and E3.2
 KDEY_SETTINGS = {"kernel": "gaussian", "bandwidth": 0.1, "shrinkage": 0.0}
+# SQS-B of E3.3 (methods/sqs_b.py:SQSB, card WP-18): one bag of SAMPLE_SIZE instances of V per posterior draw of the
+# quantifier of BayCAP-KDEy-mlp-real (BayesKDEy with an MLP input and a fixed C, same settings and seeds, so the same
+# prevalence draws); the bags are seeded with the experiment seed, as SQS-H(bs)
+SQS_B = "SQS-B"
+SQS_B_QUANTIFIER = "BayCAP-KDEy-mlp-real"
 # the methods run by main in the BayCAP pool, with BAYES_N_JOBS workers and BAYES_ENV
-BAYES_POOL_METHODS = frozenset(BAYCAP_VARIANTS) | frozenset(FIXED_C_VARIANTS) | frozenset(KDEY_HF_VARIANTS)
+BAYES_POOL_METHODS = (
+    frozenset(BAYCAP_VARIANTS) | frozenset(FIXED_C_VARIANTS) | frozenset(KDEY_HF_VARIANTS) | frozenset({SQS_B})
+)
 
 
 # the MLPs of the quantifiers are seeded with the experiment seed, so that every fit trains the same MLP (FIX-3)
@@ -138,6 +148,21 @@ def sqs_s(acc, rho: float | None = None) -> PrediQuant:
     )
 
 
+def fixed_c_method(acc, name: str) -> BayCAPKDEy | BayCAPMAPLS:
+    """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP."""
+    quantifier, source, estimand = FIXED_C_VARIANTS[name]
+    common = {
+        "input_classifier": source,
+        "estimand": estimand,
+        "temperature": 1.0,
+        "num_samples": BOOTSTRAP_ITERS,
+        "num_warmup": BAYES_WARMUPS,
+    }
+    if quantifier == "kdey":
+        return BayCAPKDEy(acc, c_prior="fixed", **KDEY_SETTINGS, **common)
+    return BayCAPMAPLS(acc, **common)
+
+
 def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     acc_name, acc = next(gen_acc_measure(True))
     yield "DoC", BootstrapDirectCAP(DoC(acc), num_samples=BOOTSTRAP_ITERS)
@@ -154,6 +179,7 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
     yield "SQS-H", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=False)
     yield "SQS-Hbs", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=True)
+    yield SQS_B, SQSB(acc, fixed_c_method(acc, SQS_B_QUANTIFIER), sample_size=SAMPLE_SIZE)
     yield "PQ", sqs_s(acc)
     # BayesCAP is built from BayCAP, with the draws of cap-ml's ACC_BayesCAP, so that it stores the NUTS diagnostics
     for name, (estimand, c_prior) in BAYCAP_VARIANTS.items():
@@ -168,18 +194,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
                 **BAYCAP_OPTIONS.get(name, {}),
             ),
         )
-    for name, (quantifier, source, estimand) in FIXED_C_VARIANTS.items():
-        common = {
-            "input_classifier": source,
-            "estimand": estimand,
-            "temperature": 1.0,
-            "num_samples": BOOTSTRAP_ITERS,
-            "num_warmup": BAYES_WARMUPS,
-        }
-        if quantifier == "kdey":
-            yield name, BayCAPKDEy(acc, c_prior="fixed", **KDEY_SETTINGS, **common)
-        else:
-            yield name, BayCAPMAPLS(acc, **common)
+    for name in FIXED_C_VARIANTS:
+        yield name, fixed_c_method(acc, name)
     for name, source in KDEY_HF_VARIANTS.items():
         yield (
             name,
