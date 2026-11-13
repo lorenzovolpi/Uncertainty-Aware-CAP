@@ -3,13 +3,14 @@
 from collections import defaultdict
 from functools import lru_cache
 
-from cap.data.datasets import fetch_UCIBinaryDataset, fetch_UCIMulticlassDataset
+from cap.data.datasets import fetch_UCIBinaryDataset
 from quapy.data.datasets import UCI_BINARY_DATASETS, UCI_MULTICLASS_DATASETS
 
 from uncawe.experiments.methods import get_method_names
 from uncawe.experiments.metrics import get_acc_names
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.pretrain.dataset import sort_datasets_by_size
+from uncawe.pretrain.uci import fetch_uci_multiclass
 from uncawe.util import all_results_exist
 
 
@@ -53,6 +54,6 @@ def get_filtered_datasets() -> list[str]:
     sorted_multiclass = sort_datasets_by_size(
         "uci_multiclass",
         UCI_MULTICLASS_DATASETS,
-        fetch_UCIMulticlassDataset,
+        fetch_uci_multiclass,
     )
     return sorted_binary[:5] + sorted_multiclass[:10]
