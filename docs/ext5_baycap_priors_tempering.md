@@ -11,9 +11,10 @@ The two Bayesian CAP methods kept by Extensions 2 and 3, BayCAP-Hf (`BayesCAP-Hf
 | BayCAP-Hf: `methods/baycap.py:BayCAP` with `c_prior="hierarchical-f"`, `estimand="realised"`; argument `prior` (Dirichlet prior on $\pi^Q$) | [implemented]; evaluated with the uniform prior only ([[ext2_baycap|Extension 2]] E2.8) |
 | `temperature` argument of `BayCAP` (joint tempering of $\mathcal L_V$ and $\mathcal L_U$) | [proposal] |
 | BayCAP-KDEy: `methods/baycap_kdey.py:BayCAPKDEy` with `c_prior="fixed"`, MLP input, `estimand="realised"`; arguments `prior` and `temperature` (the latter divides the log-likelihood of the bag) | [implemented]; evaluated with the uniform prior and $\tau=1$ only ([[ext3_posterior_propagation|Extension 3]] E3.1) |
-| `binform` experiment: bags at prevalences drawn from a non-uniform $G$ (built from $\pi^V$), `connect-4` only, the old `BayesCAP` with two priors on $\pi^Q$, $\lvert U\rvert=1000$ | [implemented] ([[work_plan]] §II.2); to be extended for E5.1, with the $G$ of E5.1 |
+| `binform` experiment: bags at prevalences drawn from a non-uniform $G$ (built from $\pi^V$), `connect-4` only, the old `BayesCAP` with two priors on $\pi^Q$, $\lvert U\rvert=1000$ | [implemented] ([[work_plan]] §II.2); extended for E5.1 with the option `--e51` (the $G$, the means, the bag sizes and the six methods of E5.1), [implemented], not run; the default configuration is unchanged |
 | Toy simulation of §T.3 (`scripts/toys/ext5_prior_calibration.py`) | [implemented] |
-| E5.1 (prior on $\pi^Q$), E5.2 (tempering) | [proposal]; cards WP-19 (E5.1) and WP-20 (E5.2), Scheduled ([[work_plan]] §III) |
+| E5.1 (prior on $\pi^Q$) | [implemented], not run: `experiments/binform.py --e51`, `tables/binform_prior.py`, `plots/binform_prior.py`; card WP-19, In progress ([[work_plan]] §III) |
+| E5.2 (tempering) | [proposal]; card WP-20, Scheduled ([[work_plan]] §III) |
 | Candidates E5.c1 (tempering of one likelihood term), E5.c2 (selection of $\tau$ on validation bags), E5.c3 (prior $\times$ temperature) | [proposal], not scheduled |
 | Prior on $C$ ($\operatorname{Dir}(1/K)$, diagonal-aware prior), comparison of tempering with the realised-table predictive, the full grid of priors on $\pi^Q$, hypotheses H1, H4, H5, H7, H8 and the paper outline of the earlier version | set aside on 2026-11-10, in [[optional_extensions]] §12 |
 
@@ -234,11 +235,11 @@ No label of $d$ is used to choose $\tau_{-d}$, so on $d$ the selected method is 
 
 # Implementation
 
-Components (all [proposal]):
+Components ([proposal] unless marked otherwise):
 
 - **`temperature` argument of `methods/baycap.py:BayCAP`:** positive, default $1$; divides the log-likelihoods of the validation counts and of the predicted counts of the bag by $\tau$ (e.g. with `numpyro.handlers.scale(scale=1/τ)` around the two observed sites), for every `c_prior`; the priors are not scaled. With $\tau=1$ the model and the draws are unchanged.
 - **E5.2 in `main`:** factory entries `BayesCAP-Hf-real-t<τ>` and `BayCAP-KDEy-mlp-real-t<τ>` for $\tau\in\{0.5,2,4,8\}$ in `experiments/methods.py`, excluded from the tables, ranks and default plots of `main`; the NUTS diagnostics of BayCAP-Hf stored as for `BayesCAP-Hf-real`; a table module (with the leave-one-dataset-out selection of §T.8 and the test of the decision rule) and a plot module for E5.2, following [[work_plan]] Part V.
-- **E5.1 in `binform`:** options for the datasets (all those of `main`), the bag size ($\lvert U\rvert\in\{100,1000\}$, written in the output path) and the methods, with `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real` each with the three priors of E5.1 (uniform, well specified $\operatorname{Dir}(\lambda K\mu^\star)$, misspecified $\operatorname{Dir}(\lambda K\mu^\dagger)$); the bag-generating distribution $G=\operatorname{Dir}(\lambda K\mu^\star)$, with the two means drawn per dataset by the seeded rule of E5.1 and stored with the results; the default configuration (`connect-4`, its current methods and priors) is kept, so that its stored results stay reproducible; a table module and a plot module for E5.1.
+- **E5.1 in `binform`** ([implemented], not run; card WP-19): the option `--e51` of `experiments/binform.py`, with `--datasets` (default: those of `main`), `--classifiers`, `--sizes` (default $100$ and $1000$) and `--methods`; `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real`, built as in `main`, each with the three priors of E5.1 (method names with the suffix `_uniform`, `_well` or `_wrong`); the two means drawn per dataset by the seeded rule of E5.1 (generator seeded by the experiment seed and the CRC-32 of the dataset name) and stored with the results (`mu_star`, `mu_dagger`, `prior_alpha`, `requested_prev`, `bag_size`); output under `<OUT_DIR>/uncawe/binform_e51/u<size>/`; the default configuration (`connect-4`, its methods and priors) is unchanged, so its stored results stay reproducible. Table module `tables/binform_prior.py` (per-pair and summary CSVs, the summary table of E5.1 per metric, with the share of bags with divergent transitions per prior) and plot module `plots/binform_prior.py` (the scatter of E5.1).
 
 Tests:
 
@@ -252,7 +253,7 @@ Reproducibility and comparability:
 
 - E5.2 adds methods to `main` and changes none of the stored ones; its runs at $\tau=1$ are the stored `BayesCAP-Hf-real` and `BayCAP-KDEy-mlp-real` only if the test above holds with the code that produced them.
 - E5.1 uses bags drawn from its own $G$, not those of `main` nor those of `binform`, so its results are comparable across the priors and methods of E5.1 but not with the tables of `main`; its uniform prior is the reference within it. The stored `binform` results (`connect-4`, old `BayesCAP`) are unchanged.
-- Both experiments write under `cap.env["OUT_DIR"]/uncawe`, in the directories of `main` and `binform`.
+- Both experiments write under `cap.env["OUT_DIR"]/uncawe`: E5.2 in the directory of `main`, E5.1 in `binform_e51/u<size>/`, next to the stored results of `binform`.
 
 # Appendix
 

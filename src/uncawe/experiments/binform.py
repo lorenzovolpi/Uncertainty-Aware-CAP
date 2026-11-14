@@ -1,4 +1,4 @@
-"""Run the implemented binform experiment on prior specification for BayesCAP.
+r"""Run the implemented binform experiment on prior specification for BayesCAP.
 
 The scope is the three-class ``connect-4`` dataset in the classic domain and the
 configured pre-trained classifiers.  It samples 100 test prevalences from a
@@ -12,13 +12,31 @@ purpose is to isolate how BayesCAP's prior choice affects point estimates and
 confidence intervals under this controlled prevalence-shift regime.  It emits
 the same accuracy metrics and result schema as the main experiment so the
 variants can be compared with the same error and interval-quality measures.
+
+With ``--e51`` it runs instead E5.1 of ``docs/ext5_baycap_priors_tempering.md`` (work-plan card WP-19): the prior on
+the target prevalence $\pi^Q$ of ``BayesCAP-Hf-real`` (BayCAP-Hf) and ``BayCAP-KDEy-mlp-real`` (BayCAP-KDEy with an
+MLP input and a fixed $\hat C$), both with the realised pushforward and scored against the realised table of each bag
+(``true_cts``). For each dataset of ``main`` two means $\mu^\star$ and $\mu^\dagger$ are drawn from
+$\operatorname{Dir}(\mathbf 1)$ with a seed fixed per dataset (shared by its five classifiers), and drawn again until
+each is at $L_1$ distance at least $0.5$ from the centre $\mathbf 1/K$ and they are at $L_1$ distance at least $0.5$
+from each other (``e51_means``). The 100 requested prevalences of the bags are drawn from
+$G=\operatorname{Dir}(\lambda K\mu^\star)$, $\lambda=3$, with a seed fixed per dataset (``e51_requested_prevs``), and
+the bags of each size $|U|\in\{100,1000\}$ are drawn from the test pool $U$ as above (seed ``_R_SEED + bag index``),
+so they are the same for every prior and method. Each method is run with three priors on $\pi^Q$: uniform
+(``_uniform``), well specified $\operatorname{Dir}(\lambda K\mu^\star)=G$ (``_well``) and misspecified
+$\operatorname{Dir}(\lambda K\mu^\dagger)$ (``_wrong``); everything else is as in ``main``. Results go to
+``<OUT_DIR>/uncawe/binform_e51/u<|U|>/``, with the schema of ``main``, the NUTS diagnostics and posterior summaries that
+``main`` stores for the two methods, and the columns ``bag_size``, ``requested_prev``, ``mu_star``, ``mu_dagger`` and
+``prior_alpha``. The default run (without ``--e51``) is unchanged.
 """
 
 import os
+import zlib
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
+from argparse import ArgumentParser
 from collections.abc import Iterable
 from dataclasses import dataclass
 from logging import Logger
@@ -33,6 +51,7 @@ from cap.models.confidence import ACC_BayesCAP
 from cap.utils.commons import contingency_table, get_shift
 from quapy.data import LabelledCollection
 
+from uncawe.experiments.datasets import get_filtered_datasets
 from uncawe.experiments.execution import (
     ExperimentOutcome,
     run_tasks,
@@ -42,16 +61,20 @@ from uncawe.experiments.execution import (
     save_experiment_results as save_outcomes,
 )
 from uncawe.experiments.methods import (
+    BAYCAP_OPTIONS,
+    BAYCAP_VARIANTS,
     BAYES_ENV,
     BAYES_N_JOBS,
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
     SAMPLE_SIZE,
     THREAD_LIMITS,
+    fixed_c_method,
     gen_methods,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
+from uncawe.methods.baycap import BayCAP
 from uncawe.pretrain.data import PreTrainedClassifier, PretrainInfo, load_info_paths
 from uncawe.util import get_logger, get_plain_prev, local_path
 
@@ -69,6 +92,21 @@ METHOD_PRIOR_KINDS = {
     "BayesCAP_uniform": "uniform",
     "BayesCAP_transformed_val": "transformed_val",
 }
+
+# E5.1 (docs/ext5_baycap_priors_tempering.md, card WP-19): results folder, bag sizes, concentration factor lambda of
+# G = Dir(lambda K mu*), smallest L1 distance of the two means from the centre and from each other, the two methods (as
+# in main) and the three priors on pi^Q
+E51_EXPERIMENT = "binform_e51"
+E51_SIZES = (100, 1000)
+E51_LAMBDA = 3.0
+E51_MIN_DISTANCE = 0.5
+E51_MAX_DRAWS = 100_000
+E51_BASE_METHODS = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
+E51_PRIORS = ("uniform", "well", "wrong")
+E51_METHODS = {f"{base}_{prior}": (base, prior) for base in E51_BASE_METHODS for prior in E51_PRIORS}
+# streams of the seed sequence of a dataset: the two means and the requested prevalences
+_E51_MEANS_STREAM = 0
+_E51_PREVS_STREAM = 1
 
 qp.environ["SAMPLE_SIZE"] = SAMPLE_SIZE
 qp.environ["_R_SEED"] = 0
@@ -234,6 +272,268 @@ def exp_protocol(args: tuple[str, str]) -> list[ExperimentOutcome]:
     return results
 
 
+# ----------------------------------------------------------------------------------------------------------- E5.1
+
+
+def _e51_rng(dataset: str, stream: int, seed: int | None = None) -> np.random.Generator:
+    """A generator that depends only on the experiment seed, the dataset name and the stream (``zlib.crc32`` of the
+    name, stable across runs and machines, unlike ``hash``)."""
+    seed = qp.environ["_R_SEED"] if seed is None else seed
+    return np.random.default_rng([seed, zlib.crc32(dataset.encode()), stream])
+
+
+def _l1(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.abs(np.asarray(a) - np.asarray(b)).sum())
+
+
+def e51_means(
+    dataset: str,
+    n_classes: int,
+    seed: int | None = None,
+    min_distance: float = E51_MIN_DISTANCE,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The two means $(\\mu^\\star,\\mu^\\dagger)$ of E5.1 for ``dataset``: $\\mu^\\star$ is drawn from
+    $\\operatorname{Dir}(\\mathbf 1)$ until it is at $L_1$ distance at least ``min_distance`` from the centre
+    $\\mathbf 1/K$; then $\\mu^\\dagger$ is drawn from $\\operatorname{Dir}(\\mathbf 1)$ until it is at $L_1$ distance at
+    least ``min_distance`` from the centre and from $\\mu^\\star$. The generator depends only on the seed and the dataset,
+    so the five classifiers of a dataset share the means."""
+    rng = _e51_rng(dataset, _E51_MEANS_STREAM, seed)
+    centre = np.full(n_classes, 1.0 / n_classes)
+    ones = np.ones(n_classes)
+
+    def draw(far_from: list[np.ndarray]) -> np.ndarray:
+        for _ in range(E51_MAX_DRAWS):
+            mu = rng.dirichlet(ones)
+            if all(_l1(mu, point) >= min_distance for point in far_from):
+                return mu
+        raise RuntimeError(f"No mean at L1 distance >= {min_distance} found for {dataset} in {E51_MAX_DRAWS} draws")
+
+    mu_star = draw([centre])
+    mu_dagger = draw([centre, mu_star])
+    return mu_star, mu_dagger
+
+
+def e51_concentration(mu: np.ndarray, lam: float = E51_LAMBDA) -> np.ndarray:
+    """The Dirichlet parameter $\\lambda K\\mu$ of E5.1."""
+    mu = np.asarray(mu, dtype=float)
+    return lam * mu.shape[0] * mu
+
+
+def e51_prior(kind: str, mu_star: np.ndarray, mu_dagger: np.ndarray) -> str | np.ndarray:
+    """The prior on $\\pi^Q$ of ``kind``: ``"uniform"``, ``"well"`` ($\\operatorname{Dir}(\\lambda K\\mu^\\star)=G$) or
+    ``"wrong"`` ($\\operatorname{Dir}(\\lambda K\\mu^\\dagger)$)."""
+    if kind == "uniform":
+        return "uniform"
+    if kind == "well":
+        return e51_concentration(mu_star)
+    if kind == "wrong":
+        return e51_concentration(mu_dagger)
+    raise ValueError(f"Unknown E5.1 prior: {kind!r}")
+
+
+def e51_requested_prevs(dataset: str, mu_star: np.ndarray, seed: int | None = None) -> np.ndarray:
+    """The ``NUM_TEST`` requested prevalences of the bags of ``dataset``, drawn from $G=\\operatorname{Dir}(\\lambda
+    K\\mu^\\star)$ with a generator that depends only on the seed and the dataset (the same for every classifier, bag
+    size, prior and method). They are renormalised, since a draw with parameters below $1$ may round to a sum other
+    than $1$."""
+    prevs = _e51_rng(dataset, _E51_PREVS_STREAM, seed).dirichlet(e51_concentration(mu_star), size=NUM_TEST)
+    return prevs / prevs.sum(axis=1, keepdims=True)
+
+
+def _make_sized_test_samples(
+    unlabelled: LabelledCollection,
+    classifier: PreTrainedClassifier,
+    requested_prevs: np.ndarray,
+    seed: int,
+    size: int,
+) -> list[TestSample]:
+    """As ``_make_test_samples``, with bags of ``size`` instances."""
+    samples = []
+    for sample_id, requested_prev in enumerate(requested_prevs):
+        index = unlabelled.sampling_index(size, *requested_prev, random_state=seed + sample_id)
+        collection = unlabelled.sampling_from_index(index)
+        posteriors = classifier.predict_proba(collection.X)
+        y_hat = np.argmax(posteriors, axis=-1)
+        true_ct = contingency_table(collection.y, y_hat, collection.n_classes)
+        samples.append(TestSample(collection, posteriors, true_ct))
+    return samples
+
+
+def e51_method(method_name: str, mu_star: np.ndarray, mu_dagger: np.ndarray):
+    """The method ``method_name`` of ``E51_METHODS``: its base method built as in ``main`` (same settings and seed),
+    with the prior on $\\pi^Q$ of the suffix."""
+    base, kind = E51_METHODS[method_name]
+    prior = e51_prior(kind, mu_star, mu_dagger)
+    _, acc = next(gen_acc_measure(True))
+    if base in BAYCAP_VARIANTS:
+        estimand, c_prior = BAYCAP_VARIANTS[base]
+        return BayCAP(
+            acc,
+            estimand=estimand,
+            c_prior=c_prior,
+            num_samples=BOOTSTRAP_ITERS,
+            num_warmup=BAYES_WARMUPS,
+            prior=prior,
+            **BAYCAP_OPTIONS.get(base, {}),
+        )
+    return fixed_c_method(acc, base, prior=prior)
+
+
+def e51_experiment(size: int) -> str:
+    """The results folder of E5.1 for bags of ``size`` instances, relative to ``<OUT_DIR>/uncawe``."""
+    return os.path.join(E51_EXPERIMENT, f"u{size}")
+
+
+def _e51_result_path(p: PretrainInfo, method_name: str, acc_name: str, size: int) -> str:
+    return local_path(
+        p.domain,
+        p.d_info.name,
+        p.h_info.full_name,
+        method_name,
+        acc_name,
+        experiment=e51_experiment(size),
+    )
+
+
+def _e51_all_results_exist(p: PretrainInfo, method_name: str, size: int) -> bool:
+    return all(os.path.exists(_e51_result_path(p, method_name, acc_name, size)) for acc_name in get_acc_names())
+
+
+def e51_protocol(args: tuple[str, str, int]) -> list[ExperimentOutcome]:
+    """One task of E5.1: the method ``method_name`` on the pair of ``info_path`` with bags of ``size`` instances."""
+    info_path, method_name, size = args
+    p = PretrainInfo.load(info_path, fast=True)
+    if _e51_all_results_exist(p, method_name, size):
+        return [EXP.EXISTS(p, "all", method_name)]
+
+    dataset = p.load_dataset_bundle()
+    classifier = p.load_pretrained_classifier(dataset)
+    validation = dataset.V
+    val_prev_raw = validation.prevalence()
+    validation_posteriors = classifier.predict_proba(validation.X)
+    n_classes = p.d_info.n_classes
+    mu_star, mu_dagger = e51_means(p.d_info.name, n_classes)
+    requested_prevs = e51_requested_prevs(p.d_info.name, mu_star)
+    test_samples = _make_sized_test_samples(dataset.U, classifier, requested_prevs, qp.environ["_R_SEED"], size)
+    context = EvaluationContext(
+        pretrain=p,
+        shifts=get_shift(
+            np.array([sample.collection.prevalence() for sample in test_samples]),
+            dataset.L_prevalence,
+        ).tolist(),
+        true_cts=[sample.true_ct for sample in test_samples],
+        train_prev=get_plain_prev(dataset.L_prevalence),
+        val_prev=get_plain_prev(val_prev_raw),
+    )
+
+    try:
+        method = e51_method(method_name, mu_star, mu_dagger)
+        started = time()
+        method = method.fit(validation, validation_posteriors)
+        t_train = time() - started
+
+        # as in main: the time of the NUTS diagnostics and posterior summaries is left out of the test time
+        started, t_diagnostics = time(), 0.0
+        estim_ct_ranges, diagnostics = [], []
+        for sample in test_samples:
+            estim_ct_ranges.append(method.predict_ct_range(sample.collection.X, sample.posteriors))
+            started_diagnostics = time()
+            diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
+            t_diagnostics += time() - started_diagnostics
+        t_test_ave = (time() - started - t_diagnostics) / context.size
+        estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
+    except Exception as error:
+        print_exception(error)
+        return [EXP.ERROR(error, p, "ct", method_name)]
+
+    # the Dirichlet parameter of the prior, a vector also for the uniform prior (all ones)
+    prior = e51_prior(E51_METHODS[method_name][1], mu_star, mu_dagger)
+    prior = np.ones(n_classes) if isinstance(prior, str) else prior
+    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]}
+    extra_columns |= {
+        "bag_size": [size] * context.size,
+        "requested_prev": [prev.tolist() for prev in requested_prevs],
+        "mu_star": [mu_star.tolist()] * context.size,
+        "mu_dagger": [mu_dagger.tolist()] * context.size,
+        "prior_alpha": [prior.tolist()] * context.size,
+    }
+
+    results = []
+    for acc_name, acc_fn in gen_acc_measure(n_classes > 2):
+        if os.path.exists(_e51_result_path(p, method_name, acc_name, size)):
+            results.append(EXP.EXISTS(p, acc_name, method_name))
+            continue
+
+        method.switch(acc_fn)
+        intervals = [method.ci_from_cts(cts) for cts in estim_ct_ranges]
+        frame = build_result_frame(
+            context,
+            method_name=method_name,
+            acc_name=acc_name,
+            acc_fn=acc_fn,
+            estim_acc_ranges=[interval.samples for interval in intervals],
+            estim_accs=[interval.point_estimate for interval in intervals],
+            estim_cts=estim_cts,
+            t_train=t_train,
+            t_test_ave=t_test_ave,
+            extra_columns=extra_columns,
+        )
+        results.append(EXP.SUCCESS(p, acc_name, method_name, df=frame, t_train=t_train, t_test_ave=t_test_ave))
+    return results
+
+
+def e51_tasks(
+    datasets: list[str] | None = None,
+    classifiers: list[str] | None = None,
+    sizes: list[int] | None = None,
+    methods: list[str] | None = None,
+    log: Logger | None = None,
+) -> list[tuple[str, str, int]]:
+    """The tasks of E5.1 still to run, ``(info_path, method_name, size)``: the pairs of ``main`` (its datasets, every
+    classifier), restricted by the arguments (e.g. a pilot), BayCAP-Hf first and the larger bags first."""
+    sizes = list(E51_SIZES) if sizes is None else sizes
+    methods = list(E51_METHODS) if methods is None else methods
+    unknown = sorted(set(methods) - set(E51_METHODS))
+    if unknown:
+        raise ValueError(f"Unknown E5.1 methods: {unknown}")
+    paths = []
+    for path in load_info_paths(domain=DOMAIN):
+        p = PretrainInfo.load(path, fast=True)
+        if p.d_info.name not in get_filtered_datasets():
+            continue
+        if datasets is not None and p.d_info.name not in datasets:
+            continue
+        if classifiers is not None and p.h_info.name not in classifiers:
+            continue
+        paths.append((path, p))
+
+    tasks = []
+    for size in sorted(sizes, reverse=True):
+        for method_name in sorted(methods, key=lambda name: E51_BASE_METHODS.index(E51_METHODS[name][0])):
+            for path, p in paths:
+                if _e51_all_results_exist(p, method_name, size):
+                    if log is not None:
+                        log.info(f"[{p.h_info.name}@{p.d_info.name}] {method_name} |U|={size} exists, skipping")
+                    continue
+                tasks.append((path, method_name, size))
+    return tasks
+
+
+def e51_experiments(
+    log: Logger,
+    datasets: list[str] | None = None,
+    classifiers: list[str] | None = None,
+    sizes: list[int] | None = None,
+    methods: list[str] | None = None,
+) -> None:
+    """Run E5.1; every method is a NumPyro method, so all tasks run in the BayCAP pool, one pool per bag size (the
+    outcomes of a pool are saved in the folder of its size)."""
+    tasks = e51_tasks(datasets, classifiers, sizes, methods, log)
+    for size in sorted({task[2] for task in tasks}, reverse=True):
+        sized = [task for task in tasks if task[2] == size]
+        run_tasks(log, sized, worker=e51_protocol, n_jobs=BAYES_N_JOBS, experiment=e51_experiment(size), env=BAYES_ENV)
+
+
 def save_experiment_results(log: Logger, results_gen: Iterable[list[ExperimentOutcome]]) -> None:
     save_outcomes(log, results_gen, experiment=EXPERIMENT)
 
@@ -264,11 +564,31 @@ def experiments(log: Logger) -> None:
     run_experiment_args(log, bayes_args, n_jobs=BAYES_N_JOBS, env=BAYES_ENV)
 
 
+def parse_args(argv: list[str] | None = None):
+    parser = ArgumentParser(description="The binform experiment; with --e51, E5.1 (priors on pi^Q, card WP-19).")
+    parser.add_argument("--e51", action="store_true", help="Run E5.1 instead of the default configuration")
+    parser.add_argument(
+        "--datasets", nargs="+", default=None, help="E5.1: only these datasets (default: those of main)"
+    )
+    parser.add_argument("--classifiers", nargs="+", default=None, help="E5.1: only these classifiers (default: all)")
+    parser.add_argument("--sizes", nargs="+", type=int, default=None, help="E5.1: bag sizes (default: 100 1000)")
+    parser.add_argument("--methods", nargs="+", default=None, help="E5.1: only these methods (default: all six)")
+    pargs = parser.parse_args(argv)
+    restricted = any(getattr(pargs, name) is not None for name in ("datasets", "classifiers", "sizes", "methods"))
+    if restricted and not pargs.e51:
+        parser.error("--datasets, --classifiers, --sizes and --methods need --e51")
+    return pargs
+
+
 def main() -> None:
-    log = get_logger(id=EXPERIMENT)
+    pargs = parse_args()
+    log = get_logger(id=E51_EXPERIMENT if pargs.e51 else EXPERIMENT)
     try:
         log.info("-" * 31 + "  start  " + "-" * 31)
-        experiments(log)
+        if pargs.e51:
+            e51_experiments(log, pargs.datasets, pargs.classifiers, pargs.sizes, pargs.methods)
+        else:
+            experiments(log)
     except Exception as error:
         log.error(error)
         print_exception(error)
