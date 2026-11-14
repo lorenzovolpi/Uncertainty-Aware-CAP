@@ -44,6 +44,7 @@ from time import time
 from traceback import print_exception
 from typing import Literal
 
+import jax
 import numpy as np
 import quapy as qp
 from cap import env as capenv
@@ -400,8 +401,19 @@ def _e51_all_results_exist(p: PretrainInfo, method_name: str, size: int) -> bool
 
 
 def e51_protocol(args: tuple[str, str, int]) -> list[ExperimentOutcome]:
-    """One task of E5.1: the method ``method_name`` on the pair of ``info_path`` with bags of ``size`` instances."""
-    info_path, method_name, size = args
+    """One task of E5.1: the method ``method_name`` on the pair of ``info_path`` with bags of ``size`` instances.
+
+    Every bag builds and compiles its own NUTS sampler, and a worker keeps the compiled code in the caches of JAX, so a
+    worker of a long pool grows by some GB per task until a compilation fails for lack of memory (both crashes of the
+    first full run). The caches are cleared after each task: nothing is reused across bags anyway, so the results do
+    not change."""
+    try:
+        return _e51_task(*args)
+    finally:
+        jax.clear_caches()
+
+
+def _e51_task(info_path: str, method_name: str, size: int) -> list[ExperimentOutcome]:
     p = PretrainInfo.load(info_path, fast=True)
     if _e51_all_results_exist(p, method_name, size):
         return [EXP.EXISTS(p, "all", method_name)]

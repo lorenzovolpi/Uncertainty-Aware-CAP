@@ -11,6 +11,8 @@ os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matpl
 import matplotlib
 
 matplotlib.use("Agg")
+import jax
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -170,6 +172,32 @@ class MethodsTest(unittest.TestCase):
             self.assertEqual(tasks, [("a", "BayCAP-KDEy-mlp-real_wrong", 100)])
             with self.assertRaises(ValueError):
                 binform.e51_tasks(methods=["BayesCAP-Hf-real"])
+
+
+class ProtocolCachesTest(unittest.TestCase):
+    """``e51_protocol`` clears the caches of JAX after each task, also when the task fails."""
+
+    def test_clears_the_compiled_functions_after_a_task(self):
+        square = jax.jit(lambda x: x * x)
+
+        def task(info_path, method_name, size):
+            square(jnp.ones(3))
+            self.assertGreater(square._cache_size(), 0)
+            return ["outcome", info_path, method_name, size]
+
+        with patch.object(binform, "_e51_task", side_effect=task):
+            outcome = binform.e51_protocol(("path", "BayesCAP-Hf-real_well", 100))
+        self.assertEqual(outcome, ["outcome", "path", "BayesCAP-Hf-real_well", 100])
+        self.assertEqual(square._cache_size(), 0)
+
+    def test_clears_the_caches_when_the_task_raises(self):
+        with (
+            patch.object(binform, "_e51_task", side_effect=RuntimeError("boom")),
+            patch.object(binform.jax, "clear_caches") as clear,
+            self.assertRaises(RuntimeError),
+        ):
+            binform.e51_protocol(("path", "BayesCAP-Hf-real_well", 100))
+        clear.assert_called_once_with()
 
 
 # --------------------------------------------------------------------------------------------------- tables
