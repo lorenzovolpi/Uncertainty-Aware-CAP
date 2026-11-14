@@ -15,9 +15,14 @@ WP-11 adds its variant ``c_prior="hierarchical-f"`` (§T.16): a lighter tail
 on the strength $\\nu$ and a learned concentration $\\kappa$ of the shares of
 the mistakes. Work-plan card WP-12 adds a non-centred form of those shares
 (``shares="non-centred"``, §T.17): the same model, in other coordinates.
+Work-plan card WP-20 adds the posterior temperature $\\tau$ (``temperature``,
+§T.5 and §T.7 of ``docs/ext5_baycap_priors_tempering.md``), which divides the
+log-likelihoods of the validation counts and of the predicted counts of the
+bag by $\\tau$.
 """
 
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from numbers import Number
 from typing import Literal, Self
@@ -483,6 +488,16 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
     $m$, $\rho$ and $1/(1+\kappa)$ with ``"hierarchical-f"``
     (:func:`nuts_diagnostics`). Recording them does not change the draws.
 
+    ``temperature`` tempers the posterior jointly (§T.5 and §T.7 of
+    ``docs/ext5_baycap_priors_tempering.md``): the log-likelihoods of the
+    validation table and of the predicted counts of the target sample are both
+    divided by $\tau$, for every ``c_prior``, and the priors (on $\pi^Q$, on
+    $C$ and on the hyperparameters) are unchanged, so the posterior is
+    proportional to $[\mathcal L_V\mathcal L_U]^{1/\tau}$ times the priors.
+    With $\tau>1$ the data count $\tau$ times less and the posterior widens;
+    with $\tau=1$ (the default) the model is built without the scaling, so its
+    draws are those of the untempered model for the same ``random_state``.
+
     The estimand decides how each posterior draw becomes a contingency table:
 
     - ``"population"`` returns the population table
@@ -514,6 +529,8 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
     :param prior: Dirichlet parameter of the prior on $\pi^Q$: ``"uniform"``,
         a positive scalar repeated for every class, or a vector with one
         value per class.
+    :param temperature: posterior temperature $\tau>0$ of the two likelihood terms; $1$ (default) leaves the model
+        untempered.
     :param random_state: seed of the NUTS sampler and of the multinomial
         draws; ``qp.environ["_R_SEED"]`` if ``None``, as in ``cap-ml``.
     """
@@ -528,6 +545,7 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         prior: str | Number | np.ndarray = "uniform",
         random_state: int | None = None,
         shares: Literal["centred", "non-centred"] = "centred",
+        temperature: float = 1.0,
     ):
         if estimand not in ESTIMANDS:
             raise ValueError(f"estimand must be one of {ESTIMANDS}; found {estimand!r}")
@@ -537,7 +555,10 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
             raise ValueError(f"shares must be one of {SHARES_FORMS}; found {shares!r}")
         if shares != "centred" and c_prior != "hierarchical-f":
             raise ValueError(f"shares={shares!r} needs c_prior='hierarchical-f'; found {c_prior!r}")
+        if not temperature > 0:
+            raise ValueError(f"temperature must be positive; found {temperature!r}")
         self.shares = shares
+        self.temperature = float(temperature)
         CAPContingencyTable.__init__(self, acc_fn)
         self.estimand = estimand
         self.c_prior = c_prior
@@ -581,11 +602,19 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
             # row y of p_c_cond_y is the column C_{:y} of the paper, with concentrations c_alpha[y]
             p_c_cond_y = numpyro.sample(P_C_COND_Y, dist.Dirichlet(jnp.asarray(c_alpha, dtype=jnp.float32)))
 
-        with numpyro.plate("plate", L):
+        with self._tempered(), numpyro.plate("plate", L):
             numpyro.sample("F_yc", dist.Multinomial(train_class_count, p_c_cond_y), obs=train_class_cond_count)
 
         p_c = numpyro.deterministic(P_TEST_C, jnp.einsum("yc,y->c", p_c_cond_y, pi_))
-        numpyro.sample("N_c", dist.Multinomial(jnp.sum(pred_posterior_count), p_c), obs=pred_posterior_count)
+        with self._tempered():
+            numpyro.sample("N_c", dist.Multinomial(jnp.sum(pred_posterior_count), p_c), obs=pred_posterior_count)
+
+    def _tempered(self):
+        r"""The scaling by $1/\tau$ of a likelihood term (``numpyro.handlers.scale``); a no-op context with $\tau=1$, so
+        that the untempered model is unchanged."""
+        if self.temperature == 1.0:
+            return nullcontext()
+        return numpyro.handlers.scale(scale=1.0 / self.temperature)
 
     def _hierarchical_model(self, n_classes: int):
         """The hierarchical prior on $C$ of ``c_prior`` (:func:`hierarchical_rate_sites`); returns ``p_c_cond_y`` in the

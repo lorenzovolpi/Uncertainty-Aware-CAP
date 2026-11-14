@@ -119,9 +119,22 @@ KDEY_SETTINGS = {"kernel": "gaussian", "bandwidth": 0.1, "shrinkage": 0.0}
 # prevalence draws); the bags are seeded with the experiment seed, as SQS-H(bs)
 SQS_B = "SQS-B"
 SQS_B_QUANTIFIER = "BayCAP-KDEy-mlp-real"
+# the tempered methods of E5.2 of docs/ext5_baycap_priors_tempering.md (card WP-20): BayesCAP-Hf-real with its two
+# likelihood terms divided by tau (methods/baycap.py:BayCAP, temperature) and BayCAP-KDEy-mlp-real with the likelihood
+# of the bag divided by tau (methods/baycap_kdey.py:BayCAPKDEy, temperature), everything else as the untempered method,
+# so tau=1 is the stored method itself; name -> (untempered method, tau). Outside the main tables, ranks and default
+# plots (tables/main.py)
+TEMPERATURE_LEVELS = (0.5, 2.0, 4.0, 8.0)
+TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
+TEMPERED_VARIANTS = {f"{base}-t{tau:g}": (base, tau) for base in TEMPERED_BASES for tau in TEMPERATURE_LEVELS}
+METHOD_CLASS |= {name: METHOD_CLASS[base] for name, (base, _) in TEMPERED_VARIANTS.items()}
 # the methods run by main in the BayCAP pool, with BAYES_N_JOBS workers and BAYES_ENV
 BAYES_POOL_METHODS = (
-    frozenset(BAYCAP_VARIANTS) | frozenset(FIXED_C_VARIANTS) | frozenset(KDEY_HF_VARIANTS) | frozenset({SQS_B})
+    frozenset(BAYCAP_VARIANTS)
+    | frozenset(FIXED_C_VARIANTS)
+    | frozenset(KDEY_HF_VARIANTS)
+    | frozenset({SQS_B})
+    | frozenset(TEMPERED_VARIANTS)
 )
 
 
@@ -148,19 +161,44 @@ def sqs_s(acc, rho: float | None = None) -> PrediQuant:
     )
 
 
-def fixed_c_method(acc, name: str) -> BayCAPKDEy | BayCAPMAPLS:
-    """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP."""
+def fixed_c_method(acc, name: str, temperature: float = 1.0) -> BayCAPKDEy | BayCAPMAPLS:
+    """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP, and the
+    posterior temperature ``temperature`` ($1$ in E3.1; the other values are those of E5.2)."""
     quantifier, source, estimand = FIXED_C_VARIANTS[name]
     common = {
         "input_classifier": source,
         "estimand": estimand,
-        "temperature": 1.0,
+        "temperature": temperature,
         "num_samples": BOOTSTRAP_ITERS,
         "num_warmup": BAYES_WARMUPS,
     }
     if quantifier == "kdey":
         return BayCAPKDEy(acc, c_prior="fixed", **KDEY_SETTINGS, **common)
     return BayCAPMAPLS(acc, **common)
+
+
+def baycap_method(acc, name: str, temperature: float = 1.0) -> BayCAP:
+    """The BayCAP method ``name`` of ``BAYCAP_VARIANTS``, with the NUTS settings and default seed of BayCAP, its
+    options (``BAYCAP_OPTIONS``) and the posterior temperature ``temperature`` ($1$ except in E5.2)."""
+    estimand, c_prior = BAYCAP_VARIANTS[name]
+    return BayCAP(
+        acc,
+        estimand=estimand,
+        c_prior=c_prior,
+        num_samples=BOOTSTRAP_ITERS,
+        num_warmup=BAYES_WARMUPS,
+        temperature=temperature,
+        **BAYCAP_OPTIONS.get(name, {}),
+    )
+
+
+def tempered_method(acc, name: str) -> BayCAP | BayCAPKDEy:
+    """The tempered method ``name`` of E5.2 (``TEMPERED_VARIANTS``): its untempered method with the temperature of
+    ``name``."""
+    base, tau = TEMPERED_VARIANTS[name]
+    if base in BAYCAP_VARIANTS:
+        return baycap_method(acc, base, temperature=tau)
+    return fixed_c_method(acc, base, temperature=tau)
 
 
 def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
@@ -182,18 +220,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     yield SQS_B, SQSB(acc, fixed_c_method(acc, SQS_B_QUANTIFIER), sample_size=SAMPLE_SIZE)
     yield "PQ", sqs_s(acc)
     # BayesCAP is built from BayCAP, with the draws of cap-ml's ACC_BayesCAP, so that it stores the NUTS diagnostics
-    for name, (estimand, c_prior) in BAYCAP_VARIANTS.items():
-        yield (
-            name,
-            BayCAP(
-                acc,
-                estimand=estimand,
-                c_prior=c_prior,
-                num_samples=BOOTSTRAP_ITERS,
-                num_warmup=BAYES_WARMUPS,
-                **BAYCAP_OPTIONS.get(name, {}),
-            ),
-        )
+    for name in BAYCAP_VARIANTS:
+        yield name, baycap_method(acc, name)
     for name in FIXED_C_VARIANTS:
         yield name, fixed_c_method(acc, name)
     for name, source in KDEY_HF_VARIANTS.items():
@@ -213,6 +241,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
 
     for name, rho in PQ_RHO_VARIANTS.items():
         yield name, sqs_s(acc, rho)
+    for name in TEMPERED_VARIANTS:
+        yield name, tempered_method(acc, name)
 
 
 def get_method_names() -> list[str]:
