@@ -24,6 +24,7 @@ from logging import Logger
 from time import time
 from traceback import print_exception
 
+import jax
 import numpy as np
 import quapy as qp
 from cap import env as capenv
@@ -262,7 +263,22 @@ def _evaluate_direct_method(
 
 
 def exp_protocol(args: tuple[str, str, CAPWithConfidence], experiment: str = EXPERIMENT) -> list[ExperimentOutcome]:
-    info_path, method_name, method = args
+    """One task of ``main`` (or of an experiment that uses its protocol): the method ``method`` on the pair of
+    ``info_path``, with the results written to ``experiment``.
+
+    Every bag of a Bayesian method builds and compiles its own NUTS sampler, and a worker keeps the compiled code in the
+    caches of JAX, so a worker of a long pool grows by some GB per task (the pilot of E5.2 grew the memory of ``bcuda``
+    from about $38$ to more than $300$ GB, as in the full run of E5.1, which crashed twice). The caches are cleared
+    after each task, also when it fails: nothing compiled is reused across bags anyway, so the results do not change."""
+    try:
+        return _exp_task(*args, experiment=experiment)
+    finally:
+        jax.clear_caches()
+
+
+def _exp_task(
+    info_path: str, method_name: str, method: CAPWithConfidence, experiment: str = EXPERIMENT
+) -> list[ExperimentOutcome]:
     p = PretrainInfo.load(info_path, fast=True)
     if _all_method_results_exist(p, method_name, experiment):
         return [EXP.EXISTS(p, "all", method_name)]

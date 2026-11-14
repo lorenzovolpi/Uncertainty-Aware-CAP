@@ -2,6 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 from cap.models.confidence import PrediQuant
 
@@ -265,6 +267,37 @@ class MainProtocolTest(unittest.TestCase):
         self.assertEqual(method.predict_calls, 6)
         self.assertEqual(len(results), 3)
         self.assertEqual(build.call_count, 3)
+
+
+class ProtocolCachesTest(unittest.TestCase):
+    """``exp_protocol`` clears the caches of JAX after each task, also when the task fails."""
+
+    def test_clears_the_compiled_functions_after_a_task(self):
+        square = jax.jit(lambda x: x * x)
+
+        def task(info_path, method_name, method, experiment):
+            square(jnp.ones(3))
+            self.assertGreater(square._cache_size(), 0)
+            return ["outcome", info_path, method_name, method, experiment]
+
+        with patch.object(main, "_exp_task", side_effect=task):
+            outcome = main.exp_protocol(("path", "BayesCAP-Hf-real", "method"), experiment="main_e52_check")
+        self.assertEqual(outcome, ["outcome", "path", "BayesCAP-Hf-real", "method", "main_e52_check"])
+        self.assertEqual(square._cache_size(), 0)
+
+    def test_default_experiment_is_main(self):
+        with patch.object(main, "_exp_task", return_value=[]) as task:
+            main.exp_protocol(("path", "DoC", "method"))
+        self.assertEqual(task.call_args.kwargs["experiment"], main.EXPERIMENT)
+
+    def test_clears_the_caches_when_the_task_raises(self):
+        with (
+            patch.object(main, "_exp_task", side_effect=RuntimeError("boom")),
+            patch.object(main.jax, "clear_caches") as clear,
+            self.assertRaises(RuntimeError),
+        ):
+            main.exp_protocol(("path", "BayesCAP-Hf-real", "method"))
+        clear.assert_called_once_with()
 
 
 class MainSchedulingTest(unittest.TestCase):
