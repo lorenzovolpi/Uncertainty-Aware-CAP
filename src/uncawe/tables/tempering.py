@@ -84,9 +84,10 @@ def tau_label(tau: float) -> str:
 # --------------------------------------------------------------------------------------------------- loading
 
 
-def load_method(method: str, acc_name: str, root: str | None = None) -> pd.DataFrame:
-    """The stored ``main`` rows of ``method`` for ``acc_name`` (empty if none)."""
-    base_dir = os.path.join(env.root_dir if root is None else root, EXPERIMENT)
+def load_method(method: str, acc_name: str, root: str | None = None, experiment: str = EXPERIMENT) -> pd.DataFrame:
+    """The stored rows of ``method`` for ``acc_name`` in ``experiment`` (default ``main``; E5.3 reads its calibration
+    runs from ``tau_select``), empty if none."""
+    base_dir = os.path.join(env.root_dir if root is None else root, experiment)
     try:
         return Results.load(
             base_dir=base_dir,
@@ -99,12 +100,14 @@ def load_method(method: str, acc_name: str, root: str | None = None) -> pd.DataF
         return pd.DataFrame()
 
 
-def load_all(acc_name: str, root: str | None = None) -> dict[str, dict[float, pd.DataFrame]]:
-    """``base method -> {tau: rows}``, restricted to the pairs stored for the five temperatures; the methods without any
-    such pair are left out."""
+def load_all(
+    acc_name: str, root: str | None = None, experiment: str = EXPERIMENT
+) -> dict[str, dict[float, pd.DataFrame]]:
+    """``base method -> {tau: rows}`` of ``experiment``, restricted to the pairs stored for the five temperatures; the
+    methods without any such pair are left out."""
     out = {}
     for base in TEMPERED_BASES:
-        frames = {tau: load_method(method_name(base, tau), acc_name, root) for tau in TAUS}
+        frames = {tau: load_method(method_name(base, tau), acc_name, root, experiment) for tau in TAUS}
         if any(df.empty for df in frames.values()):
             continue
         pairs = eb_prior.common_pairs(frames)
@@ -228,15 +231,17 @@ def pair_rows(frames: dict[float, pd.DataFrame], acc_name: str, base: str) -> li
     return rows
 
 
-def pair_table(acc_names: list[str] | None = None, root: str | None = None) -> pd.DataFrame:
-    """One row per metric, base method and pair, ordered by those keys, then by $K$, dataset and classifier (as in
-    ``CLASSIFIER_ORDER``)."""
+def pair_table(
+    acc_names: list[str] | None = None, root: str | None = None, experiment: str = EXPERIMENT
+) -> pd.DataFrame:
+    """One row per metric, base method and pair of ``experiment`` (default ``main``), ordered by those keys, then by
+    $K$, dataset and classifier (as in ``CLASSIFIER_ORDER``)."""
     rows = []
     for acc_name in acc_names or get_acc_names():
-        for base, frames in load_all(acc_name, root).items():
+        for base, frames in load_all(acc_name, root, experiment).items():
             rows.extend(pair_rows(frames, acc_name, base))
     if not rows:
-        raise RuntimeError("No pair of main has stored results for the five temperatures of a method of E5.2.")
+        raise RuntimeError(f"No pair of {experiment} has stored results for the five temperatures of a method of E5.2.")
     return ordered(pd.DataFrame(rows))
 
 
