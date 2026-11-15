@@ -29,6 +29,18 @@ Outputs, under ``<OUT_DIR>/uncawe/tables/target_size/``:
 - ``target_size_slopes.csv``: per (method, dataset, classifier, $|U|$) and part, the slope of
   $\log(\text{RMS of the fixed parts})$ against $\log|V|$ over the levels (least squares, descriptive; NaN with fewer
   than two levels);
+- ``target_size_recalls.csv``: per pair and prevalence, the recall gap $\sum_j\pi_j(d^V_j-d^{\text{pool}}_j)$ between the
+  recalls of $h$ on the full $V$ and on the pool, its standard deviation if $V$ and the pool were two independent
+  samples of one population ($\sqrt{\sum_j\pi_j^2\bar d_j(1-\bar d_j)(1/n_j+1/m_j)}$, with $\bar d_j$ the recall on $V$
+  and the pool together) and their ratio $z$; and, per subsampled level, the standard deviation of
+  $\sum_j\pi_j\tilde d^{V'}_j$ over stratified subsamples $V'$ of $V$ given by the formula of §T.4 (``sd_formula``),
+  the spread across the seeds expected of a method whose recalls are the shares counted on $V'$;
+- ``target_size_drift.csv``: per method and subsampled level, over the rows of ``seeds`` (pair and prevalence), the RMS of
+  the drift of the fixed part of $e_2$ (mean over the seeds minus its value at the full $V$) and the RMS of its
+  standard deviation over the seeds, and of the standard deviation of the formula of §T.4 (``recalls``), for all
+  datasets and for the datasets that reach every level;
+- ``target_size_diagnostics.csv``: per method, dataset and level, the NUTS diagnostics of the bags: the bags with a
+  divergence, with $\hat R>1.01$, with an effective sample size below $400$, and the failed runs;
 - the table of E4.2b (``levels``): per method, dataset, classifier and level, $|V|$, the RMS of the fixed and of the bag
   parts of $e_1$, $e_2$, $e_3$, and the mean and the pooled standard deviation over the seeds of the fixed part of
   $e_2$ next to its value at the full $V$, for one bag size (``--size``, default $1000$); as a tabular fragment, a
@@ -45,7 +57,17 @@ import pandas as pd
 
 from uncawe import env
 from uncawe import error_split as es
-from uncawe.experiments.target_size import DOMAIN, EXPERIMENT, LEVELS, METHODS, SCHEMA_VERSION
+from uncawe.experiments.target_size import (
+    DOMAIN,
+    EXPERIMENT,
+    LEVELS,
+    METHODS,
+    MIN_CLASS_COUNT,
+    SCHEMA_VERSION,
+    subsample_counts,
+    target_prevalences,
+)
+from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.results import ResultsDataFrame
 from uncawe.tables import eb_prior
 from uncawe.tables import main as main_tables
@@ -62,6 +84,9 @@ CELL_KEYS = LEVEL_KEYS + ["v_seed", "prevalence_kind"]
 # the columns of the stored rows kept in the per-bag table
 BAG_COLUMNS = CELL_KEYS + ["n_classes", "v_size", "bag_index", "bag_seed", "config_hash"]
 IDENTITY_TOL = 1e-9
+# thresholds of the NUTS diagnostics counted by ``diagnostics_table``
+RHAT_MAX = 1.01
+ESS_MIN = 400
 SHORT_LABELS = {"BayesCAP-Hf-real": "BayCAP-Hf", "BayCAP-KDEy-mlp-real": "BayCAP-KDEy"}
 PART_LABELS = {"e1": "$e_1$", "e2": "$e_2$", "e3": "$e_3$"}
 CAPTION = (
@@ -220,20 +245,168 @@ def shared_bag_check(bags: pd.DataFrame, results: pd.DataFrame) -> int:
     return int((tables.groupby(keys)["table"].nunique() > 1).sum())
 
 
-def compute(results: pd.DataFrame | None = None, pool: dict | None = None) -> dict[str, pd.DataFrame]:
+def recall_gap(val_y, val_pred, pool_y, pool_pred, prevalence, n_classes: int) -> dict[str, float]:
+    r"""The gap $\sum_j\pi_j(d^V_j-d^{\text{pool}}_j)$ between the recalls of $h$ on $V$ and on the pool, weighted by
+    ``prevalence``; its standard deviation if $V$ and the pool were independent samples of one population, with the
+    recall of each class estimated on both together; and their ratio ``z``."""
+    prevalence = np.asarray(prevalence, dtype=float)
+    n = np.bincount(np.asarray(val_y), minlength=n_classes)
+    m = np.bincount(np.asarray(pool_y), minlength=n_classes)
+    d_val = es.pool_recalls(val_y, val_pred, n_classes)
+    d_pool = es.pool_recalls(pool_y, pool_pred, n_classes)
+    d_both = (d_val * n + d_pool * m) / (n + m)
+    gap = float(np.sum(prevalence * (d_val - d_pool)))
+    sd = float(np.sqrt(np.sum(prevalence**2 * d_both * (1 - d_both) * (1 / n + 1 / m))))
+    return {"gap": gap, "sd_two_sample": sd, "z": gap / sd if sd > 0 else np.nan}
+
+
+def subsample_sd(val_y, val_pred, prevalence, fraction: float, n_classes: int) -> float:
+    r"""The standard deviation of $\sum_j\pi_j\tilde d^{V'}_j$ over stratified subsamples $V'$ of $V$ of ``fraction``,
+    given $V$ (§T.4): the classes are subsampled independently, so the variances add,
+    $\sum_j\pi_j^2\,d^V_j(1-d^V_j)/n'_j\cdot(n_j-n'_j)/(n_j-1)$, with $n'_j$ as in ``subsample_counts``."""
+    prevalence = np.asarray(prevalence, dtype=float)
+    n = np.bincount(np.asarray(val_y), minlength=n_classes)
+    kept = subsample_counts(n, fraction)
+    d_val = es.pool_recalls(val_y, val_pred, n_classes)
+    correction = (n - kept) / np.maximum(n - 1, 1)
+    return float(np.sqrt(np.sum(prevalence**2 * d_val * (1 - d_val) / kept * correction)))
+
+
+def load_val_info(pairs, domain: str = DOMAIN) -> dict:
+    """Per (dataset, classifier) pair, the labels and predictions of $h$ on $V$ and on the pool, from the pretrain
+    files (the argmax of the stored posteriors, as in ``tables/error_split.py:load_pool_info``)."""
+    infos = {}
+    for path in load_info_paths(domain=domain):
+        info = PretrainInfo.load(path, fast=True)
+        infos[(info.d_info.name, info.h_info.name)] = info
+    missing = [pair for pair in pairs if pair not in infos]
+    if missing:
+        raise FileNotFoundError(f"No pretrain info found for {missing}")
+    out = {}
+    for pair in pairs:
+        info = infos[pair]
+        bundle = info.load_dataset_bundle()
+        v_posteriors, u_posteriors = info.load_posteriors()
+        out[pair] = {
+            "n_classes": int(info.d_info.n_classes),
+            "val_y": np.asarray(bundle.V.y),
+            "val_pred": np.argmax(v_posteriors, axis=-1),
+            "pool_y": np.asarray(bundle.U.y),
+            "pool_pred": np.argmax(u_posteriors, axis=-1),
+        }
+    return out
+
+
+def recalls_table(val_info: dict) -> pd.DataFrame:
+    """Per pair, prevalence and level: the recall gap between $V$ and the pool (``recall_gap``, full level) and the
+    standard deviation over subsamples of $V$ of §T.4 (``subsample_sd``, subsampled levels that run, i.e. with at
+    least ``MIN_CLASS_COUNT`` instances per class)."""
+    rows = []
+    for (dataset, classifier), info in val_info.items():
+        k = info["n_classes"]
+        val_counts = np.bincount(info["val_y"], minlength=k)
+        for kind, prevalence in target_prevalences(dataset, val_counts).items():
+            row = {"dataset": dataset, "classifier": classifier, "prevalence_kind": kind, "v_level": "full"}
+            row |= {"v_size": int(val_counts.sum()), "pool_size": int(info["pool_y"].size)}
+            row |= recall_gap(info["val_y"], info["val_pred"], info["pool_y"], info["pool_pred"], prevalence, k)
+            rows.append(row)
+            for level, fraction in LEVELS.items():
+                kept = subsample_counts(val_counts, fraction)
+                if level == "full" or kept.min() < MIN_CLASS_COUNT:
+                    continue
+                rows.append(
+                    {
+                        "dataset": dataset,
+                        "classifier": classifier,
+                        "prevalence_kind": kind,
+                        "v_level": level,
+                        "v_size": int(kept.sum()),
+                        "sd_formula": subsample_sd(info["val_y"], info["val_pred"], prevalence, fraction, k),
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
+def drift_table(seeds: pd.DataFrame, recalls: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Per method and subsampled level: over the rows of ``seeds`` (pair and prevalence), the RMS of the drift of the
+    fixed part of $e_2$ (mean over the seeds minus its value at the full $V$) and the RMS of its standard deviation over
+    the seeds; ``subset`` is ``all`` (every dataset with the level) or ``all levels`` (the datasets that reach every
+    level, so that the levels are compared on the same datasets); with ``recalls`` (``recalls_table``), also the RMS
+    of the standard deviation over the subsamples of the formula of §T.4 on the same rows (``sd_formula_rms``)."""
+    sub = seeds.loc[seeds["v_level"] != "full"].assign(drift=lambda d: d["e2_seed_mean"] - d["e2_full"])
+    if recalls is not None and not recalls.empty:
+        keys = ["dataset", "classifier", "prevalence_kind", "v_level"]
+        sub = sub.merge(recalls.loc[recalls["v_level"] != "full", keys + ["sd_formula"]], on=keys, how="left")
+    every = sub.groupby("dataset")["v_level"].nunique()
+    complete = set(every.index[every == len(LEVELS) - 1])
+    rows = []
+    for subset, frame in (("all", sub), ("all levels", sub.loc[sub["dataset"].isin(complete)])):
+        for (method, level), group in frame.groupby(["method", "v_level"], sort=False):
+            rows.append(
+                {
+                    "method": method,
+                    "v_level": level,
+                    "subset": subset,
+                    "rows": len(group),
+                    "datasets": ",".join(sorted(set(group["dataset"]))),
+                    "drift_mean": float(group["drift"].mean()),
+                    "drift_rms": es.rms(group["drift"]),
+                    "seed_sd_rms": es.rms(group["e2_seed_sd"]),
+                }
+                | ({"sd_formula_rms": es.rms(group["sd_formula"])} if "sd_formula" in group else {})
+            )
+    return pd.DataFrame(rows)
+
+
+def diagnostics_table(results: pd.DataFrame) -> pd.DataFrame:
+    """Per method, dataset and level: the bags, and those with a NUTS divergence, with $\\hat R$ above ``RHAT_MAX``, with
+    an effective sample size below ``ESS_MIN``, and the failed runs (a method without the column counts $0$)."""
+    frame = results.copy()
+    for column, default in (("nuts_divergences", 0), ("nuts_max_rhat", np.nan), ("nuts_min_ess", np.nan)):
+        if column not in frame:
+            frame[column] = default
+    frame["nuts_failed"] = frame["nuts_failed"].fillna(0) if "nuts_failed" in frame else 0
+    rows = []
+    for (method, dataset, level), group in frame.groupby(["method", "dataset", "v_level"], sort=False):
+        rows.append(
+            {
+                "method": method,
+                "dataset": dataset,
+                "v_level": level,
+                "bags": len(group),
+                "divergent_bags": int((group["nuts_divergences"] > 0).sum()),
+                "rhat_above": int((group["nuts_max_rhat"] > RHAT_MAX).sum()),
+                "ess_below": int((group["nuts_min_ess"] < ESS_MIN).sum()),
+                "failed": int(group["nuts_failed"].sum()),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def compute(
+    results: pd.DataFrame | None = None, pool: dict | None = None, val_info: dict | None = None
+) -> dict[str, pd.DataFrame]:
+    """Every table of the module; ``val_info`` (``load_val_info``) is loaded only when ``pool`` is not given, so that the
+    tests can pass ``pool`` alone and skip ``recalls``."""
     results = load_results() if results is None else results
     pairs = sorted(set(zip(results["dataset"], results["classifier"])))
-    pool = load_pool_info(pairs, domain=DOMAIN) if pool is None else pool
+    if pool is None:
+        pool = load_pool_info(pairs, domain=DOMAIN)
+        val_info = load_val_info(pairs, domain=DOMAIN) if val_info is None else val_info
     bags, counts = bag_table(results, pool)
     cells = cell_table(bags, counts)
     seeds = seed_table(cells)
     levels = _ordered(level_table(bags, cells, seeds))
+    recalls = recalls_table(val_info) if val_info is not None else pd.DataFrame()
     return {
         "bags": bags,
         "cells": cells,
         "seeds": seeds,
         "levels": levels,
         "slopes": slope_table(levels),
+        "drift": drift_table(seeds, recalls),
+        "diagnostics": diagnostics_table(results),
+        "recalls": recalls,
         "n_unshared_bags": shared_bag_check(bags, results),
     }
 
@@ -319,7 +492,7 @@ def gen_tables(pargs):
     out_dir = table_dir(pargs)
     tabular_dir = os.path.join(out_dir, "tabular")
     os.makedirs(tabular_dir, exist_ok=True)
-    for name in ("bags", "cells", "seeds", "levels", "slopes"):
+    for name in ("bags", "cells", "seeds", "levels", "slopes", "drift", "diagnostics", "recalls"):
         out[name].to_csv(os.path.join(out_dir, f"{TABLE_NAME}_{name}.csv"), index=False)
 
     styler = levels_frame(out["levels"], pargs.size).style

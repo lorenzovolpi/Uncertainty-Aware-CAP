@@ -281,6 +281,66 @@ class TestTables(unittest.TestCase):
         self.assertEqual(len(points), 2 * 3)
 
 
+class TestRecallChecks(unittest.TestCase):
+    def test_recall_gap(self):
+        # V: recalls (0.9, 0.6) on (10, 20) instances; pool: (0.8, 0.7) on (10, 10)
+        val_y = _val_labels([10, 20])
+        val_pred = val_y.copy()
+        val_pred[:1] = 1
+        val_pred[10:18] = 0
+        pool_y = _val_labels([10, 10])
+        pool_pred = pool_y.copy()
+        pool_pred[:2] = 1
+        pool_pred[10:13] = 0
+        prev = np.array([0.25, 0.75])
+        out = tables.recall_gap(val_y, val_pred, pool_y, pool_pred, prev, 2)
+        self.assertAlmostEqual(out["gap"], 0.25 * 0.1 + 0.75 * (-0.1))
+        d_both = np.array([17 / 20, 19 / 30])
+        expected_sd = np.sqrt(
+            np.sum(prev**2 * d_both * (1 - d_both) * (1 / np.array([10, 20]) + 1 / np.array([10, 10])))
+        )
+        self.assertAlmostEqual(out["sd_two_sample"], expected_sd)
+        self.assertAlmostEqual(out["z"], out["gap"] / expected_sd)
+
+    def test_subsample_sd_matches_the_spread_of_subsamples(self):
+        rng = np.random.default_rng(1)
+        counts = [80, 160]
+        val_y = _val_labels(counts)
+        val_pred = np.where(rng.random(val_y.size) < np.where(val_y == 0, 0.7, 0.85), val_y, 1 - val_y)
+        prev = np.array([0.6, 0.4])
+        self.assertEqual(tables.subsample_sd(val_y, val_pred, prev, 1.0, 2), 0.0)
+        draws = []
+        for seed in range(4000):
+            index = ts.subsample_index(val_y, 0.25, f"toy{seed}", 0)
+            draws.append(np.sum(prev * es.pool_recalls(val_y[index], val_pred[index], 2)))
+        self.assertAlmostEqual(np.std(draws), tables.subsample_sd(val_y, val_pred, prev, 0.25, 2), delta=0.002)
+
+    def test_drift_and_diagnostics(self):
+        results = _synthetic_results()
+        out = tables.compute(results, {("toy", "LR"): {"d_pool": np.array([0.8, 0.7])}})
+        drift = out["drift"]
+        rows = drift.loc[drift["subset"] == "all"]
+        self.assertEqual(sorted(rows["v_level"]), ["1/4", "1/4"])
+        seeds = out["seeds"]
+        sub = seeds.loc[(seeds["v_level"] == "1/4") & (seeds["method"] == ts.METHODS[0])]
+        row = rows.loc[rows["method"] == ts.METHODS[0]].iloc[0]
+        self.assertAlmostEqual(row["drift_rms"], es.rms(sub["e2_seed_mean"] - sub["e2_full"]))
+        self.assertAlmostEqual(row["seed_sd_rms"], es.rms(sub["e2_seed_sd"]))
+        # the toy dataset does not reach 1/16
+        self.assertTrue(drift.loc[drift["subset"] == "all levels"].empty)
+        self.assertTrue(out["recalls"].empty)
+
+        diagnostics = out["diagnostics"]
+        self.assertEqual(int(diagnostics["bags"].sum()), len(results))
+        self.assertEqual(int(diagnostics[["divergent_bags", "rhat_above", "ess_below", "failed"]].to_numpy().sum()), 0)
+        results = results.assign(nuts_divergences=0, nuts_max_rhat=1.0, nuts_min_ess=1000.0)
+        results.loc[:2, "nuts_divergences"] = 3
+        results.loc[0, "nuts_max_rhat"] = 1.05
+        diagnostics = tables.diagnostics_table(results)
+        self.assertEqual(int(diagnostics["divergent_bags"].sum()), 3)
+        self.assertEqual(int(diagnostics["rhat_above"].sum()), 1)
+
+
 class TestTasks(unittest.TestCase):
     def test_config_hash_depends_on_r(self):
         self.assertNotEqual(ts.config_hash(30), ts.config_hash(20))
