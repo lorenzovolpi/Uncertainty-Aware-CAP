@@ -1,7 +1,7 @@
-r"""Plots of the error split across $|V|$ in the study ``target_size`` (work-plan card WP-21, E4.2b of
-``docs/ext4_uncertainty_budget.md``).
+r"""Plots of the error split across $|V|$ and $|U|$ in the study ``target_size`` (work-plan cards WP-21, E4.2b of
+``docs/ext4_uncertainty_budget.md``, and WP-22, E4.2a).
 
-Reads the per-cell table of :mod:`uncawe.tables.target_size` (vanilla accuracy, every method scored against the realised
+Reads the per-cell and per-level tables of :mod:`uncawe.tables.target_size` (vanilla accuracy, every method scored against the realised
 table of each bag; the split is an analysis that uses the true prevalence of the bag and the labels of the pool).
 
 Figures (``--figures``):
@@ -11,8 +11,12 @@ Figures (``--figures``):
   (``--size``, default $1000$). For each $V$ seed a point gives the RMS over the three prevalences of the fixed parts
   of that seed (the full $V$ has one seed), and the line joins, level by level, the means of these points over the
   seeds.
+- ``u-size`` (E4.2a): with the full $V$, the RMS of each part ($e_1$, $e_2$, $e_3$, one row each) against $|U|$,
+  log–log, one column per method, one colour per dataset, for one classifier (``--classifier``): a solid line for the
+  fixed part (RMS over the three prevalences of the mean of the part over the bags of a cell) and a dashed line for the
+  bag part (RMS over the bags of the deviation of each bag from the mean of its cell); ``--size`` is not used.
 
-Output: ``<OUT_DIR>/uncawe/plots/target_size/v_size/``.
+Output: ``<OUT_DIR>/uncawe/plots/target_size/v_size/`` and ``.../u_size/``.
 """
 
 import os
@@ -33,7 +37,7 @@ from uncawe.plots.common import font_size, method_plot_label
 from uncawe.tables import main as main_tables
 from uncawe.tables.target_size import PARTS, compute
 
-FIGURES = ("v-size",)
+FIGURES = ("v-size", "u-size")
 PART_NAMES = {"e1": "$e_1$ prevalence", "e2": "$e_2$ recalls", "e3": "$e_3$ luck of the bag"}
 DATASET_CMAP = "tab10"
 
@@ -93,7 +97,59 @@ def plot_v_size(cells: pd.DataFrame, classifier: str = "LR", size: int = 1000):
     return fig
 
 
-PLOTTERS = {"v-size": plot_v_size}
+def plot_u_size(levels: pd.DataFrame, classifier: str = "LR", size: int | None = None):
+    """E4.2a: the RMS of the fixed (solid) and of the bag (dashed) part of each part against $|U|$, full $V$.
+    ``size`` is accepted for a common signature with ``plot_v_size`` and not used."""
+    rows = levels.loc[(levels["classifier"] == classifier) & (levels["v_level"] == "full")]
+    if rows["bag_size"].nunique() < 2:
+        raise RuntimeError(f"No results with classifier {classifier} and the full V at two or more bag sizes.")
+    datasets = rows.drop_duplicates("dataset").sort_values("n_classes", kind="stable")["dataset"].tolist()
+    colors = dict(zip(datasets, plt.get_cmap(DATASET_CMAP)(np.arange(len(datasets)) % 10)))
+    methods = [m for m in METHODS if m in set(rows["method"])]
+    fig, axes = plt.subplots(len(PARTS), len(methods), figsize=(4.4 * len(methods), 3.2 * len(PARTS)), squeeze=False)
+    for col, method in enumerate(methods):
+        for row, name in enumerate(PARTS):
+            ax = axes[row, col]
+            for dataset in datasets:
+                part = rows.loc[(rows["method"] == method) & (rows["dataset"] == dataset)].sort_values("bag_size")
+                if part.empty:
+                    continue
+                for kind, style in (("fixed", "-"), ("bag", "--")):
+                    ax.plot(
+                        part["bag_size"],
+                        part[f"{name}_{kind}_rms"],
+                        color=colors[dataset],
+                        linestyle=style,
+                        linewidth=1.2,
+                        marker="o",
+                        markersize=3,
+                    )
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.grid(which="both", color="#e5e5e5", linewidth=0.5)
+            ax.tick_params(labelsize=font_size(7))
+            if row == 0:
+                ax.set_title(method_plot_label(method).replace("-real", ""), fontsize=font_size(9))
+            if col == 0:
+                ax.set_ylabel(f"RMS\n{PART_NAMES[name]}", fontsize=font_size(8))
+            if row == len(PARTS) - 1:
+                ax.set_xlabel("$|U|$", fontsize=font_size(8))
+    handles = [
+        Line2D([], [], color=colors[d], marker="o", markersize=3, label=main_tables.dataset_map.get(d, d))
+        for d in datasets
+    ]
+    handles += [
+        Line2D([], [], color="black", linestyle="-", label="fixed part"),
+        Line2D([], [], color="black", linestyle="--", label="bag part"),
+    ]
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=font_size(8), frameon=False)
+    fig.suptitle(f"{classifier}, full $V$", fontsize=font_size(9))
+    fig.tight_layout(rect=(0, 0.05, 1, 1))
+    return fig
+
+
+# figure -> (plotter, table of ``tables.target_size.compute`` it reads, whether the file name carries ``--size``)
+PLOTTERS = {"v-size": (plot_v_size, "cells", True), "u-size": (plot_u_size, "levels", False)}
 
 
 def out_dir(figure: str) -> str:
@@ -103,10 +159,17 @@ def out_dir(figure: str) -> str:
 
 
 def generate_plots(args):
-    cells = compute()["cells"]
+    out = compute()
     for name in args.figures:
-        fig = PLOTTERS[name](cells, classifier=args.classifier, size=args.size)
-        stem = os.path.join(out_dir(name), f"{EXPERIMENT}_{name}_{args.classifier}_u{args.size}")
+        plotter, table, by_size = PLOTTERS[name]
+        try:
+            fig = plotter(out[table], classifier=args.classifier, size=args.size)
+        except RuntimeError as error:
+            print(f"{name} not drawn: {error}")
+            continue
+        stem = os.path.join(out_dir(name), f"{EXPERIMENT}_{name}_{args.classifier}")
+        if by_size:
+            stem = f"{stem}_u{args.size}"
         if args.add_stem is not None:
             stem = f"{stem}_{args.add_stem}"
         for fmt in args.formats:
@@ -116,10 +179,10 @@ def generate_plots(args):
 
 
 def parse_args(argv: list[str] | None = None):
-    parser = ArgumentParser(description="Plots of the error split across |V| (E4.2b, WP-21).")
+    parser = ArgumentParser(description="Plots of the error split across |V| and |U| (E4.2, WP-21, WP-22).")
     parser.add_argument("--figures", nargs="+", choices=FIGURES, default=list(FIGURES))
     parser.add_argument("--classifier", default="LR", help="Classifier of the plotted pairs (default: LR)")
-    parser.add_argument("--size", type=int, default=1000, help="Bag size |U| (default: 1000)")
+    parser.add_argument("--size", type=int, default=1000, help="Bag size |U| of v-size (default: 1000)")
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--add-stem", default=None)

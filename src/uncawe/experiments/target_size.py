@@ -1,6 +1,6 @@
 r"""The study ``target_size``: the error split of two Bayesian CAP methods across the size $|V|$ of the validation set
 and the size $|U|$ of the target bag (E4.2 of ``docs/ext4_uncertainty_budget.md``; work-plan card WP-21 for E4.2b,
-the grid over $|V|$ at $|U|=1000$, and WP-22 for E4.2a, the grid over $|U|$ with the full $V$).
+the grid over $|V|$ at $|U|=1000$, and WP-22 for E4.2a, the grid over $|U|$ with the full $V$, ``--u-grid``).
 
 Scope: the datasets ``DATASETS`` of ``main`` and their pretrained classifiers LR and RF, in the classic domain; the
 methods ``BayesCAP-Hf-real`` (BayCAP with the Hf prior on $C$) and ``BayCAP-KDEy-mlp-real`` (BayesKDEy with an MLP
@@ -12,6 +12,10 @@ Purpose: the per-bag error split $e_1+e_2+e_3$ (``uncawe.error_split``) of the m
 bag parts within a cell (§T.4), computed afterwards by ``tables/target_size.py``. A cell is (dataset, classifier,
 method, prevalence, $|U|$, $|V|$ level, $V$ seed), with ``n_bags`` ($R$) bags.
 
+- **Grids.** E4.2b (WP-21): every $|V|$ level at $|U|=1000$ (the default, ``--sizes`` and ``--levels``). E4.2a
+  (WP-22, ``--u-grid``): the full $V$ only, at the bag sizes ``U_SIZES``
+  ($|U|\in\{100,300,1000,3000,10000\}$); the cells at $|U|=1000$ are those of E4.2b and, being stored, are skipped.
+  Bags larger than the test pool repeat instances (they are drawn with replacement at every size).
 - **Validation sets.** The full $V$ (level ``full``, seed $0$ only) and nested, seeded, stratified subsamples of
   $1/4$ and $1/16$ of $V$ (levels ``1/4`` and ``1/16``), $S_V$ seeds each (``--n-v-seeds``). For seed $s$, the
   instances of each class of $V$ are permuted with a generator that depends only on the experiment seed, the dataset
@@ -95,6 +99,8 @@ VERTEX_MASS = 0.9
 N_BAGS = 30
 N_V_SEEDS = 3
 BAG_SIZES = (SAMPLE_SIZE,)
+# the bag sizes of E4.2a (WP-22), run with the full V only (``--u-grid``)
+U_SIZES = (100, 300, SAMPLE_SIZE, 3000, 10000)
 # 1: first version (WP-21)
 SCHEMA_VERSION = 1
 # streams of the seed sequences of a dataset
@@ -524,18 +530,34 @@ def write_counts(log: Logger, datasets=DATASETS, n_v_seeds: int = N_V_SEEDS) -> 
 
 
 def parse_args(argv: list[str] | None = None):
-    parser = ArgumentParser(description="The study target_size: the error split across |V| and |U| (E4.2, WP-21).")
+    parser = ArgumentParser(
+        description="The study target_size: the error split across |V| and |U| (E4.2, WP-21, WP-22)."
+    )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--run", action="store_true", help="Run the methods on the grid")
     mode.add_argument("--counts", action="store_true", help="Write the class counts of the subsamples of V only")
     parser.add_argument("--datasets", nargs="+", default=list(DATASETS), choices=DATASETS)
     parser.add_argument("--classifiers", nargs="+", default=list(CLASSIFIERS), choices=CLASSIFIERS)
     parser.add_argument("--methods", nargs="+", default=list(METHODS), choices=METHODS)
-    parser.add_argument("--sizes", nargs="+", type=int, default=list(BAG_SIZES), help="Bag sizes |U| (default: 1000)")
-    parser.add_argument("--levels", nargs="+", default=list(LEVELS), choices=tuple(LEVELS), help="|V| levels")
+    parser.add_argument("--sizes", nargs="+", type=int, default=None, help="Bag sizes |U| (default: 1000)")
+    parser.add_argument("--levels", nargs="+", default=None, choices=tuple(LEVELS), help="|V| levels (default: all)")
+    parser.add_argument(
+        "--u-grid",
+        action="store_true",
+        help=f"E4.2a (WP-22): the sizes {list(U_SIZES)} with the full V only; excludes --sizes and --levels",
+    )
     parser.add_argument("--n-v-seeds", type=int, default=N_V_SEEDS, help=f"S_V (default: {N_V_SEEDS})")
     parser.add_argument("--n-bags", type=int, default=N_BAGS, help=f"R, bags per cell (default: {N_BAGS})")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.u_grid:
+        if args.sizes is not None or args.levels is not None:
+            parser.error("--u-grid sets the sizes and the levels; do not pass --sizes or --levels with it")
+        args.sizes, args.levels = list(U_SIZES), ["full"]
+    args.sizes = list(BAG_SIZES) if args.sizes is None else args.sizes
+    args.levels = list(LEVELS) if args.levels is None else args.levels
+    if any(size < 1 for size in args.sizes):
+        parser.error(f"Bag sizes must be positive: {args.sizes}")
+    return args
 
 
 def main() -> None:
