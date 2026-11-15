@@ -16,6 +16,7 @@ from uncawe.experiments.methods import (
     SAMPLE_SIZE,
     SQS_B,
     SQS_B_QUANTIFIER,
+    TEMPERED_VARIANTS,
     gen_methods,
     get_method_names,
 )
@@ -127,7 +128,10 @@ class BayCAPFactoryTest(unittest.TestCase):
                 self.assertEqual(method.random_state, reference.random_state)
 
     def test_bayes_pool_holds_every_baycap_method(self):
-        self.assertEqual(BAYES_POOL_METHODS, set(BAYCAP_METHODS) | set(E31_METHODS) | set(E32_METHODS) | {"SQS-B"})
+        self.assertEqual(
+            BAYES_POOL_METHODS,
+            set(BAYCAP_METHODS) | set(E31_METHODS) | set(E32_METHODS) | {"SQS-B"} | set(TEMPERED_VARIANTS),
+        )
         for name in get_method_names():
             self.assertEqual(
                 name in BAYES_POOL_METHODS, isinstance(self.methods[name], (BayCAP, BayCAPKDEy, BayCAPMAPLS, SQSB))
