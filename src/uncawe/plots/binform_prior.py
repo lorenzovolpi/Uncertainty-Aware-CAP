@@ -34,7 +34,7 @@ from uncawe.plots.common import (
     scatter_by_classifier,
     style_scatter_axes,
 )
-from uncawe.tables.binform_prior import E51_BASE_METHODS, OTHER_PRIORS, PRIOR_LABELS, csv_path
+from uncawe.tables.binform_prior import ACC_LABELS, E51_BASE_METHODS, OTHER_PRIORS, PRIOR_LABELS, csv_path
 
 PLOT_NAME = "binform_prior"
 FIGURES = ("winkler",)
@@ -87,7 +87,9 @@ def plot_winkler(table: pd.DataFrame, method: str, acc_name: str = ACC_NAME):
     if sc is not None:
         fig.colorbar(sc, ax=axes).set_label("$K$", fontsize=font_size(12))
     classifier_legend(fig, rows, loc="center left", bbox_to_anchor=(1.0, 0.5))
-    fig.suptitle(f"E5.1, {method_plot_label(method)}: prior on $\\pi^Q$ ({acc_name})", fontsize=font_size(12))
+    fig.suptitle(
+        f"E5.1, {method_plot_label(method)}: prior on $\\pi^Q$ ({ACC_LABELS[acc_name]})", fontsize=font_size(12)
+    )
     return fig
 
 

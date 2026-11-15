@@ -330,6 +330,8 @@ class TablesTest(unittest.TestCase):
     def test_plot(self):
         fig = plots.plot_winkler(self.table, "BayesCAP-Hf-real")
         self.assertEqual(len(fig.axes), 2 * 2 + 1)  # two priors x two sizes, and the colour bar
+        self.assertIn("vanilla accuracy", fig.get_suptitle())
+        self.assertNotIn("vanilla_accuracy", fig.get_suptitle())
         plt.close(fig)
         self.assertIsNone(plots.plot_winkler(self.table, "BayesCAP-Hf-real", "macro-K"))
 
