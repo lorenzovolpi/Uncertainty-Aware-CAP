@@ -148,13 +148,16 @@ def sqs_s(acc, rho: float | None = None) -> PrediQuant:
     )
 
 
-def fixed_c_method(acc, name: str) -> BayCAPKDEy | BayCAPMAPLS:
-    """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP."""
+def fixed_c_method(acc, name: str, prior="uniform") -> BayCAPKDEy | BayCAPMAPLS:
+    """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP; ``prior``
+    is the Dirichlet parameter of the prior on $\\pi$ (uniform in ``main``; E5.1, ``experiments/binform.py``, varies
+    it)."""
     quantifier, source, estimand = FIXED_C_VARIANTS[name]
     common = {
         "input_classifier": source,
         "estimand": estimand,
         "temperature": 1.0,
+        "prior": prior,
         "num_samples": BOOTSTRAP_ITERS,
         "num_warmup": BAYES_WARMUPS,
     }
