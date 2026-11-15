@@ -30,7 +30,7 @@ LOCAL_OUT  ?= ./output
 PULL_DIRS  ?= tables plots
 LOG_LINES  ?= 300
 FOLLOW     ?=
-RESULTS    ?= main binform binform_e51 predist eb_binary main_e52_check
+RESULTS    ?= main binform binform_e51 predist eb_binary main_e52_check target_size
 
 # Files and directories of OLD_DIR worth keeping in REMOTE_DIR (never overwritten if already present).
 OLD_FILES  ?= env.json sorted_sets.json output
@@ -53,6 +53,8 @@ EXP_binform-e51      := python -m uncawe.binform --e51
 EXP_predist          := python -m uncawe.predist
 EXP_eb-binary        := python -m uncawe.experiments.eb_binary
 EXP_tempering-check  := python -m uncawe.experiments.tempering_check
+# the study target_size (E4.2): pass --run (or --counts, the class counts of the subsamples of V only) in ARGS
+EXP_target-size      := python -m uncawe.experiments.target_size
 EXP_tables-main      := python -m uncawe.tables.main --classic
 EXP_tables-rank      := python -m uncawe.tables.rank --classic
 EXP_tables-binform   := python -m uncawe.tables.binform
@@ -73,6 +75,7 @@ EXP_tables-predist   := python -m uncawe.tables.predist
 EXP_tables-pq-rho    := python -m uncawe.tables.pq_rho
 EXP_tables-sqs-b     := python -m uncawe.tables.sqs_b
 EXP_tables-tempering := python -m uncawe.tables.tempering
+EXP_tables-target-size := python -m uncawe.tables.target_size
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
@@ -92,6 +95,7 @@ EXP_plot-error-split := python -m uncawe.plots.error_split
 EXP_plot-pq-rho      := python -m uncawe.plots.pq_rho
 EXP_plot-sqs-b       := python -m uncawe.plots.sqs_b
 EXP_plot-tempering   := python -m uncawe.plots.tempering
+EXP_plot-target-size := python -m uncawe.plots.target_size
 EXP_test             := python -m unittest discover -s tests
 EXP_bench-bayes-jobs := python scripts/bench/bayes_n_jobs.py
 EXP_bench-xla-stored := python scripts/bench/xla_vs_stored.py
