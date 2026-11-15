@@ -319,6 +319,9 @@ class TablesTest(unittest.TestCase):
         self.assertEqual(len(self.table), len(TEMPERED_BASES) * len(PAIRS))
         np.testing.assert_allclose(self.table["t0.5_share_divergent"], 1 / N_BAGS)
         np.testing.assert_allclose(self.table["t1_share_divergent"], 0.0)
+        np.testing.assert_allclose(self.table["t0.5_share_divergent_draws"], 1 / N_BAGS / tt.NUTS_DRAWS)
+        np.testing.assert_allclose(self.table["t1_share_divergent_draws"], 0.0)
+        np.testing.assert_allclose(self.table["t4_max_rhat"], 1.04)
         # the samples widen by sqrt(tau)
         for tau in tt.TAUS:
             np.testing.assert_allclose(self.table[f"t{tt.tau_label(tau)}_widening"], np.sqrt(tau), rtol=1e-6)
@@ -394,6 +397,9 @@ class TablesTest(unittest.TestCase):
         self.assertEqual(allk.loc[allk["reference"], "column"].unique().tolist(), ["global", "oracle"])
         self.assertTrue((allk["pairs"] == len(PAIRS)).all())
         self.assertEqual(set(self.summary["K"]), {"all", "K=2", "3<=K<=7", "K>=8"})
+        fixed = allk.loc[allk["column"] == "1"]
+        np.testing.assert_allclose(fixed["median_max_rhat"], 1.01)
+        self.assertTrue((allk.loc[allk["column"] == "0.5", "pairs_divergent_draws"] == 0).all())
         oracle = tt.oracle_distribution(self.selected)
         self.assertTrue((oracle[[tt.tau_label(tau) for tau in tt.TAUS]].sum(axis=1) == len(PAIRS)).all())
 

@@ -10,7 +10,8 @@ of a method are stored, so the table also works on the pilot.
 
 Per pair (``pair_table``, one row per metric, method and pair, every column in the CSV), for each $\tau$: the means over
 the bags of AE, coverage, amplitude and Winkler score at $\alpha=0.05$, the shares of bags with divergent transitions
-and of bags where NUTS produced no draws (left out of the scores), the largest split-$\hat R$, and the median over the
+and of bags where NUTS produced no draws (left out of the scores), the share of divergent draws (mean over the bags with
+draws of the divergent transitions over the ``NUTS_DRAWS`` draws, as in E2.8), the largest split-$\hat R$, and the median over the
 bags of the ratio of the amplitude to that at $\tau=1$ (the observed widening); for BayCAP-KDEy and vanilla accuracy,
 the predicted widening, the median over the bags of $\sqrt{(\tau+r^2)/(1+r^2)}$ with $r=\bar\sigma_g/\sigma_p$ stored
 per bag at $\tau=1$ (§T.6). The bags of the five temperatures are checked to be the same (equal stored realised tables).
@@ -49,6 +50,7 @@ from uncawe.experiments.metrics import acc_from_ct, get_acc_names
 from uncawe.results import Results
 from uncawe.tables import eb_prior, hierarchical
 from uncawe.tables import main as main_tables
+from uncawe.tables.baycap_hf import DIVERGENT_DRAWS, NUTS_DRAWS
 from uncawe.tables.estimand_gap import CLASSIFIER_ORDER, booktabs_clines
 
 TABLE_NAME = "tempering"
@@ -145,7 +147,8 @@ def bag_frame(df: pd.DataFrame, acc_name: str) -> pd.DataFrame:
             }
         )
     out = pd.DataFrame(rows)
-    out["divergent"] = np.nan_to_num(_column(df, "nuts_divergences")) > 0
+    out["divergences"] = _column(df, "nuts_divergences")
+    out["divergent"] = np.nan_to_num(out["divergences"]) > 0
     out["rhat"] = _column(df, "nuts_max_rhat")
     out["acc_sd"] = _column(df, "acc_sd")
     out["sigma_g"] = _column(df, "sigma_g")
@@ -175,6 +178,21 @@ def _ratio(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.divide(a, b, out=np.full_like(a, np.nan), where=b > 0)
 
 
+def _finite_max(values) -> float:
+    """The largest finite value, NaN if there is none (e.g. no split-$\\hat R$ stored)."""
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    return float(values.max()) if values.size else np.nan
+
+
+def _share_divergent_draws(bags: pd.DataFrame) -> float:
+    """The mean over the bags with draws of the share of divergent draws (divergent transitions over the
+    ``NUTS_DRAWS`` draws of a bag), as in ``tables/baycap_hf.py``; NaN where no divergences are stored."""
+    divergences = bags.loc[~bags["failed"], "divergences"].to_numpy(dtype=float)
+    divergences = divergences[np.isfinite(divergences)]
+    return float(divergences.mean() / NUTS_DRAWS) if divergences.size else np.nan
+
+
 def pair_rows(frames: dict[float, pd.DataFrame], acc_name: str, base: str) -> list[dict]:
     """The rows of ``pair_table`` of one metric and base method (``frames``: tau -> stored rows)."""
     groups = {tau: dict(list(df.groupby(KEYS, sort=False))) for tau, df in frames.items()}
@@ -198,7 +216,8 @@ def pair_rows(frames: dict[float, pd.DataFrame], acc_name: str, base: str) -> li
                 row[f"t{t}_{score}"] = float(bags[tau][score].mean())
             row[f"t{t}_share_failed"] = float(bags[tau]["failed"].mean())
             row[f"t{t}_share_divergent"] = float(bags[tau]["divergent"].mean())
-            row[f"t{t}_max_rhat"] = float(np.nanmax(bags[tau]["rhat"], initial=np.nan))
+            row[f"t{t}_share_divergent_draws"] = _share_divergent_draws(bags[tau])
+            row[f"t{t}_max_rhat"] = _finite_max(bags[tau]["rhat"])
             row[f"t{t}_widening"] = float(np.nanmedian(_ratio(bags[tau]["amplitude"], reference["amplitude"])))
             row[f"t{t}_widening_predicted"] = (
                 float(np.nanmedian(predicted_widening(tau, reference["acc_sd"], reference["sigma_g"])))
@@ -366,7 +385,9 @@ def k_groups(table: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
 def summary_table(table: pd.DataFrame, selected: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Per metric, method, group of $K$ and column (each fixed $\\tau$, then ``lodo``, ``global`` and ``oracle``): the
     number of pairs and the means over the pairs of the four scores; for the fixed $\\tau$ also the shares of bags with
-    divergent transitions and without draws, and the medians over the pairs of the observed and predicted widening.
+    divergent transitions and without draws, the mean share of divergent draws and the number of pairs where it exceeds
+    ``DIVERGENT_DRAWS`` (the reliability criterion of E2.8), the median over the pairs of the largest split-$\\hat R$,
+    and the medians over the pairs of the observed and predicted widening.
     ``global`` and ``oracle`` are references (they use the target labels)."""
     tests = selected["tests"].set_index(["acc_name", "method"])
     picks = selected["pairs"]
@@ -381,6 +402,10 @@ def summary_table(table: pd.DataFrame, selected: dict[str, pd.DataFrame]) -> pd.
                 row = key | {"column": t, "reference": False}
                 row |= {score: float(part[f"t{t}_{score}"].mean()) for score in SCORES}
                 row["share_divergent"] = float(part[f"t{t}_share_divergent"].mean())
+                draws = part[f"t{t}_share_divergent_draws"]
+                row["share_divergent_draws"] = float(draws.mean())
+                row["pairs_divergent_draws"] = int((draws > DIVERGENT_DRAWS).sum())
+                row["median_max_rhat"] = float(part[f"t{t}_max_rhat"].median())
                 row["share_failed"] = float(part[f"t{t}_share_failed"].mean())
                 row["widening"] = float(part[f"t{t}_widening"].median())
                 row["widening_predicted"] = float(part[f"t{t}_widening_predicted"].median())
