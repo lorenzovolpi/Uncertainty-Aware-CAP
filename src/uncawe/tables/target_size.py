@@ -1,5 +1,5 @@
-r"""The error split within the cells of the study ``target_size`` (work-plan card WP-21, E4.2b of
-``docs/ext4_uncertainty_budget.md``; also read by E4.2a, card WP-22).
+r"""The error split within the cells of the study ``target_size`` (work-plan cards WP-21, E4.2b of
+``docs/ext4_uncertainty_budget.md``, the parts across $|V|$, and WP-22, E4.2a, the parts across $|U|$ with the full $V$).
 
 Inputs: the stored results of ``experiments/target_size.py`` (vanilla accuracy, every bag size, $|V|$ level and $V$
 seed found, ``schema_version`` at least ``SCHEMA_VERSION``) for ``BayesCAP-Hf-real`` and ``BayCAP-KDEy-mlp-real``,
@@ -26,9 +26,14 @@ Outputs, under ``<OUT_DIR>/uncawe/tables/target_size/``:
   the mean over the prevalences of the means over the seeds (``<part>_seed_mean``), the square root of the mean over
   the prevalences of the variances over the seeds (``<part>_seed_sd``, a pooled standard deviation) and the mean over
   the prevalences of the fixed part at the full $V$ (``<part>_full``);
-- ``target_size_slopes.csv``: per (method, dataset, classifier, $|U|$) and part, the slope of
-  $\log(\text{RMS of the fixed parts})$ against $\log|V|$ over the levels (least squares, descriptive; NaN with fewer
-  than two levels);
+- ``target_size_slopes.csv``: per (method, dataset, classifier, $|U|$) with at least two levels and part, the slope
+  of $\log(\text{RMS of the fixed parts})$ against $\log|V|$ over the levels (least squares, descriptive; E4.2b);
+- ``target_size_size_slopes.csv``: per (method, dataset, classifier) with the full $V$ at two or more sizes and part,
+  the slopes of $\log(\text{RMS of the fixed parts})$ and of $\log(\text{RMS of the bag parts})$ against $\log|U|$ over
+  the sizes (least squares, descriptive; E4.2a);
+- ``target_size_cost.csv``: per method, dataset, classifier, $|U|$ and level, the tasks, the bags, and the mean over
+  the tasks of the fitting time and of the NUTS time per bag (``t_train``, ``t_test_ave``, seconds), the cost that
+  the pilot of E4.2a measures;
 - ``target_size_recalls.csv``: per pair and prevalence, the recall gap $\sum_j\pi_j(d^V_j-d^{\text{pool}}_j)$ between the
   recalls of $h$ on the full $V$ and on the pool, its standard deviation if $V$ and the pool were two independent
   samples of one population ($\sqrt{\sum_j\pi_j^2\bar d_j(1-\bar d_j)(1/n_j+1/m_j)}$, with $\bar d_j$ the recall on $V$
@@ -39,12 +44,17 @@ Outputs, under ``<OUT_DIR>/uncawe/tables/target_size/``:
   the drift of the fixed part of $e_2$ (mean over the seeds minus its value at the full $V$) and the RMS of its
   standard deviation over the seeds, and of the standard deviation of the formula of §T.4 (``recalls``), for all
   datasets and for the datasets that reach every level;
-- ``target_size_diagnostics.csv``: per method, dataset and level, the NUTS diagnostics of the bags: the bags with a
+- ``target_size_diagnostics.csv``: per method, dataset, $|U|$ and level, the NUTS diagnostics of the bags: the bags with a
   divergence, with $\hat R>1.01$, with an effective sample size below $400$, and the failed runs;
 - the table of E4.2b (``levels``): per method, dataset, classifier and level, $|V|$, the RMS of the fixed and of the bag
   parts of $e_1$, $e_2$, $e_3$, and the mean and the pooled standard deviation over the seeds of the fixed part of
   $e_2$ next to its value at the full $V$, for one bag size (``--size``, default $1000$); as a tabular fragment, a
-  longtable and a standalone document. Descriptive: no colours, no bold, no test.
+  longtable and a standalone document;
+- the table of E4.2a (``sizes``): per method, dataset, classifier and $|U|$, with the full $V$, the RMS of the fixed
+  and of the bag parts of $e_1$, $e_2$, $e_3$, in the same three forms; written when the full $V$ has two or more
+  sizes.
+
+Both tables are descriptive: no colours, no bold, no test.
 """
 
 import os
@@ -83,18 +93,24 @@ LEVEL_KEYS = ["method", "dataset", "classifier", "bag_size", "v_level"]
 CELL_KEYS = LEVEL_KEYS + ["v_seed", "prevalence_kind"]
 # the columns of the stored rows kept in the per-bag table
 BAG_COLUMNS = CELL_KEYS + ["n_classes", "v_size", "bag_index", "bag_seed", "config_hash"]
+CSV_NAMES = ("bags", "cells", "seeds", "levels", "slopes", "size_slopes", "cost", "drift", "diagnostics", "recalls")
 IDENTITY_TOL = 1e-9
 # thresholds of the NUTS diagnostics counted by ``diagnostics_table``
 RHAT_MAX = 1.01
 ESS_MIN = 400
 SHORT_LABELS = {"BayesCAP-Hf-real": "BayCAP-Hf", "BayCAP-KDEy-mlp-real": "BayCAP-KDEy"}
 PART_LABELS = {"e1": "$e_1$", "e2": "$e_2$", "e3": "$e_3$"}
-CAPTION = (
+LEVELS_CAPTION = (
     "Error split across $|V|$ (E4.2b), $|U|={size}$, vanilla accuracy, against the realised table of each bag. "
     "Fixed part: RMS over the cells (three prevalences, and the $V$ seeds) of the mean of each part over the $R$ bags "
     "of a cell; bag part: RMS over the bags of the deviation of each bag from the mean of its cell. Last group: the "
     "fixed part of $e_2$ across the $V$ seeds, mean over the prevalences of its mean over the seeds, pooled standard "
     "deviation over the seeds, and its value at the full $V$ (mean over the prevalences)."
+)
+SIZES_CAPTION = (
+    "Error split across $|U|$ (E4.2a), full $V$, vanilla accuracy, against the realised table of each bag. Fixed "
+    "part: RMS over the three prevalences of the mean of each part over the $R$ bags of a cell; bag part: RMS over the "
+    "bags of the deviation of each bag from the mean of its cell."
 )
 
 
@@ -221,11 +237,13 @@ def level_table(bags: pd.DataFrame, cells: pd.DataFrame, seeds: pd.DataFrame) ->
 
 
 def slope_table(levels: pd.DataFrame) -> pd.DataFrame:
-    """Per (method, dataset, classifier, $|U|$) and part, the least-squares slope of $\\log$ RMS of the fixed parts
-    against $\\log|V|$ over the levels with a positive RMS (NaN with fewer than two)."""
+    """Per (method, dataset, classifier, $|U|$) with two or more levels, and per part, the least-squares slope of
+    $\\log$ RMS of the fixed parts against $\\log|V|$ over the levels with a positive RMS (NaN with fewer than two)."""
     keys = ["method", "dataset", "classifier", "bag_size"]
     rows = []
     for key, group in levels.groupby(keys, sort=False):
+        if len(group) < 2:
+            continue
         row = dict(zip(keys, key)) | {"n_levels": len(group)}
         for name in PARTS:
             values = group[f"{name}_fixed_rms"].to_numpy(dtype=float)
@@ -233,6 +251,61 @@ def slope_table(levels: pd.DataFrame) -> pd.DataFrame:
             x = np.log(group["v_size"].to_numpy(dtype=float)[ok])
             row[f"{name}_slope"] = float(np.polyfit(x, np.log(values[ok]), 1)[0]) if np.unique(x).size >= 2 else np.nan
         rows.append(row)
+    columns = keys + ["n_levels"] + [f"{name}_slope" for name in PARTS]
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _loglog_slope(x, y) -> float:
+    """The least-squares slope of $\\log y$ against $\\log x$ over the points with a finite, positive $y$; NaN with
+    fewer than two distinct $x$."""
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    ok = np.isfinite(y) & (y > 0)
+    if np.unique(x[ok]).size < 2:
+        return np.nan
+    return float(np.polyfit(np.log(x[ok]), np.log(y[ok]), 1)[0])
+
+
+def size_slope_table(levels: pd.DataFrame) -> pd.DataFrame:
+    """E4.2a. Per (method, dataset, classifier) with the full $V$ at two or more sizes, and per part, the
+    least-squares slopes of $\\log$ RMS of the fixed parts (``<part>_fixed_slope``) and of $\\log$ RMS of the bag parts
+    (``<part>_bag_slope``) against $\\log|U|$ over the sizes (descriptive)."""
+    keys = ["method", "dataset", "classifier"]
+    full = levels.loc[levels["v_level"] == "full"]
+    rows = []
+    for key, group in full.groupby(keys, sort=False):
+        if group["bag_size"].nunique() < 2:
+            continue
+        row = dict(zip(keys, key)) | {"n_sizes": int(group["bag_size"].nunique())}
+        row |= {"sizes": ",".join(str(int(size)) for size in sorted(group["bag_size"].unique()))}
+        for name in PARTS:
+            for kind in ("fixed", "bag"):
+                row[f"{name}_{kind}_slope"] = _loglog_slope(group["bag_size"], group[f"{name}_{kind}_rms"])
+        rows.append(row)
+    columns = keys + ["n_sizes", "sizes"] + [f"{p}_{k}_slope" for p in PARTS for k in ("fixed", "bag")]
+    return pd.DataFrame(rows, columns=columns)
+
+
+def cost_table(results: pd.DataFrame) -> pd.DataFrame:
+    """Per method, dataset, classifier, $|U|$ and level: the tasks (level and $V$ seed), the bags, and the mean over the
+    tasks of the fitting time ``t_train`` and of the NUTS time per bag ``t_test_ave`` (seconds; stored once per task,
+    the same in every row of its file)."""
+    keys = ["method", "dataset", "classifier", "bag_size", "v_level"]
+    frame = results.copy()
+    for column in ("t_train", "t_test_ave"):
+        if column not in frame:
+            frame[column] = np.nan
+    rows = []
+    for key, group in frame.groupby(keys, sort=False):
+        per_task = group.groupby("v_seed")[["t_train", "t_test_ave"]].first()
+        rows.append(
+            dict(zip(keys, key))
+            | {
+                "tasks": len(per_task),
+                "bags": len(group),
+                "t_train_mean": float(per_task["t_train"].mean()),
+                "t_test_ave_mean": float(per_task["t_test_ave"].mean()),
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -359,7 +432,7 @@ def drift_table(seeds: pd.DataFrame, recalls: pd.DataFrame | None = None) -> pd.
 
 
 def diagnostics_table(results: pd.DataFrame) -> pd.DataFrame:
-    """Per method, dataset and level: the bags, and those with a NUTS divergence, with $\\hat R$ above ``RHAT_MAX``, with
+    """Per method, dataset, $|U|$ and level: the bags, and those with a NUTS divergence, with $\\hat R$ above ``RHAT_MAX``, with
     an effective sample size below ``ESS_MIN``, and the failed runs (a method without the column counts $0$)."""
     frame = results.copy()
     for column, default in (("nuts_divergences", 0), ("nuts_max_rhat", np.nan), ("nuts_min_ess", np.nan)):
@@ -367,11 +440,14 @@ def diagnostics_table(results: pd.DataFrame) -> pd.DataFrame:
             frame[column] = default
     frame["nuts_failed"] = frame["nuts_failed"].fillna(0) if "nuts_failed" in frame else 0
     rows = []
-    for (method, dataset, level), group in frame.groupby(["method", "dataset", "v_level"], sort=False):
+    for (method, dataset, size, level), group in frame.groupby(
+        ["method", "dataset", "bag_size", "v_level"], sort=False
+    ):
         rows.append(
             {
                 "method": method,
                 "dataset": dataset,
+                "bag_size": size,
                 "v_level": level,
                 "bags": len(group),
                 "divergent_bags": int((group["nuts_divergences"] > 0).sum()),
@@ -404,6 +480,8 @@ def compute(
         "seeds": seeds,
         "levels": levels,
         "slopes": slope_table(levels),
+        "size_slopes": size_slope_table(levels),
+        "cost": cost_table(results),
         "drift": drift_table(seeds, recalls),
         "diagnostics": diagnostics_table(results),
         "recalls": recalls,
@@ -456,6 +534,30 @@ def levels_frame(levels: pd.DataFrame, size: int) -> pd.DataFrame:
     )
 
 
+def sizes_frame(levels: pd.DataFrame) -> pd.DataFrame:
+    """The displayed table of E4.2a: the rows of ``levels`` with the full $V$, one per method, dataset, classifier and
+    $|U|$ (strings, MultiIndex rows and columns)."""
+    table = _ordered(levels.loc[levels["v_level"] == "full"])
+    if table.empty or table["bag_size"].nunique() < 2:
+        raise RuntimeError(f"No {EXPERIMENT} results with the full V at two or more bag sizes.")
+    columns = [("", "$|V|$")]
+    columns += [("fixed part, RMS", PART_LABELS[p]) for p in PARTS]
+    columns += [("bag part, RMS", PART_LABELS[p]) for p in PARTS]
+    rows, index = [], []
+    for _, r in table.iterrows():
+        values = [str(int(r["v_size"]))]
+        values += [_fmt(r[f"{p}_fixed_rms"]) for p in PARTS]
+        values += [_fmt(r[f"{p}_bag_rms"]) for p in PARTS]
+        rows.append(values)
+        dataset = decorate_dataset(main_tables.dataset_map.get(r["dataset"], r["dataset"]))
+        index.append((SHORT_LABELS.get(r["method"], r["method"]), dataset, r["classifier"], str(int(r["bag_size"]))))
+    return pd.DataFrame(
+        rows,
+        index=pd.MultiIndex.from_tuples(index, names=["method", "dataset", "classifier", "$|U|$"]),
+        columns=pd.MultiIndex.from_tuples(columns),
+    )
+
+
 def table_dir(pargs=None) -> str:
     if pargs is not None and pargs.table_dir is not None:
         return pargs.table_dir
@@ -464,6 +566,22 @@ def table_dir(pargs=None) -> str:
 
 def _stem(size: int) -> str:
     return f"{TABLE_NAME}_levels_u{size}"
+
+
+SIZES_STEM = f"{TABLE_NAME}_sizes_v1"
+
+
+def _write_latex(frame: pd.DataFrame, out_dir: str, stem: str, caption: str, label: str) -> None:
+    """The tabular fragment, the longtable and the standalone document of ``frame``."""
+    tabular_dir = os.path.join(out_dir, "tabular")
+    os.makedirs(tabular_dir, exist_ok=True)
+    styler = frame.style
+    with open(os.path.join(tabular_dir, f"{stem}.tex"), "w") as f:
+        f.write(booktabs_clines(styler.to_latex(hrules=True, multicol_align="c", clines="skip-last;data")))
+    with open(os.path.join(tabular_dir, f"{stem}_long.tex"), "w") as f:
+        f.write(eb_prior._latex_longtable(styler, caption, label))
+    with open(os.path.join(out_dir, f"{stem}_doc.tex"), "w") as f:
+        f.write(eb_prior._latex_document(f"tabular/{stem}_long.tex"))
 
 
 def check_summary(out: dict) -> pd.DataFrame:
@@ -490,20 +608,21 @@ def check_summary(out: dict) -> pd.DataFrame:
 def gen_tables(pargs):
     out = compute()
     out_dir = table_dir(pargs)
-    tabular_dir = os.path.join(out_dir, "tabular")
-    os.makedirs(tabular_dir, exist_ok=True)
-    for name in ("bags", "cells", "seeds", "levels", "slopes", "drift", "diagnostics", "recalls"):
+    os.makedirs(out_dir, exist_ok=True)
+    for name in CSV_NAMES:
         out[name].to_csv(os.path.join(out_dir, f"{TABLE_NAME}_{name}.csv"), index=False)
 
-    styler = levels_frame(out["levels"], pargs.size).style
-    label = f"tab:{TABLE_NAME}-levels-u{pargs.size}"
-    stem = _stem(pargs.size)
-    with open(os.path.join(tabular_dir, f"{stem}.tex"), "w") as f:
-        f.write(booktabs_clines(styler.to_latex(hrules=True, multicol_align="c", clines="skip-last;data")))
-    with open(os.path.join(tabular_dir, f"{stem}_long.tex"), "w") as f:
-        f.write(eb_prior._latex_longtable(styler, CAPTION.format(size=pargs.size), label))
-    with open(os.path.join(out_dir, f"{stem}_doc.tex"), "w") as f:
-        f.write(eb_prior._latex_document(f"tabular/{stem}_long.tex"))
+    levels = out["levels"]
+    if (levels["bag_size"] == pargs.size).any():
+        caption = LEVELS_CAPTION.format(size=pargs.size)
+        label = f"tab:{TABLE_NAME}-levels-u{pargs.size}"
+        _write_latex(levels_frame(levels, pargs.size), out_dir, _stem(pargs.size), caption, label)
+    else:
+        print(f"no result with |U|={pargs.size}: the table of E4.2b is not written")
+    if levels.loc[levels["v_level"] == "full", "bag_size"].nunique() >= 2:
+        _write_latex(sizes_frame(levels), out_dir, SIZES_STEM, SIZES_CAPTION, f"tab:{TABLE_NAME}-sizes")
+    else:
+        print("the full V has fewer than two bag sizes: the table of E4.2a is not written")
 
     checks = check_summary(out)
     with pd.option_context("display.width", 250, "display.max_columns", None, "display.precision", 4):
@@ -515,26 +634,31 @@ def gen_tables(pargs):
 
 
 def gen_pdf(pargs):
+    """Compile the documents of the table of E4.2b at ``--size`` and of the table of E4.2a, those that exist."""
     out_dir = table_dir(pargs)
-    tex_filename = f"{_stem(pargs.size)}_doc.tex"
-    if not os.path.exists(os.path.join(out_dir, tex_filename)):
-        raise FileNotFoundError(f"{tex_filename} does not exist in {out_dir}. Generate tables first.")
-    # longtable needs a second pass to settle the column widths
-    for _ in range(2):
-        subprocess.run(
-            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", tex_filename],
-            cwd=out_dir,
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
+    tex_filenames = [f"{stem}_doc.tex" for stem in (_stem(pargs.size), SIZES_STEM)]
+    tex_filenames = [name for name in tex_filenames if os.path.exists(os.path.join(out_dir, name))]
+    if not tex_filenames:
+        raise FileNotFoundError(f"No table document in {out_dir}. Generate tables first.")
+    for tex_filename in tex_filenames:
+        # longtable needs a second pass to settle the column widths
+        for _ in range(2):
+            subprocess.run(
+                ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", tex_filename],
+                cwd=out_dir,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser(description="The error split within the cells of the study target_size (E4.2b, WP-21).")
+    parser = ArgumentParser(
+        description="The error split within the cells of the study target_size (E4.2, WP-21, WP-22)."
+    )
     parser.add_argument("-t", "--tables", action="store_true", help="Generate tables")
     parser.add_argument("-p", "--pdf", action="store_true", help="Generate PDF from tables")
     parser.add_argument("-a", "--all", action="store_true", help="Generate both tables and PDF")
-    parser.add_argument("--size", type=int, default=1000, help="Bag size |U| of the LaTeX table (default: 1000)")
+    parser.add_argument("--size", type=int, default=1000, help="Bag size |U| of the table of E4.2b (default: 1000)")
     parser.add_argument(
         "--table-dir",
         "--output-dir",

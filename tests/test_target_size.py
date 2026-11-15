@@ -59,6 +59,17 @@ class TestBags(unittest.TestCase):
         self.assertNotEqual(ts.bag_seed("toy", 200, 0, 0), ts.bag_seed("other", 200, 0, 0))
         self.assertNotEqual(ts.bag_seed("toy", 200, 0, 0), ts.bag_seed("toy", 1000, 0, 0))
 
+    def test_bags_larger_than_the_pool_repeat_instances(self):
+        pool_y = np.repeat(np.arange(2), [20, 10])
+        bags = ts.make_bags("toy", pool_y, pool_y, np.array([5, 5]), size=300, n_bags=2)
+        for bag in bags:
+            self.assertEqual(bag.index.size, 300)
+            self.assertLess(np.unique(bag.index).size, bag.index.size)
+            self.assertTrue(np.all((bag.index >= 0) & (bag.index < pool_y.size)))
+            np.testing.assert_array_equal(
+                np.bincount(pool_y[bag.index], minlength=2), ts.class_counts(bag.requested_prev, 300)
+            )
+
     def test_prevalences(self):
         val_counts = np.array([30, 5, 20, 5])
         prevs = ts.target_prevalences("toy", val_counts)
@@ -281,6 +292,128 @@ class TestTables(unittest.TestCase):
         self.assertEqual(len(points), 2 * 3)
 
 
+def _size_results(seed=0, sizes=(100, 1000, 10000), n_bags=8):
+    """Stored-like rows of the two methods on one binary pair, full V only, at several bag sizes: the realised recalls
+    and the estimated prevalence fluctuate by $1/\\sqrt{|U|}$, the estimated recalls carry an offset shared by the
+    bags."""
+    rng = np.random.default_rng(seed)
+    pis = {"uniform": np.array([0.5, 0.5]), "skewed": np.array([0.3, 0.7]), "vertex": np.array([0.9, 0.1])}
+    rows = []
+    for size in sizes:
+        noise = 1 / np.sqrt(size)
+        for p_index, kind in enumerate(ts.PREVALENCE_KINDS):
+            pi = pis[kind]
+            true_cts = [_table(pi, np.clip([0.8, 0.7] + rng.normal(0, noise, 2), 0, 1)) for _ in range(n_bags)]
+            for method in ts.METHODS:
+                for b in range(n_bags):
+                    first = np.clip(pi[0] + rng.normal(0, noise), 0.01, 0.99)
+                    est = _table([first, 1 - first], [0.81, 0.72])
+                    rows.append(
+                        {
+                            "method": method,
+                            "dataset": "toy",
+                            "classifier": "LR",
+                            "bag_size": size,
+                            "v_level": "full",
+                            "v_seed": 0,
+                            "prevalence_kind": kind,
+                            "n_classes": 2,
+                            "v_size": 400,
+                            "bag_index": b,
+                            "bag_seed": 10 * size + 1000 * p_index + b,
+                            "config_hash": "h",
+                            "true_cts": true_cts[b],
+                            "estim_cts": est,
+                            "estim_accs": float(np.trace(est)),
+                            "t_train": 2.0,
+                            "t_test_ave": size / 1000,
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+class TestSizes(unittest.TestCase):
+    def setUp(self):
+        self.results = _size_results()
+        self.pool = {("toy", "LR"): {"d_pool": np.array([0.8, 0.7])}}
+        self.out = tables.compute(self.results, self.pool)
+
+    def test_levels_per_size(self):
+        levels = self.out["levels"]
+        self.assertEqual(len(levels), 3 * len(ts.METHODS))
+        self.assertEqual(sorted(set(levels["bag_size"])), [100, 1000, 10000])
+        self.assertTrue((levels["n_bags"] == 3 * 8).all())
+        # one level per size: no slope against |V|
+        self.assertTrue(self.out["slopes"].empty)
+        self.assertEqual(self.out["n_unshared_bags"], 0)
+
+    def test_size_slopes(self):
+        slopes = self.out["size_slopes"]
+        self.assertEqual(len(slopes), len(ts.METHODS))
+        self.assertTrue((slopes["n_sizes"] == 3).all())
+        levels = self.out["levels"]
+        rows = levels.loc[levels["method"] == ts.METHODS[0]].sort_values("bag_size")
+        row = slopes.loc[slopes["method"] == ts.METHODS[0]].iloc[0]
+        for name in tables.PARTS:
+            for kind in ("fixed", "bag"):
+                expected = np.polyfit(np.log(rows["bag_size"]), np.log(rows[f"{name}_{kind}_rms"]), 1)[0]
+                self.assertAlmostEqual(row[f"{name}_{kind}_slope"], expected)
+        # the bag parts of e1 and e3 come from fluctuations of order 1/sqrt(|U|)
+        self.assertLess(row["e3_bag_slope"], -0.3)
+        self.assertLess(row["e1_bag_slope"], -0.3)
+
+    def test_size_slopes_need_two_sizes(self):
+        out = tables.compute(_size_results(sizes=(1000,)), self.pool)
+        self.assertTrue(out["size_slopes"].empty)
+        with self.assertRaises(RuntimeError):
+            tables.sizes_frame(out["levels"])
+
+    def test_sizes_frame(self):
+        frame = tables.sizes_frame(self.out["levels"])
+        self.assertEqual(frame.shape, (3 * len(ts.METHODS), 7))
+        self.assertEqual(list(frame.index.get_level_values("$|U|$")[:3]), ["100", "1000", "10000"])
+        self.assertIn("bag part, RMS", frame.style.to_latex())
+
+    def test_cost_and_diagnostics_by_size(self):
+        cost = self.out["cost"]
+        self.assertEqual(len(cost), 3 * len(ts.METHODS))
+        self.assertTrue((cost["tasks"] == 1).all())
+        np.testing.assert_allclose(cost["t_test_ave_mean"], cost["bag_size"] / 1000)
+        diagnostics = self.out["diagnostics"]
+        self.assertEqual(sorted(set(diagnostics["bag_size"])), [100, 1000, 10000])
+        self.assertTrue((diagnostics["bags"] == 3 * 8).all())
+
+    def test_plot(self):
+        fig = plots.plot_u_size(self.out["levels"], classifier="LR")
+        self.assertEqual(len(fig.axes), len(tables.PARTS) * len(ts.METHODS))
+        # per panel and dataset: the fixed and the bag line
+        self.assertEqual(len(fig.axes[0].get_lines()), 2)
+        plt.close(fig)
+        with self.assertRaises(RuntimeError):
+            plots.plot_u_size(self.out["levels"], classifier="RF")
+
+    def test_tables_and_plots_are_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pargs = SimpleNamespace(size=1000, table_dir=tmp)
+            with patch.object(tables, "compute", return_value=self.out), patch("builtins.print"):
+                tables.gen_tables(pargs)
+            for name in tables.CSV_NAMES:
+                self.assertTrue(os.path.exists(os.path.join(tmp, f"{tables.TABLE_NAME}_{name}.csv")), name)
+            self.assertTrue(os.path.exists(os.path.join(tmp, f"{tables.SIZES_STEM}_doc.tex")))
+            self.assertTrue(os.path.exists(os.path.join(tmp, "tabular", f"{tables.SIZES_STEM}_long.tex")))
+            # the E4.2b table at |U|=1000 is written from the full-V rows too
+            self.assertTrue(os.path.exists(os.path.join(tmp, f"{tables._stem(1000)}_doc.tex")))
+            args = plots.parse_args(["--figures", "u-size", "v-size", "--no-svg"])
+            with (
+                patch.object(plots, "compute", return_value=self.out),
+                patch.object(plots, "out_dir", return_value=tmp),
+                patch("builtins.print"),
+            ):
+                plots.generate_plots(args)
+            self.assertTrue(os.path.exists(os.path.join(tmp, f"{ts.EXPERIMENT}_u-size_LR.png")))
+            self.assertTrue(os.path.exists(os.path.join(tmp, f"{ts.EXPERIMENT}_v-size_LR_u1000.png")))
+
+
 class TestRecallChecks(unittest.TestCase):
     def test_recall_gap(self):
         # V: recalls (0.9, 0.6) on (10, 20) instances; pool: (0.8, 0.7) on (10, 10)
@@ -352,6 +485,40 @@ class TestTasks(unittest.TestCase):
     def test_unknown_method(self):
         with self.assertRaises(ValueError):
             ts.make_method("BayesCAP-real")
+
+    def test_parse_args_grids(self):
+        default = ts.parse_args(["--run"])
+        self.assertEqual(default.sizes, list(ts.BAG_SIZES))
+        self.assertEqual(default.levels, list(ts.LEVELS))
+        grid = ts.parse_args(["--run", "--u-grid"])
+        self.assertEqual(grid.sizes, [100, 300, 1000, 3000, 10000])
+        self.assertEqual(grid.levels, ["full"])
+        explicit = ts.parse_args(["--run", "--sizes", "100", "300", "--levels", "full"])
+        self.assertEqual((explicit.sizes, explicit.levels), ([100, 300], ["full"]))
+        with patch("sys.stderr"):
+            for argv in (["--run", "--u-grid", "--sizes", "100"], ["--run", "--u-grid", "--levels", "full"]):
+                with self.assertRaises(SystemExit):
+                    ts.parse_args(argv)
+            with self.assertRaises(SystemExit):
+                ts.parse_args(["--run", "--sizes", "0"])
+
+    def test_u_grid_tasks_skip_the_stored_cells(self):
+        p = SimpleNamespace(
+            d_info=SimpleNamespace(name="letter", n_classes=3), h_info=SimpleNamespace(name="LR", full_name="LR_x")
+        )
+        with (
+            patch.object(ts, "_pretrains", return_value=[("info", p)]),
+            patch.object(ts, "_val_counts", return_value=np.array([400, 300, 200])),
+            patch.object(ts, "_all_results_exist", side_effect=lambda _, task: task.size == 1000),
+        ):
+            todo = ts.tasks(sizes=ts.U_SIZES, levels=("full",))
+        self.assertEqual(sorted({t.size for t in todo}), [100, 300, 3000, 10000])
+        self.assertEqual(len(todo), 4 * len(ts.METHODS))
+        self.assertTrue(all(t.level == "full" and t.v_seed == 0 for t in todo))
+        self.assertEqual(
+            sorted({t.folder for t in todo}),
+            sorted(ts.result_folder(size, "full", 0) for size in (100, 300, 3000, 10000)),
+        )
 
 
 if __name__ == "__main__":
