@@ -423,6 +423,8 @@ class TablesTest(unittest.TestCase):
         self.assertIn("\\bfseries", latex)
         latex = tt._datasets_styler(self.selected["datasets"]).to_latex()
         self.assertIn("\\texttt{wine}", latex)
+        datasets = self.selected["datasets"].replace({"dataset": {"wine": "poker_hand"}})
+        self.assertIn("\\texttt{poker\\_hand}", tt._datasets_styler(datasets).to_latex())
         self.assertNotIn("vanilla_accuracy", tt.caption("vanilla_accuracy", "summary"))
         self.assertIn("xcolor", tt._latex_document("x.tex"))
 

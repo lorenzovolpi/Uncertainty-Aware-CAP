@@ -470,7 +470,10 @@ def _datasets_styler(datasets: pd.DataFrame):
         }
     )
     out.index = pd.MultiIndex.from_arrays(
-        [datasets["method"].map(METHOD_LABELS), datasets["dataset"].map(lambda d: f"\\texttt{{{d}}}")],
+        [
+            datasets["method"].map(METHOD_LABELS),
+            datasets["dataset"].map(lambda d: f"\\texttt{{{main_tables._escape_latex_text(d)}}}"),
+        ],
         names=["method", "dataset"],
     )
     return out.style.format(precision=3, na_rep="--").format("{:.0f}", subset=["$K$"])
