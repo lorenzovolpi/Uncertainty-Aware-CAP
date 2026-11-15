@@ -34,6 +34,9 @@ class ExperimentOutcome:
     t_train: float | None = None
     t_test_ave: float | None = None
     err: Exception | None = None
+    # the results folder of this outcome, relative to <OUT_DIR>/uncawe, when it differs from the experiment of the pool
+    # (a study whose cells are separate folders, e.g. experiments/target_size.py, runs them in one pool)
+    experiment: str | None = None
 
     @classmethod
     def SUCCESS(cls, *args, **kwargs):
@@ -68,11 +71,15 @@ def save_experiment_results(
     done: int = 0,
 ) -> None:
     """Save and log the outcomes; with ``total``, each line ends with the task count ``[<n>/<total>]`` of the pool,
-    where ``done`` tasks were already saved before ``results_gen``."""
+    where ``done`` tasks were already saved before ``results_gen``. An outcome is saved under ``experiment``, or under
+    its own ``experiment`` field if set."""
     for n, results in enumerate(results_gen, start=done + 1):
         count = f" [{n}/{total}]" if total is not None else ""
         for result in results:
+            folder = experiment if result.experiment is None else result.experiment
             label = f"[{result.p.h_info.name}@{result.p.d_info.name}] {result.method_name}"
+            if result.experiment is not None:
+                label = f"{label} ({result.experiment})"
             if result.ok:
                 path = local_path(
                     result.p.domain,
@@ -80,7 +87,7 @@ def save_experiment_results(
                     result.p.h_info.full_name,
                     result.method_name,
                     result.acc_name,
-                    experiment=experiment,
+                    experiment=folder,
                 )
                 result.df.save_result(path)
                 log.info(f"{label} on {result.acc_name} done [{timestamp(result.t_train, result.t_test_ave)}]{count}")

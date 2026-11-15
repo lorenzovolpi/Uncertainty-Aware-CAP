@@ -31,6 +31,11 @@ such classes is returned per bag (``n_empty``). Both conventions keep the identi
 
 The split uses the true prevalence of the bag and the labels of the pool, so it is an analysis, not a method; the three
 oracle cells are references.
+
+Within a cell of E4.2 (§T.4; work-plan card WP-21), i.e. bags drawn with the same prevalence, $|U|$ and $V$, each part
+$e^{(b)}$ of bag $b$ splits as the fixed part $\\bar e$ (its mean over the $R$ bags of the cell) plus the bag part
+$e^{(b)}-\\bar e$ (``cell_parts``); across the $V$ seeds of a $|V|$ level, the fixed parts have a mean and a standard
+deviation (``over_seeds``).
 """
 
 import numpy as np
@@ -153,3 +158,43 @@ def largest_part(rms_parts) -> int:
     if np.all(np.isnan(values)):
         return 0
     return int(np.nanargmax(values)) + 1
+
+
+def cell_parts(values, cells) -> tuple[np.ndarray, np.ndarray]:
+    """Split per-bag ``values`` into their fixed part and their bag part within the cells ``cells`` (§T.4).
+
+    ``cells`` labels the cell of each bag (any hashable labels, e.g. integer codes). The fixed part of a bag is the mean
+    of ``values`` over the bags of its cell, $\\bar e=\\frac1R\\sum_be^{(b)}$; the bag part is $e^{(b)}-\\bar e$. The two
+    sum to ``values`` and the bag parts of each cell sum to $0$. Returns two arrays of the length of ``values``.
+    """
+    values = np.asarray(values, dtype=float)
+    cells = np.asarray(cells)
+    if values.ndim != 1 or cells.shape != values.shape:
+        raise ValueError(f"Expected two 1-d arrays of the same length, got {values.shape} and {cells.shape}")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("values must be finite (drop the failed bags first)")
+    _, codes = np.unique(cells, return_inverse=True)
+    codes = codes.ravel()
+    means = np.bincount(codes, weights=values) / np.bincount(codes)
+    fixed = means[codes]
+    return fixed, values - fixed
+
+
+def fixed_se(bag_parts) -> float:
+    """Standard error of the fixed part of a cell from its bag parts: $s/\\sqrt R$, with $s$ the standard deviation of
+    the $R$ bag parts (divisor $R-1$). It measures how precisely the mean of $R$ bags pins the fixed part (the caveat of
+    §T.4). NaN with fewer than two bags."""
+    bag_parts = np.asarray(bag_parts, dtype=float)
+    if bag_parts.size < 2:
+        return np.nan
+    return float(np.std(bag_parts, ddof=1) / np.sqrt(bag_parts.size))
+
+
+def over_seeds(fixed_parts) -> tuple[float, float]:
+    """Mean and standard deviation (divisor $S_V-1$) of the fixed parts of one cell across $S_V$ seeds of $V$ (§T.4,
+    across $V$ seeds). The standard deviation is NaN with a single seed (as for the full $V$)."""
+    fixed_parts = np.asarray(fixed_parts, dtype=float)
+    if fixed_parts.size == 0:
+        return np.nan, np.nan
+    sd = float(np.std(fixed_parts, ddof=1)) if fixed_parts.size > 1 else np.nan
+    return float(np.mean(fixed_parts)), sd
