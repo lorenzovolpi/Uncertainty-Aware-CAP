@@ -435,9 +435,11 @@ class PlotsTest(unittest.TestCase):
     def test_lines(self):
         fig = plots.plot_lines(self.table, "BayesCAP-Hf-real")
         self.assertEqual(len(fig.axes), len(plots.MEASURES) + 1)  # the measures and the colour bar
+        fig.canvas.draw()
         plt.close(fig)
         fig = plots.plot_lines(self.table, "BayesCAP-Hf-real", by_k=True)
         self.assertEqual(len(fig.axes), 4 * len(plots.MEASURES) + 1)  # all pairs and three groups of K
+        fig.canvas.draw()  # renders the titles, whose mathtext must parse
         plt.close(fig)
         self.assertIsNone(plots.plot_lines(self.table, "BayesCAP-Hf-real", "macro-K"))
 
@@ -446,6 +448,7 @@ class PlotsTest(unittest.TestCase):
         self.assertEqual(len(points), len(PAIRS) * len(TEMPERATURE_LEVELS))
         fig = plots.plot_widening(self.table)
         self.assertIsNotNone(fig)
+        fig.canvas.draw()
         plt.close(fig)
         self.assertIsNone(plots.plot_widening(self.table.loc[self.table["method"] != tt.WIDENING_METHOD]))
 

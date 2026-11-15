@@ -55,7 +55,7 @@ PLOT_NAME = "tempering"
 FIGURES = ("lines", "lines_k", "widening")
 MEASURES = {"winkler": "Winkler score", "coverage": "coverage", "amplitude": "amplitude"}
 NOMINAL = 0.95
-K_TITLES = {"all": "all pairs", "K=2": "$K=2$", "3<=K<=7": "$3\\le K\\le7$", "K>=8": "$K\\ge8$"}
+K_TITLES = {"all": "all pairs", "K=2": "$K=2$", "3<=K<=7": "$3\\leq K\\leq7$", "K>=8": "$K\\geq8$"}
 IDENTITY_LINE = {"color": "#595959", "linewidth": 1.2, "linestyle": "--", "zorder": 1}
 NOMINAL_LINE = {"color": "#595959", "linewidth": 1.0, "linestyle": ":", "zorder": 1}
 PAIR_LINE = {"linewidth": 0.8, "alpha": 0.35, "zorder": 2}
