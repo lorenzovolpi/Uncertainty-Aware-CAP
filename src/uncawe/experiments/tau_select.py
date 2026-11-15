@@ -20,15 +20,14 @@ no label outside $V$ is used.
   same split for the five classifiers of the dataset, every method and every $\tau$. Every class must keep at least one
   instance in each half. The methods are fitted on $V_{\text{fit}}$ (BayCAP-Hf on the validation counts of $h$ on
   $V_{\text{fit}}$; BayCAP-KDEy with $\hat C$, the MLP and the kernel densities on $V_{\text{fit}}$).
-- **Calibration bags.** ``n_bags`` ($S=50$) bags of ``SAMPLE_SIZE`` instances per pair. Bag $b$ uses one generator
-  seeded by the experiment seed, the dataset and $b$ (``calibration_bag_seed``): it draws the prevalence from
-  $\operatorname{Dir}(\mathbf 1)$, uniform on the simplex as in ``main``; the class counts are $|U|\pi_j$ rounded by
-  largest remainder (``target_size.class_counts``); the instances of class $j$ are drawn with replacement among those
-  of class $j$ of $V_{\text{cal}}$. The bags depend neither on the classifier, nor on the method, nor on $\tau$, so
-  every cell of a dataset sees the same instances; the posteriors of $h$ on a bag are the stored validation posteriors
-  of its instances. ``main`` draws its test bags with QuaPy's UPP, without replacement where a class has enough
-  instances; here $V_{\text{cal}}$ is small (``mammographic``: about $145$ instances), so the bags are drawn with
-  replacement, as the card states.
+- **Calibration bags.** ``n_bags`` ($S=50$) bags of ``SAMPLE_SIZE`` instances per pair, drawn from $V_{\text{cal}}$
+  with QuaPy's UPP, the protocol with which ``main`` draws its test bags from $U$ (``pretrain/data.py:with_test_data``):
+  the prevalences are uniform on the simplex (Kraemer algorithm), the class counts are $\operatorname{round}(|U|\pi_j)$
+  with the remainder assigned to classes drawn with probabilities $\pi$, and the instances of each class are drawn
+  with replacement (``LabelledCollection.sampling_index``). The protocol is seeded by ``calibration_seed``, of the
+  experiment seed and the dataset only, so the bags depend neither on the classifier, nor on the method, nor on
+  $\tau$, and every cell of a dataset sees the same instances; the posteriors of $h$ on a bag are the stored
+  validation posteriors of its instances.
 
 Outputs: ``<OUT_DIR>/uncawe/tau_select/<domain>/<acc_name>/<dataset>/<classifier>/<method>.parquet``, where ``method`` is
 the name of the method at $\tau$ in ``main`` (the base name at $\tau=1$, ``<base>-t<tau>`` otherwise, as
@@ -36,7 +35,7 @@ the name of the method at $\tau$ in ``main`` (the base name at $\tau=1$, ``<base
 metrics, the NUTS diagnostics and posterior summaries that ``main`` stores for the two methods) and the columns
 ``base_method``, ``tau``, ``split_seed``, ``v_size``, ``v_fit_size``, ``v_cal_size``, ``v_class_counts``,
 ``v_fit_class_counts``, ``v_recalls`` (the recalls of $h$ on the full $V$, for $\hat\sigma_{e_2}$ of §T.9),
-``bag_size``, ``bag_index``, ``bag_seed``, ``requested_prev``, ``config_hash`` and ``schema_version``. A file that
+``bag_size``, ``bag_index``, ``calibration_seed``, ``bag_prev`` (the prevalence of the bag), ``config_hash`` and ``schema_version``. A file that
 exists is skipped.
 
 Every method is a NumPyro method, so all the tasks run in one pool with ``BAYES_N_JOBS`` workers and ``BAYES_ENV``, and
@@ -62,6 +61,7 @@ import numpy as np
 import quapy as qp
 from cap.utils.commons import contingency_table, get_shift
 from quapy.data import LabelledCollection
+from quapy.protocol import UPP
 
 from uncawe.experiments.datasets import get_filtered_datasets
 from uncawe.experiments.execution import ExperimentOutcome, run_tasks, shutdown_parallel_workers
@@ -78,7 +78,6 @@ from uncawe.experiments.methods import (
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
-from uncawe.experiments.target_size import class_counts
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.util import get_logger, get_plain_prev, local_path
 
@@ -138,10 +137,10 @@ def split_seed(dataset: str) -> int:
     return _seed(dataset, _SPLIT_STREAM)
 
 
-def calibration_bag_seed(dataset: str, bag_index: int) -> int:
-    """The seed of calibration bag ``bag_index`` of ``dataset``: of the experiment seed, the dataset and the bag index
-    only (shared by every classifier, method and $\\tau$)."""
-    return _seed(dataset, _BAG_STREAM, bag_index)
+def calibration_seed(dataset: str) -> int:
+    """The seed of the UPP protocol of the calibration bags of ``dataset``: of the experiment seed and the dataset only
+    (shared by every classifier, method and $\\tau$)."""
+    return _seed(dataset, _BAG_STREAM)
 
 
 def config_hash(n_bags: int, size: int = SAMPLE_SIZE) -> str:
@@ -152,7 +151,7 @@ def config_hash(n_bags: int, size: int = SAMPLE_SIZE) -> str:
         "n_bags": int(n_bags),
         "bag_size": int(size),
         "split": "per class, floor(n_j/2) to V_cal",
-        "prevalence": "Dir(1)",
+        "bags": "quapy UPP on V_cal",
         "num_warmup": BAYES_WARMUPS,
         "num_samples": BOOTSTRAP_ITERS,
         "schema_version": SCHEMA_VERSION,
@@ -200,8 +199,7 @@ def recalls(y: np.ndarray, pred: np.ndarray, n_classes: int) -> np.ndarray:
 @dataclass(frozen=True)
 class CalibrationBag:
     bag_index: int
-    seed: int
-    requested_prev: np.ndarray
+    prevalence: np.ndarray  # of the bag
     index: np.ndarray  # indices into V
     true_ct: np.ndarray  # cap-ml layout, true classes on rows
 
@@ -215,28 +213,28 @@ def calibration_bags(
     n_bags: int = N_BAGS,
     size: int = SAMPLE_SIZE,
 ) -> list[CalibrationBag]:
-    """The ``n_bags`` calibration bags of ``dataset``: bag $b$ draws its prevalence from $\\operatorname{Dir}(\\mathbf
-    1)$ and then, class by class in class order, its instances with replacement among those of $V_{\\text{cal}}$
-    (``cal_index``, indices into $V$) of the class, all from ``np.random.default_rng(calibration_bag_seed(dataset,
-    b))``; the realised table comes from the labels and the predictions of $h$ on $V$."""
+    """The ``n_bags`` calibration bags of ``dataset``, drawn from $V_{\\text{cal}}$ (``cal_index``, indices into $V$) by
+    QuaPy's UPP with ``random_state=calibration_seed(dataset)``, as ``main`` draws its test bags from $U$; the realised
+    table comes from the labels and the predictions of $h$ on $V$. The bags depend on the labels of $V_{\\text{cal}}$
+    only, not on ``val_pred``."""
     val_y, val_pred, cal_index = np.asarray(val_y), np.asarray(val_pred), np.asarray(cal_index)
-    pools = [cal_index[val_y[cal_index] == j] for j in range(n_classes)]
+    # the instances of the collection are the indices into V, so that each sample carries them
+    cal = LabelledCollection(cal_index.reshape(-1, 1), val_y[cal_index], classes=np.arange(n_classes))
+    protocol = UPP(
+        cal, sample_size=size, repeats=n_bags, random_state=calibration_seed(dataset), return_type="labelled_collection"
+    )
+    # QuaPy's temp_seed writes the seed of the protocol into qp.environ["_R_SEED"] and does not restore it; the
+    # experiment seed must stay as it is (it seeds the next calibration seed and the methods built after the bags)
+    experiment_seed = qp.environ["_R_SEED"]
+    try:
+        samples = list(protocol())
+    finally:
+        qp.environ["_R_SEED"] = experiment_seed
     bags = []
-    for b in range(n_bags):
-        seed = calibration_bag_seed(dataset, b)
-        rng = np.random.default_rng(seed)
-        prev = rng.dirichlet(np.ones(n_classes))
-        counts = class_counts(prev / prev.sum(), size)
-        parts = []
-        for j, n_j in enumerate(counts):
-            if n_j == 0:
-                continue
-            if pools[j].size == 0:
-                raise ValueError(f"{dataset}: class {j} has no instance in V_cal")
-            parts.append(pools[j][rng.integers(0, pools[j].size, size=n_j)])
-        index = np.concatenate(parts)
+    for b, sample in enumerate(samples):
+        index = np.asarray(sample.X).ravel().astype(int)
         true_ct = contingency_table(val_y[index], val_pred[index], n_classes)
-        bags.append(CalibrationBag(b, seed, prev, index, true_ct))
+        bags.append(CalibrationBag(b, np.asarray(sample.prevalence(), dtype=float), index, true_ct))
     return bags
 
 
@@ -333,8 +331,8 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
         "v_recalls": [recalls(val_y, val_pred, n_classes).tolist()] * size,
         "bag_size": [int(bag.index.size) for bag in bags],
         "bag_index": [bag.bag_index for bag in bags],
-        "bag_seed": [bag.seed for bag in bags],
-        "requested_prev": [bag.requested_prev.tolist() for bag in bags],
+        "calibration_seed": [calibration_seed(p.d_info.name)] * size,
+        "bag_prev": [bag.prevalence.tolist() for bag in bags],
         "config_hash": [config_hash(task.n_bags)] * size,
         "schema_version": [SCHEMA_VERSION] * size,
     }

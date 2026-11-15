@@ -20,6 +20,8 @@ import numpy as np
 import pandas as pd
 import quapy as qp
 from cap.utils.commons import contingency_table
+from quapy.data import LabelledCollection
+from quapy.protocol import UPP
 
 from uncawe.experiments import tau_select as ts
 from uncawe.experiments.methods import TEMPERED_BASES
@@ -103,29 +105,40 @@ class CalibrationBagsTest(unittest.TestCase):
         for b, bag in enumerate(self.bags):
             self.assertEqual(bag.bag_index, b)
             self.assertEqual(bag.index.size, ts.SAMPLE_SIZE)
-            self.assertAlmostEqual(bag.requested_prev.sum(), 1.0)
-            np.testing.assert_array_equal(
-                np.bincount(self.y[bag.index], minlength=3), ts.class_counts(bag.requested_prev, ts.SAMPLE_SIZE)
-            )
+            np.testing.assert_allclose(bag.prevalence, np.bincount(self.y[bag.index], minlength=3) / ts.SAMPLE_SIZE)
             np.testing.assert_array_equal(bag.true_ct, contingency_table(self.y[bag.index], self.pred[bag.index], 3))
         # with replacement: V_cal has 72 instances, a bag 1000
         self.assertLess(np.unique(self.bags[0].index).size, ts.SAMPLE_SIZE)
 
-    def test_reproducible_and_independent_of_the_classifier(self):
-        other_pred = np.zeros_like(self.pred)
-        again = ts.calibration_bags("toy", self.y, other_pred, self.cal, 3, n_bags=20)
+    def test_bags_are_those_of_quapy_upp(self):
+        """The indices are those of QuaPy's UPP on V_cal with the calibration seed, mapped back to V."""
+        cal = LabelledCollection(np.zeros((self.cal.size, 1)), self.y[self.cal], classes=np.arange(3))
+        protocol = UPP(cal, sample_size=ts.SAMPLE_SIZE, repeats=20, random_state=ts.calibration_seed("toy"))
+        experiment_seed = qp.environ["_R_SEED"]
+        try:
+            with qp.util.temp_seed(protocol.random_state):
+                expected = protocol.samples_parameters()
+        finally:
+            qp.environ["_R_SEED"] = experiment_seed
+        for bag, index in zip(self.bags, expected):
+            np.testing.assert_array_equal(bag.index, self.cal[index])
+
+    def test_reproducible_and_independent_of_the_classifier_and_the_global_state(self):
+        np.random.seed(7)
+        state = np.random.get_state()[1].copy()
+        again = ts.calibration_bags("toy", self.y, np.zeros_like(self.pred), self.cal, 3, n_bags=20)
+        np.testing.assert_array_equal(np.random.get_state()[1], state)  # UPP restores the global state
+        self.assertEqual(qp.environ["_R_SEED"], 0)  # and the experiment seed is restored too
         for a, b in zip(self.bags, again):
             np.testing.assert_array_equal(a.index, b.index)
-            self.assertEqual(a.seed, b.seed)
-        self.assertNotEqual(self.bags[0].seed, self.bags[1].seed)
-        self.assertFalse(np.allclose(self.bags[0].requested_prev, self.bags[1].requested_prev))
-        self.assertEqual(self.bags[3].seed, ts.calibration_bag_seed("toy", 3))
-        self.assertNotEqual(ts.calibration_bag_seed("toy", 3), ts.calibration_bag_seed("other", 3))
+        self.assertFalse(np.allclose(self.bags[0].prevalence, self.bags[1].prevalence))
+        self.assertNotEqual(ts.calibration_seed("toy"), ts.calibration_seed("other"))
+        self.assertNotEqual(ts.calibration_seed("toy"), ts.split_seed("toy"))
 
     def test_prevalences_cover_the_simplex(self):
         bags = ts.calibration_bags("toy", self.y, self.pred, self.cal, 3, n_bags=400)
-        prevs = np.array([bag.requested_prev for bag in bags])
-        # Dir(1) on K=3: each component has mean 1/3 and variance (K-1)/(K^2 (K+1)) = 1/18
+        prevs = np.array([bag.prevalence for bag in bags])
+        # uniform on the simplex with K=3: each component has mean 1/3 and variance (K-1)/(K^2 (K+1)) = 1/18
         np.testing.assert_allclose(prevs.mean(axis=0), 1 / 3, atol=0.04)
         np.testing.assert_allclose(prevs.var(axis=0), 1 / 18, atol=0.015)
 
