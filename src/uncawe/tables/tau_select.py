@@ -359,10 +359,16 @@ def _crosstab_styler(cross: pd.DataFrame):
     return out.style.format("{:d}")
 
 
+# a selected tau equal to the oracle-best tau of its pair: the green of the colour scale, in bold
+MATCH_STYLE = f"cellcolor:[HTML]{{{tt.main_tables._rgb_hex(tt.main_tables.BEST_RGB).lstrip('#').upper()}}}; bfseries: ;"
+
+
 def _pairs_styler(pairs: pd.DataFrame):
     """One row per method and pair (the ``pairs`` frame of :func:`compare`, one metric): $K$, $\\hat\\sigma_{e_2}$, the
     three selected $\\tau$, the mean test Winkler score and coverage at each column of ``COLUMNS`` (the oracle, a
-    reference, in grey) and the mean calibration Winkler score at $\\tau=1$ and $\\tau_{\\text{cal}}$."""
+    reference, in grey) and the mean calibration Winkler score at $\\tau=1$ and $\\tau_{\\text{cal}}$. The test scores are
+    coloured per row and group from the worst to the best value (``tempering.score_styles``, the best in bold);
+    $\\tau_{\\text{cal}}$ and $\\tau_{-d}$ are highlighted (green, bold) where they equal the oracle-best $\\tau$."""
     tau_head, test_w, test_c, calib = (
         "selected $\\tau$",
         f"test {tt.SCORE_LABELS['winkler']}",
@@ -383,13 +389,17 @@ def _pairs_styler(pairs: pd.DataFrame):
     out = pd.DataFrame(columns)
     out.columns = pd.MultiIndex.from_tuples(out.columns)
     out.index = tt._pair_index(pairs)
+    styles = tt.score_styles(out, {"winkler": test_w, "coverage": test_c})
+    for column in ("cal", "lodo"):
+        match = (pairs[f"tau_{column}"] == pairs["tau_oracle"]).to_numpy()
+        styles.loc[match, (tau_head, COLUMN_LABELS[column])] = MATCH_STYLE
     grey = [(head, COLUMN_LABELS["oracle"]) for head in (tau_head, test_w, test_c)]
     return (
         out.style.format(precision=3, na_rep="--")
         .format("{:.0f}", subset=[("", "$K$")])
         .format("{:.4f}", subset=[("", "$\\hat\\sigma_{e_2}$")])
+        .apply(lambda _: styles, axis=None)
         .map(lambda _: "color:{gray};", subset=grey)
-        .map(lambda _: "bfseries: ;", subset=[(test_w, COLUMN_LABELS["cal"])])
     )
 
 
@@ -402,7 +412,9 @@ def caption(acc_name: str, name: str) -> str:
             "$\\tau$: $\\tau_{\\mathrm{cal}}$, the best on the 50 calibration bags; $\\tau_{-d}$, the $\\tau$ of E5.2 "
             "chosen on the other datasets; oracle (grey, a reference chosen with the target labels), the best on the "
             "test bags. Test: means over the 100 test bags of \\texttt{main} (methods fitted on the full $V$), scored "
-            "against the realised table, at each selected $\\tau$ and at $\\tau=1$. Calibration: means over the 50 "
+            "against the realised table, at each selected $\\tau$ and at $\\tau=1$, each score coloured per row from the "
+            "worst (red) to the best (green, in bold; coverage: closest to $0.95$); a selected $\\tau$ equal to the "
+            "oracle is in green and bold. Calibration: means over the 50 "
             "calibration bags (methods fitted on half of $V$), scored against their realised tables."
         )
     if name == "summary":

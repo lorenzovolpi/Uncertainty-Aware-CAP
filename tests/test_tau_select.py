@@ -414,7 +414,15 @@ class TablesTest(unittest.TestCase):
         self.assertIn("\\color{gray}", latex)
         self.assertIn("\\bfseries", latex)
         self.assertIn("\\hat\\sigma_{e_2}", latex)
+        self.assertIn("\\cellcolor[HTML]", latex)
         self.assertNotIn("vanilla_accuracy", tables.caption("vanilla_accuracy", "pairs"))
+        # a selected tau is highlighted exactly where it equals the oracle-best tau
+        ctx = styler._compute().ctx
+        for column in ("cal", "lodo"):
+            j = styler.data.columns.get_loc(("selected $\\tau$", tables.COLUMN_LABELS[column]))
+            match = (pairs[f"tau_{column}"] == pairs["tau_oracle"]).to_numpy()
+            highlighted = np.array([("bfseries", "") in ctx.get((i, j), []) for i in range(len(pairs))])
+            np.testing.assert_array_equal(highlighted, match)
 
     def test_tables_are_written_and_build(self):
         with tempfile.TemporaryDirectory() as tmp:

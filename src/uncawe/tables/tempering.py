@@ -49,7 +49,7 @@ from uncawe.experiments.main import EXPERIMENT
 from uncawe.experiments.methods import TEMPERATURE_LEVELS, TEMPERED_BASES, TEMPERED_VARIANTS
 from uncawe.experiments.metrics import acc_from_ct, get_acc_names
 from uncawe.results import Results
-from uncawe.tables import eb_prior, hierarchical
+from uncawe.tables import baycap_fixed, eb_prior, hierarchical
 from uncawe.tables import main as main_tables
 from uncawe.tables.baycap_hf import DIVERGENT_DRAWS, NUTS_DRAWS
 from uncawe.tables.estimand_gap import CLASSIFIER_ORDER, booktabs_clines
@@ -510,6 +510,14 @@ def _datasets_styler(datasets: pd.DataFrame):
     return out.style.format(precision=3, na_rep="--").format("{:.0f}", subset=["$K$"])
 
 
+def score_styles(out: pd.DataFrame, labels: dict[str, str]) -> pd.DataFrame:
+    """Per row and score group (``labels``: score -> first level of the column labels of the group), the colour scale of
+    the tables of E3.1 (``tables/baycap_fixed.py:_score_cell_styles``, the min-max scale of ``tables/main.py``): from
+    the worst value of the row in the group (red) to the best (green, in bold); lower is better for the Winkler score,
+    closer to the nominal level for the coverage."""
+    return baycap_fixed._score_cell_styles(out, labels)
+
+
 def _tau_text(tau: float) -> str:
     return tau_label(tau) if np.isfinite(tau) else "--"
 
@@ -528,8 +536,8 @@ def _pair_index(pairs: pd.DataFrame) -> pd.MultiIndex:
 
 def _pairs_styler(table: pd.DataFrame, picks: pd.DataFrame):
     """One row per method and pair (``table``: the pair table of one metric; ``picks``: the ``pairs`` frame of
-    :func:`selection`): $K$, the mean Winkler score and the coverage at each fixed $\\tau$ (the lowest Winkler score of
-    the row in bold: its oracle-best $\\tau$), $\\tau_{-d}$ and the oracle-best $\\tau$ (grey, a reference)."""
+    :func:`selection`): $K$, the mean Winkler score and the coverage at each fixed $\\tau$ (each coloured per row from
+    the worst to the best value, the best in bold: for the Winkler score, the oracle-best $\\tau$), $\\tau_{-d}$ and the oracle-best $\\tau$ (grey, a reference)."""
     merged = table.merge(picks[["acc_name", "method", *KEYS, "tau_lodo", "tau_oracle"]], how="left")
     columns = {("", "$K$"): merged["n_classes"].to_numpy()}
     labels = [COLUMN_LABELS[tau_label(tau)] for tau in TAUS]
@@ -541,11 +549,11 @@ def _pairs_styler(table: pd.DataFrame, picks: pd.DataFrame):
     out = pd.DataFrame(columns)
     out.columns = pd.MultiIndex.from_tuples(out.columns)
     out.index = _pair_index(merged)
-    winkler = [(SCORE_LABELS["winkler"], label) for label in labels]
+    styles = score_styles(out, {score: SCORE_LABELS[score] for score in ("winkler", "coverage")})
     return (
         out.style.format(precision=3, na_rep="--")
         .format("{:.0f}", subset=[("", "$K$")])
-        .highlight_min(subset=winkler, axis=1, props="bfseries: ;")
+        .apply(lambda _: styles, axis=None)
         .map(lambda _: "color:{gray};", subset=[("selected $\\tau$", COLUMN_LABELS["oracle"])])
     )
 
@@ -567,7 +575,8 @@ def caption(acc_name: str, name: str) -> str:
     if name == "pairs":
         return (
             f"E5.2, tempering on \\texttt{{main}} ({metric}); one row per pair: means over the 100 bags, scored "
-            "against the realised table, at each $\\tau$, with the lowest Winkler score of the row in bold. "
+            "against the realised table, at each $\\tau$, each score coloured per row from the worst (red) to the best (green, in bold; "
+            "coverage: closest to $0.95$). "
             "$\\tau_{-d}$: the $\\tau$ chosen on the other datasets (leave one dataset out); oracle (grey, a reference "
             "chosen with the target labels): the best $\\tau$ of the pair."
         )
@@ -579,7 +588,7 @@ def caption(acc_name: str, name: str) -> str:
 
 def _latex_document(longtable_path: str) -> str:
     return eb_prior._latex_document(longtable_path).replace(
-        "\\begin{document}", "\\usepackage{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\begin{document}", 1
+        "\\begin{document}", "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\begin{document}", 1
     )
 
 

@@ -454,6 +454,8 @@ class TablesTest(unittest.TestCase):
         self.assertIn("\\bfseries", latex)
         self.assertIn("\\color{gray}", latex)
         self.assertIn("\\tau_{-d}", latex)
+        self.assertIn("\\cellcolor[HTML]", latex)
+        self.assertIn("[table]{xcolor}", tt._latex_document("x.tex"))
         self.assertNotIn("vanilla_accuracy", tt.caption("vanilla_accuracy", "pairs"))
 
     def test_tables_are_written_and_build(self):
