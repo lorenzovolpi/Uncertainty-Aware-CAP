@@ -1,9 +1,15 @@
 """Tempering of BayCAP-Hf and BayCAP-KDEy (work-plan card WP-20, E5.2): the ``temperature`` of ``BayCAP``, the tempered
 methods of ``main``, the reproduction check of the untempered runs, and the table and plot modules."""
 
+import io
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from types import SimpleNamespace
+from unittest.mock import patch
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matplotlib"))
@@ -433,6 +439,50 @@ class TablesTest(unittest.TestCase):
         self.assertIn("\\texttt{poker\\_hand}", tt._datasets_styler(datasets).to_latex())
         self.assertNotIn("vanilla_accuracy", tt.caption("vanilla_accuracy", "summary"))
         self.assertIn("xcolor", tt._latex_document("x.tex"))
+
+    def test_pairs_table(self):
+        part = self.table.loc[self.table["acc_name"] == "vanilla_accuracy"]
+        styler = tt._pairs_styler(part, self.selected["pairs"])
+        self.assertEqual(len(styler.data), len(part))
+        self.assertEqual(styler.data.shape[1], 1 + 2 * len(tt.TAUS) + 2)
+        # the oracle column is the tau of the lowest Winkler score of the row
+        winkler = styler.data[tt.SCORE_LABELS["winkler"]].to_numpy(dtype=float)
+        oracle = styler.data[("selected $\\tau$", "oracle")].to_numpy()
+        best = [tt.tau_label(tt.TAUS[i]) for i in np.argmin(winkler, axis=1)]
+        self.assertEqual(list(oracle), best)
+        latex = styler.to_latex()
+        self.assertIn("\\bfseries", latex)
+        self.assertIn("\\color{gray}", latex)
+        self.assertIn("\\tau_{-d}", latex)
+        self.assertIn("\\cellcolor[HTML]", latex)
+        self.assertIn("[table]{xcolor}", tt._latex_document("x.tex"))
+        self.assertNotIn("vanilla_accuracy", tt.caption("vanilla_accuracy", "pairs"))
+
+    def test_tables_are_written_and_build(self):
+        with tempfile.TemporaryDirectory() as root:
+            base = TEMPERED_BASES[0]
+            for tau, df in _frames(base).items():
+                for (dataset, classifier), part in df.groupby(["dataset", "classifier"]):
+                    folder = os.path.join(root, "main", "classic", "vanilla_accuracy", dataset, classifier)
+                    os.makedirs(folder, exist_ok=True)
+                    part = part.assign(
+                        true_cts=part["true_cts"].map(np.ravel), estim_cts=part["estim_cts"].map(np.ravel)
+                    )
+                    part.to_parquet(os.path.join(folder, f"{tt.method_name(base, tau)}.parquet"))
+            out = os.path.join(root, "tables")
+            pargs = SimpleNamespace(table_dir=out, metrics=["vanilla_accuracy"])
+            with patch.object(tt.env, "root_dir", root), redirect_stdout(io.StringIO()):
+                tt.gen_tables(pargs)
+            for name in tt.TABLES:
+                self.assertTrue(os.path.exists(os.path.join(out, f"{tt._stem('vanilla_accuracy', name)}_doc.tex")))
+            if shutil.which("pdflatex") is None:
+                self.skipTest("pdflatex is not installed")
+            try:
+                tt.gen_pdf(pargs)
+            except subprocess.CalledProcessError as error:
+                self.fail(f"pdflatex failed: {error}")
+            for name in tt.TABLES:
+                self.assertTrue(os.path.exists(os.path.join(out, f"{tt._stem('vanilla_accuracy', name)}_doc.pdf")))
 
 
 class PlotsTest(unittest.TestCase):

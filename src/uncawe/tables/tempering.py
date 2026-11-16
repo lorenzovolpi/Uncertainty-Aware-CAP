@@ -32,7 +32,8 @@ $p<0.05$; otherwise $\tau=1$ is kept.
 Outputs, under ``<OUT_DIR>/uncawe/tables/tempering/``: the per-pair CSV (read by ``plots/tempering.py``), the summary CSV
 (per metric, method, group of $K$ and column: the fixed $\tau$, the leave-one-dataset-out selection and the two
 references), the per-dataset CSV ($\tau_{-d}$ and the per-dataset Winkler scores), the test CSV and, per metric, the
-summary and the per-dataset $\tau_{-d}$ as LaTeX tabular fragments, longtables and standalone documents.
+summary, the per-dataset $\tau_{-d}$ and the per-pair scores (Winkler score and coverage at each $\tau$, $\tau_{-d}$ and
+the oracle-best $\tau$) as LaTeX tabular fragments, longtables and standalone documents.
 """
 
 import os
@@ -48,7 +49,7 @@ from uncawe.experiments.main import EXPERIMENT
 from uncawe.experiments.methods import TEMPERATURE_LEVELS, TEMPERED_BASES, TEMPERED_VARIANTS
 from uncawe.experiments.metrics import acc_from_ct, get_acc_names
 from uncawe.results import Results
-from uncawe.tables import eb_prior, hierarchical
+from uncawe.tables import baycap_fixed, eb_prior, hierarchical
 from uncawe.tables import main as main_tables
 from uncawe.tables.baycap_hf import DIVERGENT_DRAWS, NUTS_DRAWS
 from uncawe.tables.estimand_gap import CLASSIFIER_ORDER, booktabs_clines
@@ -84,9 +85,10 @@ def tau_label(tau: float) -> str:
 # --------------------------------------------------------------------------------------------------- loading
 
 
-def load_method(method: str, acc_name: str, root: str | None = None) -> pd.DataFrame:
-    """The stored ``main`` rows of ``method`` for ``acc_name`` (empty if none)."""
-    base_dir = os.path.join(env.root_dir if root is None else root, EXPERIMENT)
+def load_method(method: str, acc_name: str, root: str | None = None, experiment: str = EXPERIMENT) -> pd.DataFrame:
+    """The stored rows of ``method`` for ``acc_name`` in ``experiment`` (default ``main``; E5.3 reads its calibration
+    runs from ``tau_select``), empty if none."""
+    base_dir = os.path.join(env.root_dir if root is None else root, experiment)
     try:
         return Results.load(
             base_dir=base_dir,
@@ -99,12 +101,14 @@ def load_method(method: str, acc_name: str, root: str | None = None) -> pd.DataF
         return pd.DataFrame()
 
 
-def load_all(acc_name: str, root: str | None = None) -> dict[str, dict[float, pd.DataFrame]]:
-    """``base method -> {tau: rows}``, restricted to the pairs stored for the five temperatures; the methods without any
-    such pair are left out."""
+def load_all(
+    acc_name: str, root: str | None = None, experiment: str = EXPERIMENT
+) -> dict[str, dict[float, pd.DataFrame]]:
+    """``base method -> {tau: rows}`` of ``experiment``, restricted to the pairs stored for the five temperatures; the
+    methods without any such pair are left out."""
     out = {}
     for base in TEMPERED_BASES:
-        frames = {tau: load_method(method_name(base, tau), acc_name, root) for tau in TAUS}
+        frames = {tau: load_method(method_name(base, tau), acc_name, root, experiment) for tau in TAUS}
         if any(df.empty for df in frames.values()):
             continue
         pairs = eb_prior.common_pairs(frames)
@@ -228,15 +232,17 @@ def pair_rows(frames: dict[float, pd.DataFrame], acc_name: str, base: str) -> li
     return rows
 
 
-def pair_table(acc_names: list[str] | None = None, root: str | None = None) -> pd.DataFrame:
-    """One row per metric, base method and pair, ordered by those keys, then by $K$, dataset and classifier (as in
-    ``CLASSIFIER_ORDER``)."""
+def pair_table(
+    acc_names: list[str] | None = None, root: str | None = None, experiment: str = EXPERIMENT
+) -> pd.DataFrame:
+    """One row per metric, base method and pair of ``experiment`` (default ``main``), ordered by those keys, then by
+    $K$, dataset and classifier (as in ``CLASSIFIER_ORDER``)."""
     rows = []
     for acc_name in acc_names or get_acc_names():
-        for base, frames in load_all(acc_name, root).items():
+        for base, frames in load_all(acc_name, root, experiment).items():
             rows.extend(pair_rows(frames, acc_name, base))
     if not rows:
-        raise RuntimeError("No pair of main has stored results for the five temperatures of a method of E5.2.")
+        raise RuntimeError(f"No pair of {experiment} has stored results for the five temperatures of a method of E5.2.")
     return ordered(pd.DataFrame(rows))
 
 
@@ -504,6 +510,54 @@ def _datasets_styler(datasets: pd.DataFrame):
     return out.style.format(precision=3, na_rep="--").format("{:.0f}", subset=["$K$"])
 
 
+def score_styles(out: pd.DataFrame, labels: dict[str, str]) -> pd.DataFrame:
+    """Per row and score group (``labels``: score -> first level of the column labels of the group), the colour scale of
+    the tables of E3.1 (``tables/baycap_fixed.py:_score_cell_styles``, the min-max scale of ``tables/main.py``): from
+    the worst value of the row in the group (red) to the best (green, in bold); lower is better for the Winkler score,
+    closer to the nominal level for the coverage."""
+    return baycap_fixed._score_cell_styles(out, labels)
+
+
+def _tau_text(tau: float) -> str:
+    return tau_label(tau) if np.isfinite(tau) else "--"
+
+
+def _pair_index(pairs: pd.DataFrame) -> pd.MultiIndex:
+    """Method, dataset and classifier of each row, as LaTeX."""
+    return pd.MultiIndex.from_arrays(
+        [
+            pairs["method"].map(METHOD_LABELS),
+            pairs["dataset"].map(lambda d: f"\\texttt{{{main_tables._escape_latex_text(d)}}}"),
+            pairs["classifier"].map(main_tables._escape_latex_text),
+        ],
+        names=["method", "dataset", "classifier"],
+    )
+
+
+def _pairs_styler(table: pd.DataFrame, picks: pd.DataFrame):
+    """One row per method and pair (``table``: the pair table of one metric; ``picks``: the ``pairs`` frame of
+    :func:`selection`): $K$, the mean Winkler score and the coverage at each fixed $\\tau$ (each coloured per row from
+    the worst to the best value, the best in bold: for the Winkler score, the oracle-best $\\tau$), $\\tau_{-d}$ and the oracle-best $\\tau$ (grey, a reference)."""
+    merged = table.merge(picks[["acc_name", "method", *KEYS, "tau_lodo", "tau_oracle"]], how="left")
+    columns = {("", "$K$"): merged["n_classes"].to_numpy()}
+    labels = [COLUMN_LABELS[tau_label(tau)] for tau in TAUS]
+    for score in ("winkler", "coverage"):
+        for tau, label in zip(TAUS, labels):
+            columns[(SCORE_LABELS[score], label)] = merged[f"t{tau_label(tau)}_{score}"].to_numpy(dtype=float)
+    columns[("selected $\\tau$", COLUMN_LABELS["lodo"])] = merged["tau_lodo"].map(_tau_text).to_numpy()
+    columns[("selected $\\tau$", COLUMN_LABELS["oracle"])] = merged["tau_oracle"].map(_tau_text).to_numpy()
+    out = pd.DataFrame(columns)
+    out.columns = pd.MultiIndex.from_tuples(out.columns)
+    out.index = _pair_index(merged)
+    styles = score_styles(out, {score: SCORE_LABELS[score] for score in ("winkler", "coverage")})
+    return (
+        out.style.format(precision=3, na_rep="--")
+        .format("{:.0f}", subset=[("", "$K$")])
+        .apply(lambda _: styles, axis=None)
+        .map(lambda _: "color:{gray};", subset=[("selected $\\tau$", COLUMN_LABELS["oracle"])])
+    )
+
+
 def caption(acc_name: str, name: str) -> str:
     metric = ACC_LABELS[acc_name]
     common = (
@@ -518,6 +572,14 @@ def caption(acc_name: str, name: str) -> str:
             "the datasets of the per-dataset Winkler score at $\\tau_{-d}$ against $\\tau=1$ (decision rule on vanilla "
             "accuracy, $p<0.05$)."
         )
+    if name == "pairs":
+        return (
+            f"E5.2, tempering on \\texttt{{main}} ({metric}); one row per pair: means over the 100 bags, scored "
+            "against the realised table, at each $\\tau$, each score coloured per row from the worst (red) to the best (green, in bold; "
+            "coverage: closest to $0.95$). "
+            "$\\tau_{-d}$: the $\\tau$ chosen on the other datasets (leave one dataset out); oracle (grey, a reference "
+            "chosen with the target labels): the best $\\tau$ of the pair."
+        )
     return common + (
         "Per held-out dataset: the $\\tau_{-d}$ chosen on the other datasets and the mean over its pairs of the "
         "Winkler score at $\\tau=1$ and at $\\tau_{-d}$."
@@ -526,7 +588,7 @@ def caption(acc_name: str, name: str) -> str:
 
 def _latex_document(longtable_path: str) -> str:
     return eb_prior._latex_document(longtable_path).replace(
-        "\\begin{document}", "\\usepackage{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\begin{document}", 1
+        "\\begin{document}", "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\begin{document}", 1
     )
 
 
@@ -547,7 +609,7 @@ def _stem(acc_name: str, name: str) -> str:
     return f"{TABLE_NAME}_{name}_{acc_name}"
 
 
-TABLES = ("summary", "datasets")
+TABLES = ("summary", "datasets", "pairs")
 
 
 def gen_tables(pargs):
@@ -572,6 +634,7 @@ def gen_tables(pargs):
                 selected["tests"].loc[selected["tests"]["acc_name"] == acc_name],
             ),
             "datasets": _datasets_styler(selected["datasets"].loc[selected["datasets"]["acc_name"] == acc_name]),
+            "pairs": _pairs_styler(table.loc[table["acc_name"] == acc_name], selected["pairs"]),
         }
         for name, styler in stylers.items():
             stem = _stem(acc_name, name)
