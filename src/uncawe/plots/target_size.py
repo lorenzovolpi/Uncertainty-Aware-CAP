@@ -17,13 +17,13 @@ Figures (``--figures``):
   bag part (RMS over the bags of the deviation of each bag from the mean of its cell); ``--size`` is not used.
 - ``v-total`` (E4.2b) and ``u-total`` (E4.2a): the total error $\hat A-A(h,U)=e_1+e_2+e_3$ aggregated over the pairs
   (both classifiers), against the fraction of $V$ (at ``--size``, default $|U|=1000$) and against $|U|$ (full $V$),
-  one column per method, one colour for the binary and one for the multiclass pairs. Top row: per pair, the AE of the
+  one column for the binary and one for the multiclass pairs, both methods on the same axes, one colour each. Top row: per pair, the AE of the
   total (mean of $|\hat A-A(h,U)|$ over the bags of the pair at that size, i.e. over the prevalences and the $V$
   seeds); the line is the mean over the pairs of the group, the band the 25th–75th percentile over them. Bottom row:
   the RMS of the total (thick) and of its fixed (dash-dot) and bag (dashed) parts, each the square root of the mean
   over the pairs of the per-pair mean square over the bags, so that $\text{MSE}_\text{total}=\text{MSE}_\text{fixed}+
   \text{MSE}_\text{bag}$ holds on the lines too. A level of $V$ present only on some pairs of a group (the $1/16$
-  level) is drawn with an open marker, a dashed segment, an interquartile bar instead of the band, and the number of
+  level) is drawn with an open marker, a dotted segment, an interquartile bar instead of the band, and the number of
   its pairs; ``--classifier`` is not used.
 
 Output: ``<OUT_DIR>/uncawe/plots/target_size/<figure>/`` (``v_size``, ``u_size``, ``v_total``, ``u_total``).
@@ -50,7 +50,8 @@ from uncawe.tables.target_size import PARTS, compute
 FIGURES = ("v-size", "u-size", "v-total", "u-total")
 PART_NAMES = {"e1": "$e_1$ prevalence", "e2": "$e_2$ recalls", "e3": "$e_3$ luck of the bag"}
 DATASET_CMAP = "tab10"
-GROUP_COLORS = {"binary": "#1f77b4", "multiclass": "#d62728"}
+GROUPS = ("binary", "multiclass")
+METHOD_COLORS = {"BayesCAP-Hf-real": "#1f77b4", "BayCAP-KDEy-mlp-real": "#d62728"}
 PAIR_KEYS = ["method", "dataset", "classifier", "n_classes", "bag_size", "v_level"]
 
 
@@ -192,32 +193,36 @@ def group_totals(pairs: pd.DataFrame, x: str) -> pd.DataFrame:
 
 
 def _plot_totals(groups: pd.DataFrame, x: str, xlabel: str, title: str, ticks: dict | None = None):
+    """One column per group of pairs (binary, multiclass), both methods on the same axes, one colour each."""
     methods = [m for m in METHODS if m in set(groups["method"])]
-    fig, axes = plt.subplots(2, len(methods), figsize=(4.4 * len(methods), 6.4), squeeze=False)
-    for col, method in enumerate(methods):
+    names = [g for g in GROUPS if g in set(groups["group"])]
+    fig, axes = plt.subplots(2, len(names), figsize=(4.4 * len(names), 6.4), squeeze=False)
+    for col, group in enumerate(names):
         ax_ae, ax_rms = axes[0, col], axes[1, col]
-        for group, color in GROUP_COLORS.items():
+        for method in methods:
+            color = METHOD_COLORS[method]
             rows = groups.loc[(groups["method"] == method) & (groups["group"] == group)].sort_values(x)
             if rows.empty:
                 continue
             full, part = rows.loc[rows["complete"]], rows.loc[~rows["complete"]]
             ax_ae.plot(full[x], full["ae_mean"], color=color, linewidth=1.4, marker="o", markersize=3.5)
-            ax_ae.fill_between(full[x], full["ae_q25"], full["ae_q75"], color=color, alpha=0.18, linewidth=0)
+            ax_ae.fill_between(full[x], full["ae_q25"], full["ae_q75"], color=color, alpha=0.15, linewidth=0)
             ax_rms.plot(full[x], full["rms_total"], color=color, linewidth=1.6, marker="o", markersize=3.5)
             for kind, style in (("fixed", "-."), ("bag", "--")):
                 ax_rms.plot(rows[x], rows[f"rms_{kind}"], color=color, linewidth=0.9, linestyle=style)
             for _, row in part.iterrows():
-                # the nearest value of x drawn with every pair of the group
+                # the nearest value of x drawn with every pair of the group, joined by a dotted segment (the dashes
+                # are the bag part)
                 anchor = full.iloc[(np.log(full[x].astype(float)) - np.log(float(row[x]))).abs().argmin()]
                 for ax, name in ((ax_ae, "ae_mean"), (ax_rms, "rms_total")):
-                    ax.plot([anchor[x], row[x]], [anchor[name], row[name]], color=color, linestyle="--", linewidth=1.0)
+                    ax.plot([anchor[x], row[x]], [anchor[name], row[name]], color=color, linestyle=":", linewidth=1.2)
                     ax.plot(row[x], row[name], marker="o", markersize=5, markerfacecolor="white", color=color)
                 ax_ae.vlines(row[x], row["ae_q25"], row["ae_q75"], color=color, linewidth=1.0, alpha=0.6)
                 ax_ae.annotate(
                     f"{row['n_pairs']} pair" + ("s" if row["n_pairs"] != 1 else ""),
                     (row[x], row["ae_mean"]),
                     textcoords="offset points",
-                    xytext=(5, 3),
+                    xytext=(5, -9),
                     fontsize=font_size(6),
                     color=color,
                 )
@@ -231,11 +236,17 @@ def _plot_totals(groups: pd.DataFrame, x: str, xlabel: str, title: str, ticks: d
                 ax.xaxis.set_minor_locator(plt.NullLocator())
             if row == 1:
                 ax.set_xlabel(xlabel, fontsize=font_size(8))
-        ax_ae.set_title(method_plot_label(method).replace("-real", ""), fontsize=font_size(9))
+        n_group = groups.loc[groups["group"] == group, "n_group"].max()
+        ax_ae.set_title(f"{group} ({n_group} pairs)", fontsize=font_size(9))
         if col == 0:
             ax_ae.set_ylabel("AE of the total\n(mean, 25th–75th percentile over the pairs)", fontsize=font_size(8))
             ax_rms.set_ylabel("RMS of the total", fontsize=font_size(8))
-    handles = [Line2D([], [], color=c, marker="o", markersize=3.5, label=g) for g, c in GROUP_COLORS.items()]
+    handles = [
+        Line2D(
+            [], [], color=METHOD_COLORS[m], marker="o", markersize=3.5, label=method_plot_label(m).replace("-real", "")
+        )
+        for m in methods
+    ]
     handles += [
         Line2D([], [], color="black", linewidth=1.6, label="total"),
         Line2D([], [], color="black", linewidth=0.9, linestyle="-.", label="fixed part"),

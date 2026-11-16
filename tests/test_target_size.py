@@ -351,9 +351,11 @@ class TestTotals(unittest.TestCase):
 
     def test_plot_v_total(self):
         fig = plots.plot_v_total(self.out["bags"], size=1000)
-        self.assertEqual(len(fig.axes), 2 * len(ts.METHODS))
-        # the incomplete level is labelled with its number of pairs
-        self.assertIn("1 pair", [t.get_text() for t in fig.axes[0].texts])
+        # one column per group of pairs, both methods on the same axes
+        self.assertEqual(len(fig.axes), 2 * len(plots.GROUPS))
+        self.assertEqual(fig.axes[0].get_title(), "binary (2 pairs)")
+        # the incomplete level (multiclass only) is labelled with its number of pairs, once per method
+        self.assertEqual([t.get_text() for t in fig.axes[1].texts], ["1 pair"] * len(ts.METHODS))
         plt.close(fig)
         with self.assertRaises(RuntimeError):
             plots.plot_v_total(self.out["bags"], size=100)
@@ -483,7 +485,8 @@ class TestSizes(unittest.TestCase):
 
     def test_u_total(self):
         fig = plots.plot_u_total(self.out["bags"])
-        self.assertEqual(len(fig.axes), 2 * len(ts.METHODS))
+        n_groups = (self.out["bags"]["n_classes"] > 2).nunique()
+        self.assertEqual(len(fig.axes), 2 * n_groups)
         plt.close(fig)
         groups = plots.group_totals(plots.pair_totals(self.out["bags"]), "bag_size")
         self.assertEqual(sorted(set(groups["bag_size"])), [100, 1000, 10000])
