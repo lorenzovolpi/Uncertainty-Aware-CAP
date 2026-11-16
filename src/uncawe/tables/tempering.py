@@ -32,7 +32,8 @@ $p<0.05$; otherwise $\tau=1$ is kept.
 Outputs, under ``<OUT_DIR>/uncawe/tables/tempering/``: the per-pair CSV (read by ``plots/tempering.py``), the summary CSV
 (per metric, method, group of $K$ and column: the fixed $\tau$, the leave-one-dataset-out selection and the two
 references), the per-dataset CSV ($\tau_{-d}$ and the per-dataset Winkler scores), the test CSV and, per metric, the
-summary and the per-dataset $\tau_{-d}$ as LaTeX tabular fragments, longtables and standalone documents.
+summary, the per-dataset $\tau_{-d}$ and the per-pair scores (Winkler score and coverage at each $\tau$, $\tau_{-d}$ and
+the oracle-best $\tau$) as LaTeX tabular fragments, longtables and standalone documents.
 """
 
 import os
@@ -509,6 +510,46 @@ def _datasets_styler(datasets: pd.DataFrame):
     return out.style.format(precision=3, na_rep="--").format("{:.0f}", subset=["$K$"])
 
 
+def _tau_text(tau: float) -> str:
+    return tau_label(tau) if np.isfinite(tau) else "--"
+
+
+def _pair_index(pairs: pd.DataFrame) -> pd.MultiIndex:
+    """Method, dataset and classifier of each row, as LaTeX."""
+    return pd.MultiIndex.from_arrays(
+        [
+            pairs["method"].map(METHOD_LABELS),
+            pairs["dataset"].map(lambda d: f"\\texttt{{{main_tables._escape_latex_text(d)}}}"),
+            pairs["classifier"].map(main_tables._escape_latex_text),
+        ],
+        names=["method", "dataset", "classifier"],
+    )
+
+
+def _pairs_styler(table: pd.DataFrame, picks: pd.DataFrame):
+    """One row per method and pair (``table``: the pair table of one metric; ``picks``: the ``pairs`` frame of
+    :func:`selection`): $K$, the mean Winkler score and the coverage at each fixed $\\tau$ (the lowest Winkler score of
+    the row in bold: its oracle-best $\\tau$), $\\tau_{-d}$ and the oracle-best $\\tau$ (grey, a reference)."""
+    merged = table.merge(picks[["acc_name", "method", *KEYS, "tau_lodo", "tau_oracle"]], how="left")
+    columns = {("", "$K$"): merged["n_classes"].to_numpy()}
+    labels = [COLUMN_LABELS[tau_label(tau)] for tau in TAUS]
+    for score in ("winkler", "coverage"):
+        for tau, label in zip(TAUS, labels):
+            columns[(SCORE_LABELS[score], label)] = merged[f"t{tau_label(tau)}_{score}"].to_numpy(dtype=float)
+    columns[("selected $\\tau$", COLUMN_LABELS["lodo"])] = merged["tau_lodo"].map(_tau_text).to_numpy()
+    columns[("selected $\\tau$", COLUMN_LABELS["oracle"])] = merged["tau_oracle"].map(_tau_text).to_numpy()
+    out = pd.DataFrame(columns)
+    out.columns = pd.MultiIndex.from_tuples(out.columns)
+    out.index = _pair_index(merged)
+    winkler = [(SCORE_LABELS["winkler"], label) for label in labels]
+    return (
+        out.style.format(precision=3, na_rep="--")
+        .format("{:.0f}", subset=[("", "$K$")])
+        .highlight_min(subset=winkler, axis=1, props="bfseries: ;")
+        .map(lambda _: "color:{gray};", subset=[("selected $\\tau$", COLUMN_LABELS["oracle"])])
+    )
+
+
 def caption(acc_name: str, name: str) -> str:
     metric = ACC_LABELS[acc_name]
     common = (
@@ -522,6 +563,13 @@ def caption(acc_name: str, name: str) -> str:
             "over all pairs; oracle, the best $\\tau$ of each pair. $p$: one-sided paired Wilcoxon signed-rank test over "
             "the datasets of the per-dataset Winkler score at $\\tau_{-d}$ against $\\tau=1$ (decision rule on vanilla "
             "accuracy, $p<0.05$)."
+        )
+    if name == "pairs":
+        return (
+            f"E5.2, tempering on \\texttt{{main}} ({metric}); one row per pair: means over the 100 bags, scored "
+            "against the realised table, at each $\\tau$, with the lowest Winkler score of the row in bold. "
+            "$\\tau_{-d}$: the $\\tau$ chosen on the other datasets (leave one dataset out); oracle (grey, a reference "
+            "chosen with the target labels): the best $\\tau$ of the pair."
         )
     return common + (
         "Per held-out dataset: the $\\tau_{-d}$ chosen on the other datasets and the mean over its pairs of the "
@@ -552,7 +600,7 @@ def _stem(acc_name: str, name: str) -> str:
     return f"{TABLE_NAME}_{name}_{acc_name}"
 
 
-TABLES = ("summary", "datasets")
+TABLES = ("summary", "datasets", "pairs")
 
 
 def gen_tables(pargs):
@@ -577,6 +625,7 @@ def gen_tables(pargs):
                 selected["tests"].loc[selected["tests"]["acc_name"] == acc_name],
             ),
             "datasets": _datasets_styler(selected["datasets"].loc[selected["datasets"]["acc_name"] == acc_name]),
+            "pairs": _pairs_styler(table.loc[table["acc_name"] == acc_name], selected["pairs"]),
         }
         for name, styler in stylers.items():
             stem = _stem(acc_name, name)

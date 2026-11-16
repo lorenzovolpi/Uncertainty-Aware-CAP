@@ -31,8 +31,9 @@ and the gain on the test bags, $W(1)-W(\tau_{\text{cal}})$; the NUTS diagnostics
 Outputs, under ``<OUT_DIR>/uncawe/tables/tau_select/``: CSVs of the calibration pairs (every $\tau$), of the pairs
 (selections, scores, $\hat\sigma_{e_2}$, gains; read by ``plots/tau_select.py``), of the datasets, of the tests and
 correlations, of the summary (per metric, method, group of $K$ and column), of the cross-tabulation, of the
-distribution of $\tau_{\text{cal}}$ and of the NUTS diagnostics; per metric, the summary and the cross-tabulation as
-LaTeX tabular fragments, longtables and standalone documents.
+distribution of $\tau_{\text{cal}}$ and of the NUTS diagnostics; per metric, the summary, the cross-tabulation and the
+per-pair table (the selected $\tau$, the test and calibration scores, $\hat\sigma_{e_2}$) as LaTeX tabular fragments,
+longtables and standalone documents.
 """
 
 import os
@@ -358,8 +359,52 @@ def _crosstab_styler(cross: pd.DataFrame):
     return out.style.format("{:d}")
 
 
+def _pairs_styler(pairs: pd.DataFrame):
+    """One row per method and pair (the ``pairs`` frame of :func:`compare`, one metric): $K$, $\\hat\\sigma_{e_2}$, the
+    three selected $\\tau$, the mean test Winkler score and coverage at each column of ``COLUMNS`` (the oracle, a
+    reference, in grey) and the mean calibration Winkler score at $\\tau=1$ and $\\tau_{\\text{cal}}$."""
+    tau_head, test_w, test_c, calib = (
+        "selected $\\tau$",
+        f"test {tt.SCORE_LABELS['winkler']}",
+        f"test {tt.SCORE_LABELS['coverage']}",
+        f"calibration {tt.SCORE_LABELS['winkler']}",
+    )
+    columns = {
+        ("", "$K$"): pairs["n_classes"].to_numpy(),
+        ("", "$\\hat\\sigma_{e_2}$"): pairs["sigma_e2"].to_numpy(dtype=float),
+    }
+    for column in ("cal", "lodo", "oracle"):
+        columns[(tau_head, COLUMN_LABELS[column])] = pairs[f"tau_{column}"].map(tt._tau_text).to_numpy()
+    for head, score in ((test_w, "winkler"), (test_c, "coverage")):
+        for column in COLUMNS:
+            columns[(head, COLUMN_LABELS[column])] = pairs[f"{column}_{score}"].to_numpy(dtype=float)
+    columns[(calib, COLUMN_LABELS["t1"])] = pairs["calib_winkler_t1"].to_numpy(dtype=float)
+    columns[(calib, COLUMN_LABELS["cal"])] = pairs["calib_winkler_cal"].to_numpy(dtype=float)
+    out = pd.DataFrame(columns)
+    out.columns = pd.MultiIndex.from_tuples(out.columns)
+    out.index = tt._pair_index(pairs)
+    grey = [(head, COLUMN_LABELS["oracle"]) for head in (tau_head, test_w, test_c)]
+    return (
+        out.style.format(precision=3, na_rep="--")
+        .format("{:.0f}", subset=[("", "$K$")])
+        .format("{:.4f}", subset=[("", "$\\hat\\sigma_{e_2}$")])
+        .map(lambda _: "color:{gray};", subset=grey)
+        .map(lambda _: "bfseries: ;", subset=[(test_w, COLUMN_LABELS["cal"])])
+    )
+
+
 def caption(acc_name: str, name: str) -> str:
     metric = tt.ACC_LABELS[acc_name]
+    if name == "pairs":
+        return (
+            f"E5.3, $\\tau$ chosen per pair on calibration bags drawn from half of $V$ ({metric}); one row per pair. "
+            "$\\hat\\sigma_{e_2}$: expected size of the error from $V$ of the method fitted on the full $V$. Selected "
+            "$\\tau$: $\\tau_{\\mathrm{cal}}$, the best on the 50 calibration bags; $\\tau_{-d}$, the $\\tau$ of E5.2 "
+            "chosen on the other datasets; oracle (grey, a reference chosen with the target labels), the best on the "
+            "test bags. Test: means over the 100 test bags of \\texttt{main} (methods fitted on the full $V$), scored "
+            "against the realised table, at each selected $\\tau$ and at $\\tau=1$. Calibration: means over the 50 "
+            "calibration bags (methods fitted on half of $V$), scored against their realised tables."
+        )
     if name == "summary":
         return (
             f"E5.3, $\\tau$ chosen per pair on calibration bags drawn from half of $V$ ({metric}); means over the "
@@ -394,7 +439,7 @@ def _stem(acc_name: str, name: str) -> str:
     return f"{TABLE_NAME}_{name}_{acc_name}"
 
 
-TABLES = ("summary", "crosstab")
+TABLES = ("summary", "crosstab", "pairs")
 CSV_NAMES = ("calibration", "pairs", "datasets", "tests", "summary", "crosstab", "taus", "nuts")
 
 
@@ -427,6 +472,7 @@ def write_tables(out: dict[str, pd.DataFrame], out_dir: str) -> None:
                 out["tests"].loc[out["tests"]["acc_name"] == acc_name],
             ),
             "crosstab": _crosstab_styler(out["crosstab"].loc[out["crosstab"]["acc_name"] == acc_name]),
+            "pairs": _pairs_styler(out["pairs"].loc[out["pairs"]["acc_name"] == acc_name]),
         }
         for name, styler in stylers.items():
             stem = _stem(acc_name, name)

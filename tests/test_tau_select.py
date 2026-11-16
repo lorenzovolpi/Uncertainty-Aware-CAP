@@ -401,6 +401,21 @@ class TablesTest(unittest.TestCase):
         self.assertIn("oracle-best", latex)
         self.assertNotIn("vanilla_accuracy", tables.caption("vanilla_accuracy", "summary"))
 
+    def test_pairs_table(self):
+        pairs = self.out["pairs"]
+        styler = tables._pairs_styler(pairs)
+        self.assertEqual(len(styler.data), len(pairs))
+        self.assertEqual(styler.data.shape[1], 2 + 3 + 2 * len(tables.COLUMNS) + 2)
+        cal = styler.data[("selected $\\tau$", tables.COLUMN_LABELS["cal"])].tolist()
+        self.assertEqual(cal, [tt.tau_label(t) for t in pairs["tau_cal"]])
+        winkler = styler.data[("test " + tt.SCORE_LABELS["winkler"], tables.COLUMN_LABELS["cal"])]
+        np.testing.assert_allclose(winkler.to_numpy(dtype=float), pairs["cal_winkler"].to_numpy(dtype=float))
+        latex = styler.to_latex()
+        self.assertIn("\\color{gray}", latex)
+        self.assertIn("\\bfseries", latex)
+        self.assertIn("\\hat\\sigma_{e_2}", latex)
+        self.assertNotIn("vanilla_accuracy", tables.caption("vanilla_accuracy", "pairs"))
+
     def test_tables_are_written_and_build(self):
         with tempfile.TemporaryDirectory() as tmp:
             tables.write_tables(self.out, tmp)
