@@ -416,8 +416,13 @@ class TablesTest(unittest.TestCase):
         self.assertIn("\\hat\\sigma_{e_2}", latex)
         self.assertIn("\\cellcolor[HTML]", latex)
         self.assertNotIn("vanilla_accuracy", tables.caption("vanilla_accuracy", "pairs"))
-        # a selected tau is highlighted exactly where it equals the oracle-best tau
         ctx = styler._compute().ctx
+        # the oracle columns are left out of the colour scale
+        for head in ("test " + tt.SCORE_LABELS["winkler"], "test " + tt.SCORE_LABELS["coverage"]):
+            j = styler.data.columns.get_loc((head, tables.COLUMN_LABELS["oracle"]))
+            for i in range(len(pairs)):
+                self.assertFalse(any(prop == "cellcolor" for prop, _ in ctx.get((i, j), [])))
+        # a selected tau is highlighted exactly where it equals the oracle-best tau
         for column in ("cal", "lodo"):
             j = styler.data.columns.get_loc(("selected $\\tau$", tables.COLUMN_LABELS[column]))
             match = (pairs[f"tau_{column}"] == pairs["tau_oracle"]).to_numpy()

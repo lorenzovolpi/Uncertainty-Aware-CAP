@@ -292,6 +292,73 @@ class TestTables(unittest.TestCase):
         self.assertEqual(len(points), 2 * 3)
 
 
+class TestTotals(unittest.TestCase):
+    """The total error aggregated over pairs: two binary pairs and two (labelled) multiclass pairs, the level 1/16 on
+    one multiclass pair only."""
+
+    def setUp(self):
+        frames = []
+        for seed, (dataset, classifier, n_classes) in enumerate(
+            (("toy", "LR", 2), ("toy", "RF", 2), ("toy3", "LR", 3), ("toy3", "RF", 3))
+        ):
+            frame = _synthetic_results(seed=seed).assign(dataset=dataset, classifier=classifier, n_classes=n_classes)
+            frames.append(frame)
+            if (dataset, classifier) == ("toy3", "LR"):
+                sixteenth = frame.loc[(frame["v_level"] == "1/4") & (frame["v_seed"] == 0)].copy()
+                sixteenth["v_level"], sixteenth["v_size"] = "1/16", 25
+                sixteenth["estim_cts"] = [_table([0.5, 0.5], [0.6, 0.6])] * len(sixteenth)
+                frames.append(sixteenth)
+        self.results = pd.concat(frames, ignore_index=True)
+        d_pool = {"d_pool": np.array([0.8, 0.7])}
+        self.pool = {key: d_pool for key in (("toy", "LR"), ("toy", "RF"), ("toy3", "LR"), ("toy3", "RF"))}
+        self.out = tables.compute(self.results, self.pool)
+
+    def test_pair_totals(self):
+        bags = self.out["bags"]
+        pairs = plots.pair_totals(bags)
+        # 2 methods x 4 pairs x (full, 1/4) + 2 methods x 1 pair at 1/16
+        self.assertEqual(len(pairs), 2 * 4 * 2 + 2)
+        np.testing.assert_allclose(pairs["mse_total"], pairs["mse_fixed"] + pairs["mse_bag"], rtol=1e-12)
+        row = pairs.iloc[0]
+        sub = bags.loc[
+            (bags["method"] == row["method"])
+            & (bags["dataset"] == row["dataset"])
+            & (bags["classifier"] == row["classifier"])
+            & (bags["v_level"] == row["v_level"])
+        ]
+        # over the prevalences and, at 1/4, the two V seeds
+        self.assertAlmostEqual(row["ae"], sub["total"].abs().mean())
+
+    def test_group_totals(self):
+        pairs = plots.pair_totals(self.out["bags"])
+        pairs["fraction"] = pairs["v_level"].map(ts.LEVELS)
+        groups = plots.group_totals(pairs, "fraction")
+        method = ts.METHODS[0]
+        binary = groups.loc[(groups["method"] == method) & (groups["group"] == "binary")]
+        self.assertEqual(sorted(binary["fraction"]), [1 / 4, 1.0])
+        self.assertTrue((binary["n_pairs"] == 2).all() and binary["complete"].all())
+        multi = groups.loc[(groups["method"] == method) & (groups["group"] == "multiclass")].set_index("fraction")
+        self.assertEqual(multi.loc[1 / 16, "n_pairs"], 1)
+        self.assertFalse(multi.loc[1 / 16, "complete"])
+        self.assertTrue(multi.loc[1.0, "complete"])
+        sub = pairs.loc[(pairs["method"] == method) & (pairs["n_classes"] == 2) & (pairs["v_level"] == "full")]
+        self.assertAlmostEqual(binary.set_index("fraction").loc[1.0, "ae_mean"], sub["ae"].mean())
+        self.assertAlmostEqual(binary.set_index("fraction").loc[1.0, "ae_q75"], sub["ae"].quantile(0.75))
+        # the root of the mean over the pairs of the mean squares keeps the split
+        np.testing.assert_allclose(
+            groups["rms_total"] ** 2, groups["rms_fixed"] ** 2 + groups["rms_bag"] ** 2, rtol=1e-12
+        )
+
+    def test_plot_v_total(self):
+        fig = plots.plot_v_total(self.out["bags"], size=1000)
+        self.assertEqual(len(fig.axes), 2 * len(ts.METHODS))
+        # the incomplete level is labelled with its number of pairs
+        self.assertIn("1 pair", [t.get_text() for t in fig.axes[0].texts])
+        plt.close(fig)
+        with self.assertRaises(RuntimeError):
+            plots.plot_v_total(self.out["bags"], size=100)
+
+
 def _size_results(seed=0, sizes=(100, 1000, 10000), n_bags=8):
     """Stored-like rows of the two methods on one binary pair, full V only, at several bag sizes: the realised recalls
     and the estimated prevalence fluctuate by $1/\\sqrt{|U|}$, the estimated recalls carry an offset shared by the
@@ -403,7 +470,7 @@ class TestSizes(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(tmp, "tabular", f"{tables.SIZES_STEM}_long.tex")))
             # the E4.2b table at |U|=1000 is written from the full-V rows too
             self.assertTrue(os.path.exists(os.path.join(tmp, f"{tables._stem(1000)}_doc.tex")))
-            args = plots.parse_args(["--figures", "u-size", "v-size", "--no-svg"])
+            args = plots.parse_args(["--figures", "u-size", "v-size", "u-total", "--no-svg"])
             with (
                 patch.object(plots, "compute", return_value=self.out),
                 patch.object(plots, "out_dir", return_value=tmp),
@@ -412,6 +479,18 @@ class TestSizes(unittest.TestCase):
                 plots.generate_plots(args)
             self.assertTrue(os.path.exists(os.path.join(tmp, f"{ts.EXPERIMENT}_u-size_LR.png")))
             self.assertTrue(os.path.exists(os.path.join(tmp, f"{ts.EXPERIMENT}_v-size_LR_u1000.png")))
+            self.assertTrue(os.path.exists(os.path.join(tmp, f"{ts.EXPERIMENT}_u-total.png")))
+
+    def test_u_total(self):
+        fig = plots.plot_u_total(self.out["bags"])
+        self.assertEqual(len(fig.axes), 2 * len(ts.METHODS))
+        plt.close(fig)
+        groups = plots.group_totals(plots.pair_totals(self.out["bags"]), "bag_size")
+        self.assertEqual(sorted(set(groups["bag_size"])), [100, 1000, 10000])
+        self.assertTrue(groups["complete"].all())
+        # the AE falls as the bag grows, since the realised recalls and the prevalence fluctuate by 1/sqrt(|U|)
+        rows = groups.loc[groups["method"] == ts.METHODS[0]].sort_values("bag_size")
+        self.assertGreater(rows["ae_mean"].iloc[0], rows["ae_mean"].iloc[-1])
 
 
 class TestRecallChecks(unittest.TestCase):
