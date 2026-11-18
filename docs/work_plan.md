@@ -932,7 +932,7 @@ Each convention is labelled **[general]** (applies to every experiment) or **[sp
 - **[general] Rule. Estimand.** Each method's docstring states whether it targets the population table $C\operatorname{diag}(\pi^Q)$ or the realised table of the target sample, and which uncertainty sources it represents.
 - **[general] Rule. Table orientation.** Inside methods, tables follow `cap-ml`: true classes on rows, i.e. $\operatorname{diag}(\pi)C^\top$ for the paper's $C\operatorname{diag}(\pi)$. Docstrings mention the transpose where it matters (as in `QuantifierBayCAP`).
 - **[general] Rule. Bayesian quantifiers.** Methods that consume a Bayesian quantifier use joint draws of shape $(m,K)$ on the simplex, never per-class marginal intervals, and validate them. A posterior temperature is called `temperature` in code and $\tau$ in documents.
-- **[general] Rule. Naming.** Code names stay as in §I.2. New methods get a code name and, in their docstring, the paper or proposal name. LaTeX labels go in `tables/common.py:METHOD_LATEX_LABELS`, plot labels and colours in `plots/common.py`.
+- **[general] Rule. Naming.** Code names stay as in §I.2. New methods get a code name and, in their docstring, the paper or proposal name. LaTeX labels go in `tables/common.py:METHOD_LATEX_LABELS`, and the macros they use in `tables/common.py:METHOD_LATEX_MACROS`, which every table document that prints method labels includes in its preamble (`METHOD_LATEX_PREAMBLE`; since 2026-11-18, `\bcap` gives BayCAP in every document); plot labels and colours in `plots/common.py`.
 
 ## V.3 Results
 

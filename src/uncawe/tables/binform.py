@@ -9,7 +9,7 @@ from uncawe.binform import EXPERIMENT, _method_names
 from uncawe.config import acc_from_ct, get_acc_names
 from uncawe.results import Results
 from uncawe.tables import main as main_tables
-from uncawe.tables.common import METHOD_LATEX_LABELS
+from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_MACROS
 
 METRICS = ("acc_err", "winkler")
 CLASSIFIER_ORDER = ("LR", "kNN", "SVM", "MLP", "RF")
@@ -200,8 +200,7 @@ def _latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\sisetup{detect-all=true, separate-uncertainty=true}",
         f"\\setlength{{\\tabcolsep}}{{{main_tables.TABLE_COLUMN_SEP}}}",
         "",
-        "\\newcommand{\\bcap}{BayesCAP}",
-        "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
+        *METHOD_LATEX_MACROS,
         "",
         "\\begin{document}",
         "",

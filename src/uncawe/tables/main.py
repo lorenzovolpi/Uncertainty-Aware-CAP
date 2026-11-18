@@ -13,7 +13,7 @@ from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_meth
 from uncawe.main import EXPERIMENT
 from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
-from uncawe.tables.common import METHOD_LATEX_LABELS
+from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_MACROS
 from uncawe.util import decorate_dataset
 
 # METRICS = ("acc_err", "coverage", "amplitude", "winkler")
@@ -96,6 +96,8 @@ MAIN_METHODS = (
     "BayCAP-KDEy-mlp-real",
 )
 EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
+# the baselines of the main tables, under "Baseline methods" and separated from the other methods by a vertical line
+BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP")
 
 
 def table_method_names() -> list[str]:
@@ -127,12 +129,35 @@ def _ordered_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIn
     return pd.MultiIndex.from_product([methods, metrics], names=["method", "metric"])
 
 
+def _baseline_count(methods: list[str]) -> int:
+    """Number of leading methods of ``methods`` that are baselines (they come first in ``MAIN_METHODS``)."""
+    count = 0
+    for method in methods:
+        if method not in BASELINE_METHODS:
+            break
+        count += 1
+    return count
+
+
 def _latex_column_format(methods: list[str], metrics: tuple[str, ...], index_columns: int = 1) -> str:
     numeric_column = "S[table-format=1.3,table-align-text-post=false]"
+    baseline_count = _baseline_count(methods)
+    ours_count = len(methods) - baseline_count
     metric_formats = []
     for _ in metrics:
-        metric_formats.append(numeric_column * len(methods))
+        groups = [numeric_column * count for count in (baseline_count, ours_count) if count]
+        metric_formats.append("|".join(groups))
     return "l" * index_columns + "|".join(metric_formats)
+
+
+def _metric_cmidrules(index_columns: int, n_methods: int, n_metrics: int) -> str:
+    """One ``\\cmidrule`` under each metric of the header, over its ``n_methods`` columns."""
+    rules = []
+    for idx in range(n_metrics):
+        first = index_columns + 1 + idx * n_methods
+        trim = "r" if idx < n_metrics - 1 else "l"
+        rules.append(f"\\cmidrule({trim}){{{first}-{first + n_methods - 1}}}")
+    return "".join(rules)
 
 
 def _display_columns(methods: list[str], metrics: tuple[str, ...]) -> pd.MultiIndex:
@@ -538,28 +563,23 @@ def _hide_latex_header_names(
     lines = latex.splitlines()
     formatted = []
     skip_next_dataset_header = False
-    cmidirule = "\\cmidrule(r){3-9}\\cmidrule(l){10-16}"
 
     for line in lines:
         if line.startswith("metric & "):
             if show_metric_names:
                 formatted.append(_format_metric_header_separators(line.replace("metric & ", " & ", 1), len(metrics)))
-                # formatted.append("\\midrule")
-                formatted.append(cmidirule)
+                formatted.append(_metric_cmidrules(1, len(methods), len(metrics)))
                 formatted.append(_method_family_header_line(1, methods, metrics))
-                # formatted.append("\\midrule")
-                formatted.append(cmidirule)
+                formatted.append(_metric_cmidrules(1, len(methods), len(metrics)))
             skip_next_dataset_header = False
         elif line.startswith(" & metric & "):
             if show_metric_names:
                 formatted.append(
                     _format_metric_header_separators(line.replace(" & metric & ", " &  & ", 1), len(metrics))
                 )
-                # formatted.append("\\midrule")
-                formatted.append(cmidirule)
+                formatted.append(_metric_cmidrules(2, len(methods), len(metrics)))
                 formatted.append(_method_family_header_line(2, methods, metrics))
-                # formatted.append("\\midrule")
-                formatted.append(cmidirule)
+                formatted.append(_metric_cmidrules(2, len(methods), len(metrics)))
             skip_next_dataset_header = False
         elif line.startswith("method & "):
             formatted.append(_protect_numeric_header_cells(line.replace("method & ", " & ", 1), 1, methods, metrics))
@@ -605,8 +625,8 @@ def _format_metric_header_separators(line: str, metric_count: int) -> str:
 
 
 def _method_family_header_line(index_columns: int, methods: list[str], metrics: tuple[str, ...]) -> str:
-    baseline_count = min(4, len(methods))
-    ours_count = max(len(methods) - baseline_count, 0)
+    baseline_count = _baseline_count(methods)
+    ours_count = len(methods) - baseline_count
     cells = [""] * index_columns
 
     for metric_idx, _ in enumerate(metrics):
@@ -637,12 +657,15 @@ def _protect_numeric_header_cells(
         if cell and not cell.startswith("\\multicolumn"):
             cell = f"\\rotatebox{{90}}{{{cell}}}"
             cells[idx] = (
-                f"\\multicolumn{{1}}{{{_method_header_align(idx - index_columns, methods, metrics)}}}{{{cell}}}"
+                f"\\multicolumn{{1}}{{{_method_header_align(idx - index_columns, methods, metrics, _baseline_count(methods))}}}"
+                f"{{{cell}}}"
             )
     return " & ".join(cells) + " \\\\" + suffix
 
 
-def _method_header_align(position: int, methods: list[str], metrics: tuple[str, ...]) -> str:
+def _method_header_align(position: int, methods: list[str], metrics: tuple[str, ...], baseline_count: int = 0) -> str:
+    """Alignment of a method header cell: a vertical line after the last method of each metric and, when
+    ``baseline_count`` is positive and other methods follow, after the last baseline."""
     method_count = len(methods)
     if method_count == 0:
         return "c"
@@ -654,8 +677,8 @@ def _method_header_align(position: int, methods: list[str], metrics: tuple[str, 
 
     if is_last_method:
         return "c" if is_last_metric else "c|"
-    # if method_index == 3:
-    #     return "c|"
+    if 0 < baseline_count < method_count and method_index == baseline_count - 1:
+        return "c|"
     return "c"
 
 
@@ -714,11 +737,7 @@ def _results_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\sisetup{detect-all=true, separate-uncertainty=true}",
         f"\\setlength{{\\tabcolsep}}{{{TABLE_COLUMN_SEP}}}",
         "",
-        "\\newcommand{\\pq}{SQS-S}",
-        "\\newcommand{\\sqsh}{SQS-H}",
-        "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
-        "\\newcommand{\\sqsb}{SQS-B}",
-        "\\newcommand{\\bcap}{BayesCAP}",
+        *METHOD_LATEX_MACROS,
         "",
         "\\begin{document}",
         "",

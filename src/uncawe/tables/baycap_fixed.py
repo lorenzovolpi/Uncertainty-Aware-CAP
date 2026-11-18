@@ -64,6 +64,7 @@ from uncawe.results import Results
 from uncawe.tables import baycap_h, eb_prior, estimand_gap, pushforward
 from uncawe.tables import main as main_tables
 from uncawe.tables.baycap_hf import RHAT_HIGH
+from uncawe.tables.common import METHOD_LATEX_PREAMBLE
 from uncawe.tables.displacement import load_validation_counts, ordered, rate_matrix
 from uncawe.tables.estimand_gap import ACC_NAME, CLASSIFIER_ORDER, SEED, booktabs_clines, pair_rng
 
@@ -584,7 +585,7 @@ A3_TABLES = ("realised", "population")
 def _latex_document(longtable_path: str, a3: bool = False) -> str:
     document = eb_prior._latex_document(longtable_path).replace(
         "\\begin{document}",
-        "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}\n\\begin{document}",
+        "\\usepackage[table]{xcolor}\n" + METHOD_LATEX_PREAMBLE + "\n\\begin{document}",
     )
     return document.replace("[a4paper,", "[a3paper,") if a3 else document
 

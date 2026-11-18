@@ -430,7 +430,7 @@ class TablesTest(unittest.TestCase):
         part = self.summary.loc[self.summary["acc_name"] == "vanilla_accuracy"]
         tests = self.selected["tests"]
         latex = tt._summary_styler(part, tests).to_latex()
-        self.assertIn("\\bcap{}-Hf", latex)
+        self.assertIn("\\bcaphf", latex)
         self.assertIn("\\color{gray}", latex)
         self.assertIn("\\bfseries", latex)
         latex = tt._datasets_styler(self.selected["datasets"]).to_latex()

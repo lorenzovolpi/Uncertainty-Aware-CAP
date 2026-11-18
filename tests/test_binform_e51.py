@@ -324,7 +324,7 @@ class TablesTest(unittest.TestCase):
         part = self.summary.loc[self.summary["acc_name"] == "vanilla_accuracy"]
         latex = bp._summary_styler(part).to_latex()
         self.assertIn("well specified", latex)
-        self.assertIn("\\bcap{}-Hf", latex)
+        self.assertIn("\\bcaphf", latex)
         self.assertNotIn("vanilla_accuracy", bp.caption("vanilla_accuracy"))
 
     def test_plot(self):

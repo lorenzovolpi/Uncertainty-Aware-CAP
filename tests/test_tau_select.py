@@ -394,7 +394,7 @@ class TablesTest(unittest.TestCase):
     def test_latex(self):
         tests = self.out["tests"]
         latex = tables._summary_styler(self.out["summary"], tests).to_latex()
-        self.assertIn("\\bcap{}-Hf", latex)
+        self.assertIn("\\bcaphf", latex)
         self.assertIn("\\color{gray}", latex)
         self.assertIn("\\tau_{\\mathrm{cal}}", latex)
         latex = tables._crosstab_styler(self.out["crosstab"]).to_latex()

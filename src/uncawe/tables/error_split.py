@@ -52,6 +52,7 @@ from uncawe.main import EXPERIMENT
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.tables import eb_prior
 from uncawe.tables import main as main_tables
+from uncawe.tables.common import METHOD_LATEX_PREAMBLE
 from uncawe.tables.displacement import ordered
 from uncawe.tables.estimand_gap import ACC_NAME, DOMAIN, booktabs_clines, load_results
 from uncawe.util import decorate_dataset
@@ -464,7 +465,7 @@ def _stem(name: str) -> str:
 def _latex_document(longtable_path: str) -> str:
     document = eb_prior._latex_document(longtable_path).replace(
         "\\begin{document}",
-        "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\begin{document}",
+        "\\usepackage[table]{xcolor}\n" + METHOD_LATEX_PREAMBLE + "\n\\begin{document}",
     )
     return document.replace("[a4paper,", "[a3paper,")
 

@@ -41,6 +41,7 @@ from uncawe.experiments.metrics import acc_from_ct, get_acc_names
 from uncawe.results import Results
 from uncawe.tables import eb_prior, hierarchical
 from uncawe.tables import main as main_tables
+from uncawe.tables.common import METHOD_LATEX_PREAMBLE
 from uncawe.tables.estimand_gap import CLASSIFIER_ORDER, booktabs_clines
 
 TABLE_NAME = "binform_prior"
@@ -233,7 +234,7 @@ def summary_table(table: pd.DataFrame) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------------------------------- LaTeX
 
-METHOD_LABELS = {"BayesCAP-Hf-real": "\\bcap{}-Hf", "BayCAP-KDEy-mlp-real": "\\bcap{}-KDEy-mlp"}
+METHOD_LABELS = {"BayesCAP-Hf-real": "\\bcaphf", "BayCAP-KDEy-mlp-real": "\\bcapkdey"}
 PRIOR_LABELS = {"uniform": "uniform", "well": "well specified", "wrong": "misspecified"}
 K_LABELS = {"all": "all", "K=2": "$K=2$", "3<=K<=7": "$3\\le K\\le7$", "K>=8": "$K\\ge8$"}
 COLUMN_LABELS = {
@@ -284,7 +285,7 @@ def caption(acc_name: str) -> str:
 
 def _latex_document(longtable_path: str) -> str:
     return eb_prior._latex_document(longtable_path).replace(
-        "\\begin{document}", "\\newcommand{\\bcap}{BayCAP}\n\\begin{document}", 1
+        "\\begin{document}", METHOD_LATEX_PREAMBLE + "\n\\begin{document}", 1
     )
 
 

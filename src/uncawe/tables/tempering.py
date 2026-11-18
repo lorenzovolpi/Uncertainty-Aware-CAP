@@ -52,6 +52,7 @@ from uncawe.results import Results
 from uncawe.tables import baycap_fixed, eb_prior, hierarchical
 from uncawe.tables import main as main_tables
 from uncawe.tables.baycap_hf import DIVERGENT_DRAWS, NUTS_DRAWS
+from uncawe.tables.common import METHOD_LATEX_PREAMBLE
 from uncawe.tables.estimand_gap import CLASSIFIER_ORDER, booktabs_clines
 
 TABLE_NAME = "tempering"
@@ -451,7 +452,7 @@ def oracle_distribution(selected: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------------------------------- LaTeX
 
-METHOD_LABELS = {"BayesCAP-Hf-real": "\\bcap{}-Hf", "BayCAP-KDEy-mlp-real": "\\bcap{}-KDEy-mlp"}
+METHOD_LABELS = {"BayesCAP-Hf-real": "\\bcaphf", "BayCAP-KDEy-mlp-real": "\\bcapkdey"}
 K_LABELS = {"all": "all", "K=2": "$K=2$", "3<=K<=7": "$3\\le K\\le7$", "K>=8": "$K\\ge8$"}
 SCORE_LABELS = {
     "ae": "AE",
@@ -588,7 +589,7 @@ def caption(acc_name: str, name: str) -> str:
 
 def _latex_document(longtable_path: str) -> str:
     return eb_prior._latex_document(longtable_path).replace(
-        "\\begin{document}", "\\usepackage[table]{xcolor}\n\\newcommand{\\bcap}{BayCAP}\n\\begin{document}", 1
+        "\\begin{document}", "\\usepackage[table]{xcolor}\n" + METHOD_LATEX_PREAMBLE + "\n\\begin{document}", 1
     )
 
 

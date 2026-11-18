@@ -12,6 +12,7 @@ from uncawe.experiments.methods import FIXED_C_VARIANTS, KDEY_HF_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.results import Results
 from uncawe.tables import main as main_tables
+from uncawe.tables.common import METHOD_LATEX_MACROS
 
 METRICS = ("acc_err", "winkler")
 LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
@@ -374,11 +375,7 @@ def _rank_latex_document(tables: list[tuple[str, str, str]]) -> str:
         "\\geometry{margin=1in}",
         f"\\setlength{{\\tabcolsep}}{{{main_tables.TABLE_COLUMN_SEP}}}",
         "",
-        "\\newcommand{\\pq}{SQS-S}",
-        "\\newcommand{\\bcap}{BayesCAP}",
-        "\\newcommand{\\sqsh}{SQS-H}",
-        "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
-        "\\newcommand{\\sqsb}{SQS-B}",
+        *METHOD_LATEX_MACROS,
         "",
         "\\begin{document}",
         "",
