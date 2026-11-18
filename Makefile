@@ -59,6 +59,7 @@ EXP_target-size      := python -m uncawe.experiments.target_size
 EXP_tau-select       := python -m uncawe.experiments.tau_select
 EXP_tables-main      := python -m uncawe.tables.main --classic
 EXP_tables-rank      := python -m uncawe.tables.rank --classic
+EXP_tables-coverage-amplitude := python -m uncawe.tables.coverage_amplitude --classic
 EXP_tables-binform   := python -m uncawe.tables.binform
 EXP_tables-binform-prior := python -m uncawe.tables.binform_prior
 EXP_tables-estimand-gap := python -m uncawe.tables.estimand_gap

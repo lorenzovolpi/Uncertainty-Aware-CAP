@@ -538,6 +538,17 @@ def _results_latex_table(
     table = _apply_significance_markers(table, significance_markers)
     sigma_zscores, sigmas = _metric_sigma_context(df, row_levels, mean, methods, metrics)
     styles = _cell_styles(mean, metrics, sigma_zscores, sigmas)
+    return _render_latex_table(table, styles, methods, metrics, row_levels)
+
+
+def _render_latex_table(
+    table: pd.DataFrame,
+    styles: pd.DataFrame,
+    methods: list[str],
+    metrics: tuple[str, ...],
+    row_levels: list[str],
+) -> str:
+    """LaTeX of a table with (method, metric) columns: metric groups, Baseline/Our methods row, rotated names."""
     table = _to_display_column_order(table, methods, metrics)
     styles = _to_display_column_order(styles, methods, metrics)
     latex_columns = _latex_display_columns(table.columns)
@@ -792,6 +803,32 @@ def _table_dir(pargs) -> str:
     return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables", "main")
 
 
+def load_table_frame(
+    main_base_dir: str, domain: str, acc: str, classifiers: list[str]
+) -> tuple[pd.DataFrame, list[str]]:
+    """The per-bag scores of the main-table methods (AE, coverage, amplitude and Winkler score of the realised
+    accuracy, from ``true_cts``), with the display names of the datasets and their order."""
+    results = Results.load(
+        base_dir=main_base_dir,
+        acc_name=acc,
+        domain=domain,
+        filter_classifiers=classifiers,
+        filter_methods=table_method_names(),
+    )
+    dataset_order = _ordered_dataset_names(results.df)
+    df = (
+        results.map_column_values("dataset", dataset_map)
+        .apply_to_column("dataset", decorate_dataset)
+        .apply_to_column("true_cts", lambda ct: acc_from_ct(acc, ct), new_col="true_accs")
+        .apply_to_column(["method", "true_accs", "estim_acc_ranges"], get_acc_coverage, new_col="coverage")
+        .apply_to_column(["method", "estim_acc_ranges"], get_acc_amplitude, new_col="amplitude")
+        .apply_to_column(["method", "true_accs", "estim_acc_ranges"], get_acc_winkler, new_col="winkler")
+        .select_columns(["classifier", "dataset", "method", "acc_err", "true_accs", "coverage", "amplitude", "winkler"])
+        .df
+    )
+    return df, dataset_order
+
+
 def gen_tables(pargs):
     experiment = EXPERIMENT
     domain = pargs.domain
@@ -812,26 +849,7 @@ def gen_tables(pargs):
             continue
 
         name = f"{experiment}_{domain}_{acc}"
-        results = Results.load(
-            base_dir=main_base_dir,
-            acc_name=acc,
-            domain=domain,
-            filter_classifiers=classifiers,
-            filter_methods=table_method_names(),
-        )
-        dataset_order = _ordered_dataset_names(results.df)
-        df = (
-            results.map_column_values("dataset", dataset_map)
-            .apply_to_column("dataset", decorate_dataset)
-            .apply_to_column("true_cts", lambda ct: acc_from_ct(acc, ct), new_col="true_accs")
-            .apply_to_column(["method", "true_accs", "estim_acc_ranges"], get_acc_coverage, new_col="coverage")
-            .apply_to_column(["method", "estim_acc_ranges"], get_acc_amplitude, new_col="amplitude")
-            .apply_to_column(["method", "true_accs", "estim_acc_ranges"], get_acc_winkler, new_col="winkler")
-            .select_columns(
-                ["classifier", "dataset", "method", "acc_err", "true_accs", "coverage", "amplitude", "winkler"]
-            )
-            .df
-        )
+        df, dataset_order = load_table_frame(main_base_dir, domain, acc, classifiers)
 
         tbl = _results_latex_table(df, metrics, pargs.show_std, dataset_order)
         tabular_filename = f"{name}.tex"
