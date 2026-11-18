@@ -314,6 +314,7 @@ This part tracks all implementation and experimentation work of the project: wha
 
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
+| WP-24 | E5.4: concentrated and sparse prevalence distributions for BayCAP-Hf and BayCAP-KDEy (extended `binform`) | experiment | Scheduled | — | 2026-11-18 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -355,6 +356,26 @@ Entry template:
 - **Log:** <dated notes on progress: pilot run, problems, decisions>
 - **Outcome:** <filled when the branch is merged: merge commit; decisions, deviations, problems and follow-ups that came up during implementation and are not already in the card>
 ```
+
+### WP-24 E5.4: concentrated and sparse prevalence distributions for BayCAP-Hf and BayCAP-KDEy (extended `binform`)
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext5_baycap_priors_tempering]] (E5.4)
+- **Goal:** measure how much knowing *how extreme* the prior probability shift is (rather than its direction, studied by E5.1, card WP-19) improves the realised intervals of `BayesCAP-Hf-real` (BayCAP with the Hf prior on $C$, realised pushforward) and `BayCAP-KDEy-mlp-real` (BayesKDEy with an MLP input and a fixed $\hat C$, realised pushforward), and what the wrong belief costs. Two symmetric distributions of the target prevalences, both with mean $\mathbf 1/K$: concentrated, $G_c=\operatorname{Dir}(3\cdot\mathbf 1)$ (mild shifts), and sparse, $G_e=\operatorname{Dir}(\tfrac13\mathbf 1)$ (severe shifts: a few classes dominate, the others are nearly absent). For each dataset (shared by its five classifiers and both bag sizes) and each distribution, $100$ requested prevalences, drawn with `np.random.default_rng([_R_SEED, crc32(dataset), stream])` with streams of their own, distinct from those of E5.1. Each set of bags is analysed with three priors on $\pi^Q$: uniform $\operatorname{Dir}(\mathbf 1)$, $\operatorname{Dir}(3\cdot\mathbf 1)$ and $\operatorname{Dir}(\tfrac13\mathbf 1)$; for each distribution, the prior equal to it is well informed and the other is ill informed. All $75$ pairs of `main`, bag sizes $\lvert U\rvert\in\{100,1000\}$, $\tau=1$, $100$ bags per (pair, bag size, distribution), drawn from the test pool with seeded generators as in E5.1 and the same for every prior and method. Measures (vanilla accuracy, macro-F1, macro-K): AE, coverage, amplitude, Winkler score at $\alpha=0.05$; per pair and distribution, $\Delta W_{\text{know}}=W_{\text{uniform}}-W_{\text{well}}$, $\Delta W_{\text{wrong}}=W_{\text{ill}}-W_{\text{uniform}}$ and the ratio of the mean amplitude of each informative prior to the uniform one; paired Wilcoxon tests over the $75$ per-pair means and over the $15$ per-dataset means; the mean number of classes absent from the realised table of the bags; the share of bags with divergent NUTS transitions per prior. No decision rule.
+- **Estimand:** the realised table of each bag (`true_cts`), for every prior and method.
+- **Scope:**
+  - `experiments/binform.py`: a new option next to `--e51` (same `--datasets`, `--classifiers`, `--sizes`, `--methods`), with the two distributions, their seeded requested prevalences, the three priors for the two methods (built as in E5.1 through `experiments/methods.py:fixed_c_method(..., prior=...)` and the Hf factory), the distribution and the prior stored with the results, `jax.clear_caches()` after each task; output in a folder of its own per bag size and distribution; the default configuration and `--e51` unchanged;
+  - check how macro-F1 and macro-K treat a class absent from the realised table of a bag (frequent under $G_e$ at large $K$), and record it in the card before the pilot;
+  - new table module: per method, metric and bag size, the $2\times3$ summary (rows the distribution, columns uniform / well informed / ill informed) of the means over the pairs of AE, coverage, amplitude and Winkler score, the counts of pairs and datasets with a lower Winkler score than the uniform prior and the $p$-values of the paired tests, also split by $K$ ($K=2$, $3\le K\le7$, $K\ge8$), with the absent classes and the divergent bags; per-pair and summary CSVs and LaTeX documents, as for E5.1;
+  - new plot module: per method and distribution, the per-pair Winkler score with the uniform prior against that with the well-informed and the ill-informed prior, coloured by $K$, one panel per bag size, with the diagonal;
+  - `Makefile` targets (run, tables, plots; the output folder in `RESULTS`); tests: the requested prevalences are reproducible for a seed, lie on the simplex, differ from those of E5.1 and are shared by the classifiers and bag sizes; the prior parameters are $3\cdot\mathbf 1$, $\tfrac13\mathbf 1$, $\mathbf 1$; `binform` with its default arguments and with `--e51` builds the same tasks and bags as before; the table and the plot rendered on a synthetic result, LaTeX included.
+- **Depends on:** none (reuses the code of WP-19, done).
+- **Comparability:** new bags, so the results are comparable within E5.4 only, with the uniform prior as the reference within each distribution; not with `main`, the stored `binform` results or E5.1, which are unchanged. $G_c$ is the $G$ of E5.1 with its mean at the centre, so E5.1 and E5.4 differ in the mean of the distribution and of the priors, but their bags differ too. Cost: $2$ distributions $\times$ $3$ priors $\times$ $2$ bag sizes $\times$ $2$ methods on the $75$ pairs ($1800$ runs of $100$ bags, twice E5.1); BayCAP-KDEy samples $\pi$ alone and is cheap, BayCAP-Hf costs about one run of `BayesCAP-Hf-real` in `main` per (distribution, prior, bag size). Risk: with $\tfrac13<1$ the prior density is unbounded at the faces of the simplex, where the bags of $G_e$ lie, so NUTS may diverge more, mostly for BayCAP-Hf.
+- **Deviations from Part V:** as WP-19: the bag size $\lvert U\rvert=100$ differs from `SAMPLE_SIZE` (it is a varied factor); one result folder per bag size (and per distribution); the requested prevalences seeded by the experiment seed and the dataset, not by global state.
+- **Done when:** the code and tests are merged; the pilot (`connect-4`, `poker_hand`, `letter`, with the five classifiers) and the full run are done with stored results.
+- **Commands:** to be filled when the code exists.
+- **Log:** 2026-11-18: card added; E5.4 promoted directly to the main section of the extension, with $\lambda=3$ and $\beta=1/3$ (user's decision).
+- **Outcome:**
 
 ## III.3 Completed cards
 
