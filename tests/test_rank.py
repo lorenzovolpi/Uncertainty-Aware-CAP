@@ -25,8 +25,13 @@ class TestRankTable(unittest.TestCase):
         methods = rank._methods(tuple(FIXED_C_VARIANTS))
         included = [method for method in methods if method in main_methods or method in FIXED_C_VARIANTS]
         latex = rank._rank_latex_table(_results(included), methods=methods)
-        self.assertIn("l*{11}{", latex)
+        value = f"{{w{{c}}{{{rank.VALUE_COLUMN_WIDTH}}}}}"
+        group = f"*{{3}}{value}|*{{8}}{value}"
+        self.assertIn(f"{{l{group}|{group}}}", latex)
         self.assertIn("\\cmidrule(r){2-12}\\cmidrule(l){13-23}", latex)
+        self.assertIn("\\multicolumn{3}{c|}{Baseline methods} & \\multicolumn{8}{c|}{Our methods}", latex)
+        self.assertIn("\\multicolumn{1}{c|}{\\rotatebox{90}{LEAP}}", latex)
+        self.assertNotIn("\\scriptsize", latex)
 
     def test_ranked_method_without_a_column_is_an_error(self):
         df = _results(rank._methods()[:2] + [next(iter(FIXED_C_VARIANTS))])

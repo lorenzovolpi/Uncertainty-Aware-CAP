@@ -75,8 +75,9 @@ def _format_rank_table(mean_rank: pd.DataFrame) -> pd.DataFrame:
 
 def _latex_column_format(methods: list[str], metrics: tuple[str, ...]) -> str:
     value_column = f"w{{c}}{{{VALUE_COLUMN_WIDTH}}}"
-    metric_formats = [f"*{{{len(methods)}}}{{{value_column}}}" for _ in metrics]
-    return "l" + "|".join(metric_formats)
+    baseline_count = main_tables._baseline_count(methods)
+    groups = [f"*{{{count}}}{{{value_column}}}" for count in (baseline_count, len(methods) - baseline_count) if count]
+    return "l" + "|".join("|".join(groups) for _ in metrics)
 
 
 def _apply_significance_markers(table: pd.DataFrame, markers: pd.DataFrame) -> pd.DataFrame:
@@ -285,7 +286,8 @@ def _hide_latex_header_names(
                 formatted.append(
                     main_tables._format_metric_header_separators(line.replace("metric & ", " & ", 1), len(metrics))
                 )
-                # formatted.append("\\midrule")
+                formatted.append(_metric_cmidrules(len(methods), len(metrics)))
+                formatted.append(main_tables._method_family_header_line(1, methods, metrics))
                 formatted.append(_metric_cmidrules(len(methods), len(metrics)))
             skip_classifier_header = False
         elif line.startswith("method & "):
@@ -314,11 +316,11 @@ def _protect_method_header_cells(
     for idx in range(index_columns, len(cells)):
         cell = cells[idx].strip()
         if cell and not cell.startswith("\\multicolumn"):
-            cell = f"\\scriptsize {cell}"
-            cells[idx] = (
-                f"\\multicolumn{{1}}{{{main_tables._method_header_align(idx - index_columns, methods, metrics)}}}"
-                f"{{{cell}}}"
+            cell = f"\\rotatebox{{90}}{{{cell}}}"
+            align = main_tables._method_header_align(
+                idx - index_columns, methods, metrics, main_tables._baseline_count(methods)
             )
+            cells[idx] = f"\\multicolumn{{1}}{{{align}}}{{{cell}}}"
     return " & ".join(cells) + " \\\\" + suffix
 
 
