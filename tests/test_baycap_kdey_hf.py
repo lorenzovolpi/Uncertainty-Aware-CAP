@@ -29,6 +29,7 @@ from uncawe.methods.baycap_kdey import (
     kdey_hf_loglik,
     kdey_hf_model,
 )
+from uncawe.methods.bayes_kdey import BayesKDEy
 
 SETTINGS = {"num_warmup": 40, "num_samples": 30, "random_state": 5}
 
@@ -204,7 +205,7 @@ class PredictTest(unittest.TestCase):
 
     def test_failed_start_gives_nan_tables(self):
         method = _fitted("h", estimand="realised")
-        with patch.object(BayCAPKDEy, "_run_nuts", side_effect=RuntimeError("Cannot find valid initial parameters.")):
+        with patch.object(BayesKDEy, "run_nuts", side_effect=RuntimeError("Cannot find valid initial parameters.")):
             cts = method.predict_ct_range(DATA.X_u, DATA.u_posteriors)
         self.assertTrue(np.all(np.isnan(cts)))
         self.assertTrue(all(np.isnan(v) for v in method.last_nuts_diagnostics().values()))

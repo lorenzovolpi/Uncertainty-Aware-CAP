@@ -2,66 +2,42 @@ r"""Code shared by the BayCAP methods built on a Bayesian quantifier (E3.1 and E
 ``docs/ext3_posterior_propagation.md``).
 
 Work-plan card WP-13 split the former ``methods/baycap_fixed.py:BayCAPFixed`` (card WP-8) into
-``methods/baycap_kdey.py:BayCAPKDEy`` (BayesKDEy) and ``methods/baycap_mapls.py:BayCAPMAPLS`` (BayesianMAPLS). This
-module holds what the two classes share: the input classifier whose outputs the quantifier reads (the classifier $h$
-itself or a separate MLP trained on $V$, with cross-fitted validation outputs), the fixed rate matrix $\hat C$ of $h$ on
-$V$, the NUTS run with its divergences, the population and realised pushforwards of a fixed $\hat C$, the moments of
-accuracy (§T.8) and the top-label ECE. The code is moved unchanged, so the two classes give the draws of
-``BayCAPFixed`` for the same configuration and seeds (``tests/test_baycap_split.py``).
+``methods/baycap_kdey.py:BayCAPKDEy`` (BayesKDEy) and ``methods/baycap_mapls.py:BayCAPMAPLS`` (BayesianMAPLS), with the
+draws of ``BayCAPFixed`` (``tests/test_baycap_split.py``). Work-plan card WP-25 moved the quantifiers into classes of
+their own (``methods/bayesian_quantifier.py:BayesianQuantifier``, ``methods/bayes_kdey.py:BayesKDEy``,
+``methods/bayes_mapls.py:BayesMAPLS``), with the same draws (``tests/test_wp25_restructure.py``). This module holds what
+the two BayCAP classes share: the fixed rate matrix $\hat C$ of $h$ on $V$, the population and realised pushforwards of
+a fixed $\hat C$, and the moments of accuracy (§T.8); the quantifier is built by each subclass from its own
+hyperparameters.
 """
 
 from collections.abc import Callable
 from numbers import Number
 from typing import Literal, Self
 
-import jax
 import numpy as np
 import quapy as qp
 from cap.models.confidence import CTCAPWithConfidence
 from cap.models.cont_table import CAPContingencyTable
-from numpyro.infer import MCMC, NUTS
 from quapy.data import LabelledCollection
 from sklearn.metrics import confusion_matrix
-from sklearn.model_selection import cross_val_predict
-from sklearn.neural_network import MLPClassifier
 
 from uncawe.methods.baycap import ESTIMANDS, NUTS_DIAGNOSTICS, nuts_diagnostics, realised_tables
+from uncawe.methods.bayesian_quantifier import (
+    ECE_BINS,
+    INPUT_CLASSIFIERS,
+    MLP_FOLDS,
+    PREV,
+    BayesianQuantifier,
+    _validate_outputs,
+    top_label_ece,
+)
 
-INPUT_CLASSIFIERS = ("h", "mlp")
-# number of folds of the cross-fitted validation outputs of the MLP (QuaPy's default ``val_split``); the folds run in
-# the worker's process, so that a BayCAP worker keeps one core busy (docs/work_plan.md, Part V.1)
-MLP_FOLDS = 5
-# equal-width bins of the top-label expected calibration error
-ECE_BINS = 15
 # per-bag summaries stored by the experiments (``last_posterior_summaries``) for a fixed rate matrix, vanilla accuracy:
 # the posterior mean of pi (a vector of length K), the standard deviation sigma_p of the population accuracies of the
 # draws, the bag term sigma_g of the realised pushforward (§T.8), the top-label ECE of the input classifier on its
 # validation outputs
 FIXED_SUMMARIES = ("prev_mean", "acc_sd", "sigma_g", "val_ece")
-# the site of the prevalences in QuaPy's model of BayesKDEy, also the key of the draws of pi in the NUTS record
-PREV = "prev"
-
-
-def top_label_ece(outputs: np.ndarray, labels: np.ndarray, classes: np.ndarray, n_bins: int = ECE_BINS) -> float:
-    r"""Expected calibration error of the top-label confidence, with ``n_bins`` equal-width bins.
-
-    Each instance has confidence $c_n=\max_k p_{nk}$ and is correct when the class of largest output is its label. Bin
-    $b$ holds the instances with $c_n\in((b-1)/B,b/B]$; the ECE is $\sum_b\frac{|B_b|}{N}\lvert\mathrm{acc}_b-
-    \bar c_b\rvert$, with $\mathrm{acc}_b$ the share of correct instances and $\bar c_b$ the mean confidence in bin $b$.
-
-    :param outputs: the outputs, of shape ``(N, K)``, with columns in the order of ``classes``.
-    :param labels: the true labels, of shape ``(N,)``.
-    :param classes: the class labels of the columns of ``outputs``.
-    """
-    outputs = np.asarray(outputs, dtype=float)
-    confidence = outputs.max(axis=1)
-    correct = np.asarray(classes)[outputs.argmax(axis=1)] == np.asarray(labels)
-    bins = np.clip(np.ceil(confidence * n_bins).astype(int) - 1, 0, n_bins - 1)
-    ece = 0.0
-    for b in np.unique(bins):
-        in_bin = bins == b
-        ece += in_bin.mean() * abs(correct[in_bin].mean() - confidence[in_bin].mean())
-    return float(ece)
 
 
 def accuracy_moments(prevalences: np.ndarray, rates: np.ndarray, pred_counts: np.ndarray) -> tuple[float, float]:
@@ -94,16 +70,11 @@ class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
     r"""Base class of the BayCAP methods built on a Bayesian quantifier.
 
     ``fit`` measures $\hat C_{ij}=f_{ij}/n^s_j$ from the predictions of $h$ on $V$ and the validation counts $f_{ij}$,
-    obtains the validation outputs of the input classifier and fits the quantifier on them (:meth:`_fit_quantifier`).
-    With a fixed rate matrix, ``predict_ct_range`` samples the posterior of $\pi^Q$ with NUTS and turns each draw into a
-    table through $\hat C$; a subclass with a random $C$ overrides it.
-
-    - ``input_classifier="h"``: the quantifier reads the outputs of $h$, the ``posteriors`` arguments of ``fit`` (on
-      $V$, out of sample since $h$ was trained on $L$) and of ``predict_ct_range`` (on the target bag); no classifier is
-      trained, and the columns of the outputs follow ``val.classes_``.
-    - ``input_classifier="mlp"``: the quantifier reads the outputs of a separate ``MLPClassifier()`` (default settings,
-      ``random_state``) trained on $V$; its validation outputs are cross-fitted (``MLP_FOLDS`` folds, as QuaPy's
-      ``fit``), its target outputs come from the MLP trained on all of $V$.
+    and fits the quantifier (``quantifier_``, built by :meth:`_make_quantifier` from the hyperparameters of the method),
+    which reads the outputs of the input classifier (:class:`uncawe.methods.bayesian_quantifier.BayesianQuantifier`:
+    $h$ itself, or a separate MLP trained on $V$ with cross-fitted validation outputs). With a fixed rate matrix,
+    ``predict_ct_range`` samples the posterior of $\pi^Q$ with NUTS and turns each draw into a table through $\hat C$;
+    a subclass with a random $C$ overrides it.
 
     The estimand decides how each draw becomes a contingency table:
 
@@ -154,6 +125,21 @@ class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
         self.prior = prior
         self.random_state = qp.environ["_R_SEED"] if random_state is None else random_state
 
+    def _quantifier_settings(self) -> dict:
+        """The hyperparameters that every quantifier takes, as set on the method."""
+        return {
+            "input_classifier": self.input_classifier,
+            "num_warmup": self.num_warmup,
+            "num_samples": self.num_samples,
+            "temperature": self.temperature,
+            "prior": self.prior,
+            "random_state": self.random_state,
+        }
+
+    def _make_quantifier(self) -> BayesianQuantifier:
+        """The unfitted quantifier, built from the hyperparameters of the method."""
+        raise NotImplementedError
+
     def fit(self, val: LabelledCollection, posteriors: np.ndarray) -> Self:
         """Measure the rates of $h$ on $V$ and fit the quantifier on the outputs of the input classifier."""
         posteriors = np.asarray(posteriors, dtype=float)
@@ -164,64 +150,51 @@ class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
         # cap-ml layout: row j is the column C_{:j} of the paper, the counts and rates of the instances of class j
         self.val_counts_ = confusion_matrix(val.y, predicted, labels=classes)
         self.rate_matrix_ = confusion_matrix(val.y, predicted, labels=classes, normalize="true")
-
-        labels = np.asarray(val.y)
-        if self.input_classifier == "h":
-            self.mlp_ = None
-            self.quantifier_classes_ = classes
-            val_outputs = posteriors
-        else:
-            # QuaPy's AggregativeQuantifier.classifier_fit_predict with val_split=5: cross-fitted outputs, then the
-            # MLP trained on all of V
-            self.mlp_ = MLPClassifier(random_state=self.random_state)
-            val_outputs = cross_val_predict(self.mlp_, val.X, labels, cv=MLP_FOLDS, n_jobs=1, method="predict_proba")
-            self.mlp_.fit(val.X, labels)
-            self.quantifier_classes_ = np.asarray(self.mlp_.classes_)
-        self._quantifier_to_rate_order = _class_order(self.quantifier_classes_, classes)
-        self.val_outputs_ = val_outputs
-        self.val_ece_ = top_label_ece(val_outputs, labels, self.quantifier_classes_)
-        self._fit_quantifier(val_outputs, labels, predicted)
+        self.quantifier_ = self._make_quantifier().fit(val, posteriors)
+        self._after_fit(np.asarray(val.y), predicted)
         return self
 
-    def _fit_quantifier(self, val_outputs: np.ndarray, labels: np.ndarray, predicted: np.ndarray) -> None:
-        """Fit the quantifier on the validation outputs of the input classifier, their true labels and the predictions
-        of $h$ on $V$."""
-        raise NotImplementedError
+    def _after_fit(self, labels: np.ndarray, predicted: np.ndarray) -> None:
+        """Fit what the method adds to the quantifier, from the true labels and the predictions of $h$ on $V$."""
 
-    def _model(self, outputs: np.ndarray) -> tuple[Callable, dict, dict | None]:
-        """The NUTS model of $\\pi$ for the outputs of a bag, its arguments and the initial parameters."""
-        raise NotImplementedError
+    @property
+    def mlp_(self):
+        """The MLP of the input classifier ``"mlp"``, ``None`` with ``"h"``."""
+        return self.quantifier_.mlp_
 
-    def _prevalence_draws(self, grouped: dict) -> np.ndarray:
-        """The draws of $\\pi$, grouped by chain, from the grouped NUTS samples of :meth:`_model`."""
-        raise NotImplementedError
+    @property
+    def val_outputs_(self) -> np.ndarray:
+        """The validation outputs of the input classifier (cross-fitted for the MLP)."""
+        return self.quantifier_.val_outputs_
+
+    @property
+    def val_ece_(self) -> float:
+        """The top-label ECE of the input classifier on its validation outputs."""
+        return self.quantifier_.val_ece_
+
+    @property
+    def quantifier_classes_(self) -> np.ndarray:
+        """The classes of the columns of the outputs of the input classifier."""
+        return self.quantifier_.quantifier_classes_
+
+    @property
+    def _quantifier_to_rate_order(self) -> np.ndarray:
+        """The column of the outputs of each class of ``classes_``."""
+        return self.quantifier_.class_order_
 
     def outputs(self, X: np.ndarray, posteriors: np.ndarray) -> np.ndarray:
         """The outputs of the input classifier on a bag: ``posteriors`` for $h$, those of the MLP on ``X`` otherwise."""
-        if self.input_classifier == "h":
-            return np.asarray(posteriors, dtype=float)
-        return self.mlp_.predict_proba(X)
-
-    def _run_nuts(self, model: Callable, model_args: dict, init_params: dict | None) -> MCMC:
-        """Run one chain of NUTS from ``PRNGKey(random_state)``, recording the divergent transitions."""
-        mcmc = MCMC(
-            NUTS(model), num_warmup=self.num_warmup, num_samples=self.num_samples, num_chains=1, progress_bar=False
-        )
-        mcmc.run(
-            jax.random.PRNGKey(self.random_state), init_params=init_params, extra_fields=("diverging",), **model_args
-        )
-        return mcmc
+        return self.quantifier_.outputs(X, posteriors)
 
     def sample_prevalences(self, outputs: np.ndarray) -> np.ndarray:
         r"""Sample the posterior of $\pi$ given the outputs of the input classifier on the bag, recording the divergent
         transitions.
 
-        :return: the draws of $\pi$, of shape ``(num_samples, K)``, columns in the order of ``quantifier_classes_``.
+        :return: the draws of $\pi$, of shape ``(num_samples, K)``, columns in the order of ``classes_``.
         """
-        mcmc = self._run_nuts(*self._model(outputs))
-        prev = self._prevalence_draws(mcmc.get_samples(group_by_chain=True))
-        self._last_nuts = ({PREV: prev}, np.asarray(jax.device_get(mcmc.get_extra_fields()["diverging"])))
-        return prev[0]
+        prevalences = self.quantifier_.sample_prevalences(outputs)
+        self._last_nuts = self.quantifier_._last_nuts
+        return prevalences
 
     def predict_ct_range(self, X: np.ndarray, posteriors: np.ndarray) -> np.ndarray:
         r"""Return one normalised contingency table per posterior draw (true classes on rows), with the fixed $\hat C$.
@@ -231,7 +204,7 @@ class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
         """
         self._check_is_fitted()
         posteriors = np.asarray(posteriors, dtype=float)
-        prevalences = self.sample_prevalences(self.outputs(X, posteriors))[:, self._quantifier_to_rate_order]
+        prevalences = self.sample_prevalences(self.outputs(X, posteriors))
         _validate_prevalence_samples(prevalences, len(self.classes_))
 
         pred_counts = np.bincount(np.argmax(posteriors, axis=1), minlength=len(self.classes_))
@@ -271,26 +244,6 @@ class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
             raise RuntimeError(f"{type(self).__name__} must be fitted before prediction")
 
 
-def _validate_outputs(outputs: np.ndarray, n_instances: int, n_classes: int) -> None:
-    expected = (n_instances, n_classes)
-    if outputs.ndim != 2 or outputs.shape != expected:
-        raise ValueError(f"posteriors must have shape {expected}; found {outputs.shape}")
-    if not np.all(np.isfinite(outputs)):
-        raise ValueError("posteriors must contain only finite values")
-
-
-def _class_order(quantifier_classes: np.ndarray, rate_classes: np.ndarray) -> np.ndarray:
-    if len(quantifier_classes) != len(rate_classes):
-        raise ValueError("quantifier and validation data have different numbers of classes")
-    order = []
-    for class_ in rate_classes:
-        matches = np.flatnonzero(quantifier_classes == class_)
-        if len(matches) != 1:
-            raise ValueError("quantifier and validation data must contain the same classes")
-        order.append(int(matches[0]))
-    return np.asarray(order, dtype=int)
-
-
 def _validate_prevalence_samples(samples: np.ndarray, n_classes: int) -> None:
     if samples.ndim != 2 or samples.shape[1] != n_classes or samples.shape[0] == 0:
         raise ValueError(f"prevalence draws must have shape (n_samples, {n_classes}); found {samples.shape}")
@@ -306,6 +259,7 @@ __all__ = [
     "INPUT_CLASSIFIERS",
     "MLP_FOLDS",
     "NUTS_DIAGNOSTICS",
+    "PREV",
     "QuantifierBayCAP",
     "accuracy_moments",
     "top_label_ece",

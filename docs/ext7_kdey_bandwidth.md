@@ -9,8 +9,9 @@ BayesKDEy estimates, for each class $\omega_j$, the density of the outputs of it
 | Item | Status |
 |---|---|
 | BayesKDEy with one bandwidth for all classes (`methods/baycap_kdey.py:BayCAPKDEy`, `bandwidth=0.1`), used by `BayCAP-KDEy-mlp-real` and `SQS-B` in `main` | [implemented], run and stored in `main` (E3.1, E3.3 of [[ext3_posterior_propagation]]) |
-| Per-class bandwidths selected by leave-one-out likelihood on $V$, with densities normalised on the simplex (§T.4) | [proposal], not implemented |
-| E7.1 (`BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` against the stored methods with $b=0.1$) | [proposal], scheduled as card WP-25 ([[work_plan]] §III.2) |
+| Quantifier classes `BayesKDEy`, `BayesMAPLS` used by `BayCAPKDEy`, `BayCAPMAPLS` and `SQSB` (no change of results) | [implemented] (card WP-25, done) |
+| Per-class bandwidths selected by leave-one-out likelihood on $V$, with densities normalised on the simplex (§T.4): `bandwidth="loo"` of `methods/bayes_kdey.py:BayesKDEy` | [implemented], evaluated by the pilot of E7.1, not carried forward (card WP-25, done) |
+| E7.1 (`BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` against the stored methods with $b=0.1$) | [implemented], pilot run and analysed on 2026-11-19 (`mammographic`, `wine-quality`, 10 pairs); closed after the pilot, without the full run (user's decision of 2026-11-19): both methods worse on every metric; card WP-25, done ([[work_plan]] §II.29) |
 | Factorial grid-search study of $h$, the surrogate classifier and the quantifier (the earlier scope of Extension 7) | set aside on 2026-11-19, in [[optional_extensions]] §13 |
 
 # Experiments
@@ -33,7 +34,28 @@ BayesKDEy estimates, for each class $\omega_j$, the density of the outputs of it
   - **Per-pair table:** for vanilla accuracy, the mean Winkler score and coverage of the four methods per pair, and the median $\hat b_j$ over the classes of the pair.
   - **Bandwidth plot:** per dataset, the selected $\hat b_j$ of each class (one point per class and classifier, $\log_{10}$ scale) against $n_j$, with the grid edges and $b=0.1$ marked.
   - **Effect plot:** per pair, the difference of the mean Winkler score (LOO minus stored) against the median of $\log_{10}(\hat b_j/0.1)$, for vanilla accuracy.
-- **Analysis.** Not run.
+- **Analysis.** Pilot only (user's decision of 2026-11-19: E7.1 closed after the pilot, without the full run). Run on `bcuda` on 2026-11-19 (`main --classic` for the two LOO methods, commit `e4ad02c`, `cap-ml` `93ae246`, JAX on CPU) on the $10$ pairs of `mammographic` ($K=2$) and `wine-quality` ($K=5$), the three metrics, no failed cell; tables and plots generated at commit `72e430a` (`tables/kdey_loo.py`, `plots/kdey_loo.py`), under `<OUT_DIR>/uncawe/tables/kdey_loo/` and `<OUT_DIR>/uncawe/plots/kdey_loo/`. Every score is against the realised table of the target bag. These are the two datasets where E3.1 found the realised BayCAP-KDEy failing (the rates of $h$ on `mammographic`, a bias shared by the quantifiers on `wine-quality`), so the pilot is not representative of the $75$ pairs.
+  - **The selection picks small bandwidths, inside the grid.** The median $\hat b_j$ is $0.035$ on `mammographic` and $0.025$ on `wine-quality` (range $0.02$–$0.063$), no class at an edge of the grid; the selection depends only on $V$ and the MLP, so it is the same for the five classifiers of a dataset. The densities fit the validation outputs better than with $b=0.1$: the mean leave-one-out log-likelihood per instance rises from $0.03$ to $0.19$ on `mammographic` and from $3.07$ to $4.79$ on `wine-quality` (`kdey_loo_classes.csv`).
+  - **Both methods get worse on every metric.** Means over the $10$ pairs (`kdey_loo_summary.csv`):
+
+    | Metric | Method | AE | Coverage | Amplitude | Winkler | Pairs worse / better (Holm) | Wilcoxon $p$ |
+    |---|---|---|---|---|---|---|---|
+    | vanilla accuracy | `BayCAP-KDEy-mlp-real` | 0.081 | 0.101 | 0.074 | 1.923 | – | – |
+    | | `BayCAP-KDEy-mlp-real-loo` | 0.125 | 0.022 | 0.060 | 3.862 | 10 / 0 | 0.002 |
+    | | `SQS-B` | 0.090 | 0.060 | 0.070 | 2.311 | – | – |
+    | | `SQS-B-loo` | 0.126 | 0.025 | 0.058 | 3.950 | 5 / 0 | 0.064 |
+    | macro-F1 | `BayCAP-KDEy-mlp-real` | 0.070 | 0.244 | 0.090 | 1.292 | – | – |
+    | | `BayCAP-KDEy-mlp-real-loo` | 0.100 | 0.044 | 0.075 | 2.626 | 10 / 0 | 0.002 |
+    | | `SQS-B` | 0.068 | 0.250 | 0.085 | 1.316 | – | – |
+    | | `SQS-B-loo` | 0.093 | 0.108 | 0.074 | 2.416 | 10 / 0 | 0.002 |
+    | macro-K | `BayCAP-KDEy-mlp-real` | 0.088 | 0.317 | 0.158 | 1.714 | – | – |
+    | | `BayCAP-KDEy-mlp-real-loo` | 0.097 | 0.200 | 0.135 | 2.019 | 6 / 0 | 0.002 |
+    | | `SQS-B` | 0.084 | 0.333 | 0.140 | 1.615 | – | – |
+    | | `SQS-B-loo` | 0.086 | 0.270 | 0.129 | 1.783 | 10 / 0 | 0.002 |
+
+    With $10$ pairs, $p=0.002$ is the smallest two-sided $p$-value of the Wilcoxon test.
+  - **On `wine-quality` the centre moves, not only the width.** For `BayCAP-KDEy-mlp-real` on vanilla accuracy, the AE rises from $0.086$–$0.145$ to $0.172$–$0.228$ on the five pairs, the amplitude falls from $0.083$–$0.112$ to $0.063$–$0.083$, and the coverage from $0.05$–$0.31$ to $0.00$–$0.04$. On `mammographic` the change is small (AE $+0.003$, Winkler score $+0.13$ to $+0.18$) and `SQS-B` is unchanged: its error comes from the rates of $h$ on $V$ (E3.1), which the bandwidth does not touch (`kdey_loo_pairs.csv`).
+  - **Conclusion.** A better fit of the class densities does not give better intervals (§T.6): the leave-one-out bandwidths make the posterior of $\pi^Q$ narrower and, on `wine-quality`, move it away from the target prevalence. New hypotheses, not tested: sharper class densities make the likelihood of a bag of $1000$ outputs more peaked, so the posterior is overconfident; on `wine-quality` the small classes get larger bandwidths ($0.04$–$0.063$) than the large ones ($0.02$), which changes how the outputs in the overlap regions are attributed to the classes. The `"loo"` option stays in the code, not carried forward. The bandwidth is to be selected by a criterion on the error of the CAP estimate instead (user's decision of 2026-11-19).
 
 # Candidate experiments
 
@@ -136,8 +158,8 @@ The leave-one-out likelihood selects the bandwidth that best fits the class dens
 Components:
 
 - **Quantifier classes** (user's decision of 2026-11-19): BayesKDEy and BayesianMAPLS become quantifier classes of their own (`BayesKDEy`, `BayesMAPLS`, on a base `BayesianQuantifier`), used by `BayCAPKDEy`, `BayCAPMAPLS` and `SQSB`, which no longer borrows a BayCAP method; the restructure changes no result (checked by a golden test).
-- **Per-class bandwidths:** the bandwidth is a hyperparameter of `BayesKDEy`, a positive number, `"scott"`, `"silverman"` or `"loo"`, passed through by `BayCAPKDEy` and `SQSB`. `BayCAPKDEy` accepts `bandwidth="loo"` (with `c_prior="fixed"` and the Gaussian kernel only) and a grid `bandwidth_grid` (default $\{10^{-2+0.1k}\}_{k=0}^{20}$). With `"loo"`, `_KernelDensities` selects $\hat b_j$ per class by the closed-form leave-one-out log-likelihood of §T.2 in $d=K-1$ dimensions (squared distances computed in chunks to bound memory on large classes), fits one `KernelDensity` per class with its $\hat b_j$, and returns log-densities corrected by $+\tfrac12\ln(2\pi\hat b_j^2)$ (§T.4); a class with $n_j<2$ keeps $0.1$. The selected bandwidths are stored (`bandwidths_`) and written per bag. Numeric bandwidths and `"scott"`/`"silverman"` keep QuaPy's densities unchanged.
-- **E7.1 in `main`:** two factory entries in `experiments/methods.py`, `BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` (the latter on the quantifier of the former, as `SQS-B` on `BayCAP-KDEy-mlp-real`), excluded from the tables, ranks and default plots of `main`; per bag, the extra columns of the selected $\hat b_j$, the class sizes and the edge flags; a table module and a plot module for E7.1, following [[work_plan]] Part V.
+- **Per-class bandwidths:** the bandwidth is a hyperparameter of `BayesKDEy`, a positive number, `"scott"`, `"silverman"` or `"loo"`, passed through by `BayCAPKDEy` and `SQSB`. `"loo"` needs the Gaussian kernel and no shrinkage (and `c_prior="fixed"` in `BayCAPKDEy`), with a grid `bandwidth_grid` (default `LOO_GRID`, $\{10^{-2+0.1k}\}_{k=0}^{20}$). With `"loo"`, `_SelectedKernelDensities` selects $\hat b_j$ per class by the closed-form leave-one-out log-likelihood of §T.2 in $d=K-1$ dimensions (squared distances computed in chunks to bound memory on large classes), fits one `KernelDensity` per class with its $\hat b_j$, and returns log-densities corrected by $+\tfrac12\ln(2\pi\hat b_j^2)$ (§T.4); a class with $n_j<2$ keeps $0.1$. The selected bandwidths are stored (`bandwidths_`) and written per bag. Numeric bandwidths and `"scott"`/`"silverman"` keep QuaPy's densities unchanged.
+- **E7.1 in `main`:** two factory entries in `experiments/methods.py:LOO_VARIANTS`, `BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` (with the configuration and seed of `BayCAP-KDEy-mlp-real`, so the same selection and draws), excluded from the tables, ranks and default plots of `main`; per bag, the extra columns of the selection (`bandwidths`, `class_sizes`, `bandwidth_edge`, `loo_selected`, `loo_default`); the tables `tables/kdey_loo.py` and the plots `plots/kdey_loo.py`.
 
 Tests:
 

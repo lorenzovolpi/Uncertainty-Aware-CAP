@@ -10,6 +10,9 @@ from uncawe.methods.baycap import (
 )
 from uncawe.methods.baycap_kdey import BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
+from uncawe.methods.bayes_kdey import BayesKDEy
+from uncawe.methods.bayes_mapls import BayesMAPLS
+from uncawe.methods.bayesian_quantifier import BayesianQuantifier
 from uncawe.methods.sqs_b import SQSB
 
 __all__ = [
@@ -17,6 +20,9 @@ __all__ = [
     "BayCAP",
     "BayCAPKDEy",
     "BayCAPMAPLS",
+    "BayesKDEy",
+    "BayesMAPLS",
+    "BayesianQuantifier",
     "BetaBinomialFit",
     "beta_binomial_loglik",
     "eb_concentration",

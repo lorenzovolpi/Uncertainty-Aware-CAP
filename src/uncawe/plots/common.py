@@ -39,6 +39,9 @@ METHOD_COLORS = {
     "SQS-H": "#6B3D9A",
     "SQS-Hbs": "#B279A2",
     "SQS-B": "#FF7F0E",
+    # E7.1: the methods with per-class leave-one-out bandwidths
+    "BayCAP-KDEy-mlp-real-loo": "#1B7837",
+    "SQS-B-loo": "#B35806",
     "DoC": "#54A24B",
     "QuAcc_NxN": "#72B7B2",
     "B-CBPE": "#FF0000",
@@ -51,6 +54,7 @@ METHOD_PLOT_LABELS = {
     "SQS-H": "SQS-H",
     "SQS-Hbs": "SQS-Hbs",
     "SQS-B": "SQS-B",
+    "SQS-B-loo": "SQS-B-loo",
     "O-LEAP": "LEAP",
     "BayesCAP": "BayCAP",
     "BayesCAP-real": "BayCAP-real",
@@ -69,6 +73,7 @@ METHOD_PLOT_LABELS = {
     "BayCAP-EMQ-mlp-real": "BayCAP-EMQ-mlp-real",
     "BayCAP-KDEy-Hf-h-real": "BayCAP-KDEy-Hf-h-real",
     "BayCAP-KDEy-Hf-mlp-real": "BayCAP-KDEy-Hf-mlp-real",
+    "BayCAP-KDEy-mlp-real-loo": "BayCAP-KDEy-mlp-real-loo",
 }
 
 ACC_NAME = "vanilla_accuracy"

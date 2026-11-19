@@ -9,6 +9,11 @@ through the rate matrix $\hat C$ of $h$ on $V$. Work-plan card WP-13 moved them 
 installed (decision of the user, 2026-11-03); the copy gives the draws of QuaPy's ``sample_from_posterior``
 (``tests/test_baycap_fixed.py``). The kernel density estimates are QuaPy's (``quapy.method._kdey.KDEBase``).
 
+Work-plan card WP-25 moved the quantifier into ``methods/bayes_kdey.py:BayesKDEy``, which the class builds from its own
+hyperparameters (``quantifier_``), with the same draws (``tests/test_wp25_restructure.py``), and added
+``bandwidth="loo"`` (E7.1 of ``docs/ext7_kdey_bandwidth.md``), with ``c_prior="fixed"`` only: one bandwidth per class,
+selected by leave-one-out likelihood on $V$.
+
 ``c_prior="hierarchical-f"`` gives the methods ``BayCAP-KDEy-Hf-<s>-real`` of E3.2 (work-plan card WP-13, §T.10–§T.13):
 each class of $V$ is split into cells by the prediction of $h$, the class density of BayesKDEy becomes the mixture
 $f_j=\sum_kC_{kj}\hat\phi_{kj}$ of the kernel densities of its cells, and $(\pi,C)$ are sampled jointly by NUTS, with the
@@ -18,7 +23,7 @@ Hf prior on $C$ of ``methods/baycap.py`` (centred shares) and the validation cou
 
 from collections.abc import Callable
 from numbers import Number
-from typing import Literal, Self
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -28,7 +33,6 @@ import numpyro.distributions as dist
 from cap.models.confidence import P_C_COND_Y, P_TEST_Y
 from jax.scipy.special import logsumexp
 from quapy.method._bayesian import _resolve_dirichlet_prior
-from quapy.method._kdey import KDEBase
 
 from uncawe.methods.baycap import (
     H_KAPPA,
@@ -44,7 +48,8 @@ from uncawe.methods.baycap import (
     hierarchical_summaries,
     realised_tables,
 )
-from uncawe.methods.baycap_quantifier import PREV, QuantifierBayCAP, _validate_prevalence_samples
+from uncawe.methods.baycap_quantifier import QuantifierBayCAP, _validate_prevalence_samples
+from uncawe.methods.bayes_kdey import LOO, LOO_SUMMARIES, BayesKDEy, kdey_model
 
 # the prior on the columns of C: "fixed" holds C at the rates of h on V (E3.1), "hierarchical-f" samples C with the Hf
 # prior of BayCAP (E3.2)
@@ -59,18 +64,6 @@ CELL_OWN, CELL_PREDICTED, CELL_CLASS = 0, 1, 2
 # top-label ECE of the input classifier on its validation outputs
 CELL_SUMMARIES = ("c_mean", "c_sd", "mismatch", "n_empty_cells", "n_class_density_cells", "val_ece")
 KDEY_HF_SUMMARIES = HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES + CELL_SUMMARIES
-
-
-def kdey_model(test_log_densities, alpha, temperature: float = 1.0) -> None:
-    r"""The NUTS model of BayesKDEy (QuaPy's ``BayesianKDEy._numpyro_model``).
-
-    $\pi\sim\operatorname{Dir}(\alpha)$, and the log-likelihood $\sum_n\ln\sum_j\pi_jp_j(x_n)$ of the outputs $x_n$ of
-    the bag, with $p_j$ the kernel density of class $\omega_j$ on $V$ (``test_log_densities[j, n]``$=\ln p_j(x_n)$),
-    divided by the temperature $\tau$.
-    """
-    prev = numpyro.sample(PREV, dist.Dirichlet(jnp.asarray(alpha)))
-    log_likelihood = jnp.sum(logsumexp(jnp.log(prev)[:, None] + test_log_densities, axis=0))
-    numpyro.factor("loglik", (1.0 / temperature) * log_likelihood)
 
 
 def kdey_hf_loglik(prev, rates, log_cells, pred=None):
@@ -116,35 +109,6 @@ def kdey_hf_model(log_cells, val_counts, alpha, pred=None, temperature: float = 
     numpyro.factor("loglik", (1.0 / temperature) * kdey_hf_loglik(prev, p_c_cond_y, log_cells, pred))
 
 
-class _KernelDensities(KDEBase):
-    """QuaPy's kernel density estimates of the outputs within each class, as fitted by ``BayesianKDEy``."""
-
-    def __init__(self, kernel: str, bandwidth, shrinkage: float):
-        self.kernel = KDEBase._check_kernel(kernel)
-        self.bandwidth = KDEBase._check_bandwidth(bandwidth, self.kernel)
-        if not 0 <= shrinkage < 1:
-            raise ValueError("shrinkage must be in [0,1)")
-        if self.kernel == "gaussian" and shrinkage != 0:
-            raise ValueError("shrinkage is only supported for Aitchison/ILR kernels")
-        self.shrinkage = float(shrinkage)
-
-    def fit(self, outputs: np.ndarray, labels: np.ndarray, classes: np.ndarray) -> Self:
-        self.mix_densities = self.get_mixture_components(outputs, labels, classes, self.bandwidth, self.kernel)
-        return self
-
-    def log_densities(self, outputs: np.ndarray) -> np.ndarray:
-        """``[j, n]``: the log-density of class $j$ at the outputs of instance $n$."""
-        return np.asarray([self.pdf(kde, outputs, self.kernel, log_densities=True) for kde in self.mix_densities])
-
-    def density(self, outputs: np.ndarray):
-        """A kernel density with the kernel and bandwidth of the class densities, fitted on ``outputs``."""
-        return self.get_kde_function(outputs, self.bandwidth, self.kernel)
-
-    def log_density(self, kde, outputs: np.ndarray) -> np.ndarray:
-        """The log-density of ``kde`` at ``outputs``."""
-        return self.pdf(kde, outputs, self.kernel, log_densities=True)
-
-
 class BayCAPKDEy(QuantifierBayCAP):
     r"""BayCAP with the posterior of BayesKDEy, with a fixed $\hat C$ (E3.1) or a random $C$ with the Hf prior (E3.2).
 
@@ -153,9 +117,10 @@ class BayCAPKDEy(QuantifierBayCAP):
     classifier, the estimands, the seeds and the NUTS diagnostics are those of
     :class:`uncawe.methods.baycap_quantifier.QuantifierBayCAP`.
 
-    - ``c_prior="fixed"`` (E3.1): NUTS samples $\pi$ alone (:func:`kdey_model`), and each draw is pushed through the
-      rate matrix $\hat C$ of $h$ on $V$. After each ``predict_ct_range`` call, :meth:`last_posterior_summaries` returns
-      ``FIXED_SUMMARIES``.
+    - ``c_prior="fixed"`` (E3.1): NUTS samples $\pi$ alone (:func:`kdey_model`, through ``quantifier_``, a
+      :class:`uncawe.methods.bayes_kdey.BayesKDEy`), and each draw is pushed through the rate matrix $\hat C$ of $h$ on
+      $V$. After each ``predict_ct_range`` call, :meth:`last_posterior_summaries` returns ``FIXED_SUMMARIES``, and, with
+      ``bandwidth="loo"``, the ``LOO_SUMMARIES`` of the selection too.
     - ``c_prior="hierarchical-f"`` (E3.2, §T.10–§T.13): ``fit`` splits each class $\omega_j$ of $V$ into the cells
       $V_{kj}$ of the instances that $h$ predicts as $\omega_k$ and fits one kernel density $\hat\phi_{kj}$ per cell on
       the validation outputs of the input classifier (cross-fitted for ``mlp``). An empty cell takes the density of all
@@ -173,7 +138,9 @@ class BayCAPKDEy(QuantifierBayCAP):
     :param estimand: ``"population"`` or ``"realised"``.
     :param c_prior: ``"fixed"`` or ``"hierarchical-f"``.
     :param kernel: kernel of BayesKDEy (``"gaussian"``, ``"aitchison"`` or ``"ilr"``).
-    :param bandwidth: bandwidth of BayesKDEy, a positive number, ``"scott"`` or ``"silverman"``.
+    :param bandwidth: bandwidth of BayesKDEy, a positive number, ``"scott"``, ``"silverman"`` or ``"loo"`` (per-class
+        bandwidths selected by leave-one-out likelihood; Gaussian kernel, no shrinkage and ``c_prior="fixed"`` only).
+    :param bandwidth_grid: the grid of ``"loo"``; ``bayes_kdey.LOO_GRID`` if ``None``.
     :param shrinkage: shrinkage of BayesKDEy, in $[0,1)$, $0$ with the Gaussian kernel.
     :param num_warmup: number of NUTS warm-up iterations.
     :param num_samples: number of posterior draws retained after warm-up.
@@ -189,7 +156,8 @@ class BayCAPKDEy(QuantifierBayCAP):
         estimand: Literal["population", "realised"] = "population",
         c_prior: Literal["fixed", "hierarchical-f"] = "fixed",
         kernel: Literal["gaussian", "aitchison", "ilr"] = "gaussian",
-        bandwidth: float | Literal["scott", "silverman"] = 0.1,
+        bandwidth: float | Literal["scott", "silverman", "loo"] = 0.1,
+        bandwidth_grid=None,
         shrinkage: float = 0.0,
         num_warmup: int = 500,
         num_samples: int = 1000,
@@ -209,16 +177,38 @@ class BayCAPKDEy(QuantifierBayCAP):
             prior=prior,
             random_state=random_state,
         )
+        if c_prior != "fixed" and bandwidth == LOO:
+            raise ValueError('bandwidth="loo" is implemented only with c_prior="fixed"')
         self.c_prior = c_prior
         self.kernel = kernel
         self.bandwidth = bandwidth
+        self.bandwidth_grid = bandwidth_grid
         self.shrinkage = shrinkage
+        # checks the hyperparameters of the quantifier
+        self._make_quantifier()
 
-    def _fit_quantifier(self, val_outputs: np.ndarray, labels: np.ndarray, predicted: np.ndarray) -> None:
-        self.kde_ = _KernelDensities(self.kernel, self.bandwidth, self.shrinkage)
-        self.kde_.fit(val_outputs, labels, self.quantifier_classes_)
+    def _make_quantifier(self) -> BayesKDEy:
+        return BayesKDEy(
+            kernel=self.kernel,
+            bandwidth=self.bandwidth,
+            bandwidth_grid=self.bandwidth_grid,
+            shrinkage=self.shrinkage,
+            **self._quantifier_settings(),
+        )
+
+    @property
+    def kde_(self):
+        """The class densities of the quantifier."""
+        return self.quantifier_.kde_
+
+    @property
+    def bandwidths_(self) -> np.ndarray:
+        """The bandwidth of each class, in the order of ``classes_``."""
+        return self.quantifier_.bandwidths_
+
+    def _after_fit(self, labels: np.ndarray, predicted: np.ndarray) -> None:
         if self.c_prior == "hierarchical-f":
-            self._fit_cells(val_outputs, labels, predicted)
+            self._fit_cells(self.val_outputs_, labels, predicted)
 
     def _fit_cells(self, val_outputs: np.ndarray, labels: np.ndarray, predicted: np.ndarray) -> None:
         r"""Fit the densities of the cells (§T.10) and choose those of the empty cells (§T.12).
@@ -279,15 +269,6 @@ class BayCAPKDEy(QuantifierBayCAP):
                 out[rows, j] = cache[key]
         return out
 
-    def _model(self, outputs: np.ndarray) -> tuple[Callable, dict, dict | None]:
-        """The NUTS model of BayesKDEy, its arguments and the initial parameters, as QuaPy's ``sample_from_posterior``."""
-        alpha = _resolve_dirichlet_prior(self.prior, outputs.shape[1])
-        args = {"test_log_densities": self.kde_.log_densities(outputs), "alpha": alpha}
-        return kdey_model, args | {"temperature": self.temperature}, None
-
-    def _prevalence_draws(self, grouped: dict) -> np.ndarray:
-        return np.asarray(jax.device_get(grouped[PREV]))
-
     def predict_ct_range(self, X: np.ndarray, posteriors: np.ndarray) -> np.ndarray:
         r"""Return one normalised contingency table per posterior draw (true classes on rows).
 
@@ -296,7 +277,10 @@ class BayCAPKDEy(QuantifierBayCAP):
         ``X``.
         """
         if self.c_prior == "fixed":
-            return super().predict_ct_range(X, posteriors)
+            cts = super().predict_ct_range(X, posteriors)
+            if self.quantifier_.selects_bandwidth:
+                self._last_summaries |= self.quantifier_.selection_summaries()
+            return cts
         self._check_is_fitted()
         posteriors = np.asarray(posteriors, dtype=float)
         n_classes = len(self.classes_)
@@ -311,7 +295,7 @@ class BayCAPKDEy(QuantifierBayCAP):
             "temperature": self.temperature,
         }
         try:
-            mcmc = self._run_nuts(kdey_hf_model, model_args, None)
+            mcmc = self.quantifier_.run_nuts(kdey_hf_model, model_args, None)
         except RuntimeError as error:
             # numpyro raises a RuntimeError when it finds no valid initial parameters
             if "initial parameters" not in str(error):
@@ -369,6 +353,7 @@ __all__ = [
     "CELL_SUMMARIES",
     "KDEY_C_PRIORS",
     "KDEY_HF_SUMMARIES",
+    "LOO_SUMMARIES",
     "BayCAPKDEy",
     "kdey_hf_loglik",
     "kdey_hf_model",
