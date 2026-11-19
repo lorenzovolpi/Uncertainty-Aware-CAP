@@ -1433,3 +1433,28 @@ Reproducibility and comparability:
 - informative priors on $C$ built from external knowledge (e.g. from other classifiers on the same dataset); E5.3 studies only weak default priors;
 - post-hoc interval recalibration;
 - violations of PPS.
+
+## 13. Material set aside from Extension 7 (earlier version)
+
+Set aside on 2026-11-19, when the user narrowed Extension 7 to the bandwidth of BayesKDEy ([[ext7_kdey_bandwidth]]). The earlier summary of [[extensions]] §7, "Grid-search optimization of classifiers and quantifiers", follows unchanged.
+
+The current experiments mostly use default classifier hyperparameters and fixed configurations for the classifiers embedded in the quantifiers. A proposed study, not currently implemented, should determine whether the conclusions about CAP methods remain stable when these predictive components are optimized by grid search.
+
+The optimization must distinguish three objects with different roles:
+
+- the target classifier $h$, whose performance on $U$ is being estimated;
+- the surrogate classifier $s$ used by an aggregative quantifier to produce posterior representations;
+- the quantifier $q$ itself, including method-specific hyperparameters such as regularization, bandwidth, kernel, or other aggregation parameters.
+
+These objects should not necessarily use the same selection objective. The target classifier $h$ can be selected by an out-of-sample classification score, possibly including a calibration criterion when its posterior probabilities are consumed downstream. By contrast, $s$ and $q$ should be selected primarily by quantification error on source-generated validation bags spanning multiple prevalences, rather than only by instance-level classification accuracy. Bayesian quantifiers may additionally require a proper score or coverage-based criterion for selecting posterior-shape parameters.
+
+The experimental protocol must remain nested and label-safe. Hyperparameters for $h$ should be selected only within its labelled training data. Parameters for $s$ and $q$ should be selected through inner splits or cross-fitting within the labelled data allocated to quantifier training. Target labels and the bags used for final CAP evaluation must never influence model selection. For SQS-S, the search must also respect the separation between $V_q$ and $V_b$ introduced in [[ext6_sqs_s_design|Extension 6]] (E6.2), so that tuning does not consume the bag-sampling subset.
+
+A factorial ablation should compare:
+
+1. default $h$ and default $(s,q)$;
+2. optimized $h$ and default $(s,q)$;
+3. default $h$ and optimized $(s,q)$;
+4. optimized $h$ and optimized $(s,q)$.
+
+The parameter grids, selection metrics, folds, random seeds, and computational budgets should be fixed in advance and shared across CAP methods whenever their interfaces permit it. Results should report both predictive quality and search cost. Tuning $h$ changes the classifier and therefore the CAP problem itself, whereas tuning $(s,q)$ changes the estimator of target prevalence; these effects must be reported separately rather than summarized as a single gain from "optimization."

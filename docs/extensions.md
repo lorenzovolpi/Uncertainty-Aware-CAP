@@ -48,28 +48,11 @@ SQS-S estimates the accuracy on a target bag from labelled bags drawn from $V$ w
 
 The full description is in [ext6_sqs_s_design.md](ext6_sqs_s_design.md). SQS-S and `predist` are implemented; the parameter $\rho$ of `PrediQuant` (to be added in `cap-ml`, with the current split kept as the default) and the experiments are not. Adaptive bandwidth, Aitchison geometry, the factorial study of $\rho$, $\lvert V\rvert$ and $\lvert U\rvert$, the Neyman allocation across classes and the label-free selection of $\rho$ are set aside in [[optional_extensions]] §11.
 
-## 7. Grid-search optimization of classifiers and quantifiers
+## 7. [[ext7_kdey_bandwidth|Selecting the bandwidth of BayesKDEy]]
 
-The current experiments mostly use default classifier hyperparameters and fixed configurations for the classifiers embedded in the quantifiers. A proposed study, not currently implemented, should determine whether the conclusions about CAP methods remain stable when these predictive components are optimized by grid search.
+Narrowed by the user on 2026-11-19 from a factorial grid-search study of the classifiers and quantifiers to a single question, with no candidates for now: does a bandwidth selected from $V$ improve the methods built on the posterior of BayesKDEy? In `main`, BayesKDEy uses one Gaussian bandwidth $b=0.1$ for every class and dataset; the bandwidth sets how sharp the class densities of the outputs of the input classifier are, and so how narrow the posterior of $\pi^Q$ is. E7.1 (not run) selects one bandwidth $\hat b_j$ per class by maximising the leave-one-out log-likelihood of the class density on the cross-fitted validation outputs of the MLP, over $21$ log-spaced values from $0.01$ to $1$ (the range of the Gaussian-KDE grid of the BayesKDEy paper, which contains $0.1$), and compares `BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` with the stored `BayCAP-KDEy-mlp-real` and `SQS-B` on the protocol of `main`, all scored against the realised table of each bag. The selection is label-safe. The theory derives the leave-one-out criterion from the Kullback–Leibler divergence, shows that it splits into one search per class, and shows that with per-class bandwidths the kernel must be normalised in the $K-1$ dimensions of the simplex rather than in the $K$ dimensions used by QuaPy: with a shared $b$ the factor $(2\pi b^2)^{-1/2}$ cancels in the posterior, while with per-class $b_j$ it would reweight the classes by $1/b_j$ and bias the selection towards small bandwidths.
 
-The optimization must distinguish three objects with different roles:
-
-- the target classifier $h$, whose performance on $U$ is being estimated;
-- the surrogate classifier $s$ used by an aggregative quantifier to produce posterior representations;
-- the quantifier $q$ itself, including method-specific hyperparameters such as regularization, bandwidth, kernel, or other aggregation parameters.
-
-These objects should not necessarily use the same selection objective. The target classifier $h$ can be selected by an out-of-sample classification score, possibly including a calibration criterion when its posterior probabilities are consumed downstream. By contrast, $s$ and $q$ should be selected primarily by quantification error on source-generated validation bags spanning multiple prevalences, rather than only by instance-level classification accuracy. Bayesian quantifiers may additionally require a proper score or coverage-based criterion for selecting posterior-shape parameters.
-
-The experimental protocol must remain nested and label-safe. Hyperparameters for $h$ should be selected only within its labelled training data. Parameters for $s$ and $q$ should be selected through inner splits or cross-fitting within the labelled data allocated to quantifier training. Target labels and the bags used for final CAP evaluation must never influence model selection. For SQS-S, the search must also respect the separation between $V_q$ and $V_b$ introduced in [[ext6_sqs_s_design|Extension 6]] (E6.2), so that tuning does not consume the bag-sampling subset.
-
-A factorial ablation should compare:
-
-1. default $h$ and default $(s,q)$;
-2. optimized $h$ and default $(s,q)$;
-3. default $h$ and optimized $(s,q)$;
-4. optimized $h$ and optimized $(s,q)$.
-
-The parameter grids, selection metrics, folds, random seeds, and computational budgets should be fixed in advance and shared across CAP methods whenever their interfaces permit it. Results should report both predictive quality and search cost. Tuning $h$ changes the classifier and therefore the CAP problem itself, whereas tuning $(s,q)$ changes the estimator of target prevalence; these effects must be reported separately rather than summarized as a single gain from "optimization."
+The full description is in [ext7_kdey_bandwidth.md](ext7_kdey_bandwidth.md). The shared bandwidth is implemented (`methods/baycap_kdey.py:BayCAPKDEy`); the per-class selection and E7.1 are not. The earlier factorial study of $h$, the surrogate classifier and the quantifier is set aside in [[optional_extensions]] §13.
 
 ## Extensions under evaluation
 
