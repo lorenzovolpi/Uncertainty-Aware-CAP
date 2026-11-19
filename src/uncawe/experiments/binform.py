@@ -39,6 +39,21 @@ $\operatorname{Dir}(3\cdot\mathbf 1)$ (``_centre``) and $\operatorname{Dir}(\tfr
 equal to the distribution of the bags is the well-informed one, the other the ill-informed one. Results go to
 ``<OUT_DIR>/uncawe/binform_e54/<distribution>/u<|U|>/``, with the columns of E5.1 except the means, and
 ``distribution``. Both methods target the realised table of each bag and are scored against it (``true_cts``).
+
+With ``--e55`` it runs E5.5 of the same document (work-plan card WP-27): bags of $|U|=1000$ instances only, at
+requested prevalences from distributions more extreme than those of E5.4, concentrated
+($G_c=\operatorname{Dir}(10\cdot\mathbf 1)$, ``centre``) or sparse ($G_e=\operatorname{Dir}(\tfrac1{10}\mathbf 1)$,
+``edge``), $100$ per dataset and distribution (``e55_requested_prevs``; streams distinct from those of E5.1 and E5.4),
+shared by the five classifiers. The priors on $\pi^Q$ stay those of E5.4 (``_uniform``, ``_centre``
+$=\operatorname{Dir}(3\cdot\mathbf 1)$, ``_edge`` $=\operatorname{Dir}(\tfrac13\mathbf 1)$), so the parameters of the
+distributions of the bags (``E55_BAG_ALPHAS``) are set apart from those of the priors (``E54_ALPHAS``); on the bags of a
+distribution the prior on its side is the right-side one, the other the wrong-side one. The methods with a prior are the
+two of E5.4 and ``SQS-B`` (``experiments/methods.py:sqs_b`` with ``prior``); ``SQS-H``, ``SQS-Hbs`` and ``PQ`` (SQS-S)
+take no prior on $\pi^Q$, are built as in ``main`` and run once per distribution (method names without a suffix), in the
+pool of the regular methods of ``main``. Results go to ``<OUT_DIR>/uncawe/binform_e55/<distribution>/``, with the
+columns ``bag_size``, ``requested_prev``, ``distribution``, ``bag_alpha`` and, for the methods with a prior,
+``prior_alpha`` and the NUTS diagnostics and summaries. Every method targets the realised table of each bag and is
+scored against it (``true_cts``).
 """
 
 import os
@@ -80,9 +95,11 @@ from uncawe.experiments.methods import (
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
     SAMPLE_SIZE,
+    SQS_B,
     THREAD_LIMITS,
     fixed_c_method,
     gen_methods,
+    sqs_b,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
@@ -130,6 +147,24 @@ E54_DISTRIBUTIONS = tuple(E54_ALPHAS)
 E54_PRIORS = ("uniform", *E54_DISTRIBUTIONS)
 E54_METHODS = {f"{base}_{prior}": (base, prior) for base in E51_BASE_METHODS for prior in E54_PRIORS}
 _E54_PREVS_STREAMS = {"centre": 2, "edge": 3}
+
+# E5.5 (docs/ext5_baycap_priors_tempering.md, card WP-27): results folder, the bag size, the two distributions of the
+# requested prevalences, symmetric Dir(alpha 1) more extreme than those of E5.4 (concentrated: alpha = 10; sparse:
+# alpha = 1/10), the priors on pi^Q of E5.4 (E54_ALPHAS), the methods with a prior (the two of E5.4 and SQS-B), the SQS
+# methods without a prior on pi^Q (built as in main, run once per distribution) and the streams of the requested
+# prevalences
+E55_EXPERIMENT = "binform_e55"
+E55_SIZE = 1000
+E55_BAG_ALPHAS = {"centre": 10.0, "edge": 0.1}
+E55_DISTRIBUTIONS = tuple(E55_BAG_ALPHAS)
+E55_PRIORS = E54_PRIORS
+E55_PRIOR_BASES = (*E51_BASE_METHODS, SQS_B)
+E55_REFERENCES = ("SQS-H", "SQS-Hbs", "PQ")
+# name -> (base method, prior); the prior is None for the methods without a prior on pi^Q
+E55_METHODS = {f"{base}_{prior}": (base, prior) for base in E55_PRIOR_BASES for prior in E55_PRIORS} | {
+    name: (name, None) for name in E55_REFERENCES
+}
+_E55_PREVS_STREAMS = {"centre": 4, "edge": 5}
 
 qp.environ["SAMPLE_SIZE"] = SAMPLE_SIZE
 qp.environ["_R_SEED"] = 0
@@ -390,9 +425,11 @@ def e51_method(method_name: str, mu_star: np.ndarray, mu_dagger: np.ndarray):
 
 
 def _prior_method(base: str, prior: str | np.ndarray):
-    """The base method ``base`` of ``E51_BASE_METHODS`` built as in ``main`` (same settings and seed), with the prior
-    ``prior`` on $\\pi^Q$ (E5.1 and E5.4)."""
+    """The base method ``base`` of ``E51_BASE_METHODS`` (or ``SQS-B``, E5.5) built as in ``main`` (same settings and
+    seed), with the prior ``prior`` on $\\pi^Q$ (E5.1, E5.4 and E5.5)."""
     _, acc = next(gen_acc_measure(True))
+    if base == SQS_B:
+        return sqs_b(acc, prior=prior)
     if base in BAYCAP_VARIANTS:
         estimand, c_prior = BAYCAP_VARIANTS[base]
         return BayCAP(
@@ -474,10 +511,11 @@ def _prior_task(
     result_path,
     static_columns: dict,
 ) -> list[ExperimentOutcome]:
-    """The body of a task of E5.1 or E5.4: the bags of ``size`` instances at ``requested_prevs`` drawn from the test
-    pool (seed ``_R_SEED + bag index``), the method of ``build_method()`` fitted on $V$ and run on every bag, with the
-    NUTS diagnostics and posterior summaries of each bag; one result file per metric at ``result_path(acc_name)``, with
-    the columns ``bag_size``, ``requested_prev`` and, repeated on every row, ``static_columns``."""
+    """The body of a task of E5.1, E5.4 or E5.5: the bags of ``size`` instances at ``requested_prevs`` drawn from the
+    test pool (seed ``_R_SEED + bag index``), the method of ``build_method()`` fitted on $V$ and run on every bag, with
+    the NUTS diagnostics and posterior summaries of each bag for the methods that sample with NUTS (all those of E5.1
+    and E5.4; not ``SQS-H``, ``SQS-Hbs`` and ``PQ`` of E5.5); one result file per metric at ``result_path(acc_name)``,
+    with the columns ``bag_size``, ``requested_prev`` and, repeated on every row, ``static_columns``."""
     dataset = p.load_dataset_bundle()
     classifier = p.load_pretrained_classifier(dataset)
     validation = dataset.V
@@ -498,6 +536,7 @@ def _prior_task(
 
     try:
         method = build_method()
+        nuts = hasattr(method, "last_nuts_diagnostics")
         started = time()
         method = method.fit(validation, validation_posteriors)
         t_train = time() - started
@@ -507,6 +546,8 @@ def _prior_task(
         estim_ct_ranges, diagnostics = [], []
         for sample in test_samples:
             estim_ct_ranges.append(method.predict_ct_range(sample.collection.X, sample.posteriors))
+            if not nuts:
+                continue
             started_diagnostics = time()
             diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
             t_diagnostics += time() - started_diagnostics
@@ -516,7 +557,7 @@ def _prior_task(
         print_exception(error)
         return [EXP.ERROR(error, p, "ct", method_name)]
 
-    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]}
+    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]} if diagnostics else {}
     extra_columns |= {
         "bag_size": [size] * context.size,
         "requested_prev": [prev.tolist() for prev in requested_prevs],
@@ -752,6 +793,149 @@ def e54_experiments(
         )
 
 
+# ----------------------------------------------------------------------------------------------------------- E5.5
+
+
+def e55_bag_alpha(distribution: str, n_classes: int) -> np.ndarray:
+    """The Dirichlet parameter $\\alpha\\mathbf 1$ of the distribution of the bags ``distribution``: ``"centre"``
+    ($\\alpha=10$) or ``"edge"`` ($\\alpha=1/10$). The priors are those of E5.4 (``e54_prior``)."""
+    if distribution not in E55_BAG_ALPHAS:
+        raise ValueError(f"Unknown E5.5 distribution: {distribution!r}")
+    return np.full(n_classes, E55_BAG_ALPHAS[distribution])
+
+
+def e55_requested_prevs(dataset: str, n_classes: int, distribution: str, seed: int | None = None) -> np.ndarray:
+    """The ``NUM_TEST`` requested prevalences of the bags of ``dataset`` drawn from ``distribution`` (``"centre"`` or
+    ``"edge"``), with a generator that depends only on the seed, the dataset and the distribution (the same for every
+    classifier, prior and method; streams distinct from those of E5.1 and E5.4). Renormalised as in E5.1."""
+    alpha = e55_bag_alpha(distribution, n_classes)
+    prevs = _e51_rng(dataset, _E55_PREVS_STREAMS[distribution], seed).dirichlet(alpha, size=NUM_TEST)
+    return prevs / prevs.sum(axis=1, keepdims=True)
+
+
+def e55_method(method_name: str, n_classes: int):
+    """The method ``method_name`` of ``E55_METHODS``: a method with a prior is built as in ``main`` with the prior on
+    $\\pi^Q$ of its suffix (``e54_prior``); a method without a prior is the method of ``main`` itself."""
+    base, kind = E55_METHODS[method_name]
+    if kind is None:
+        return dict(gen_methods())[base]
+    return _prior_method(base, e54_prior(kind, n_classes))
+
+
+def e55_experiment(distribution: str) -> str:
+    """The results folder of E5.5 for the bags drawn from ``distribution``, relative to ``<OUT_DIR>/uncawe``."""
+    return os.path.join(E55_EXPERIMENT, distribution)
+
+
+def _e55_result_path(p: PretrainInfo, method_name: str, acc_name: str, distribution: str) -> str:
+    return local_path(
+        p.domain,
+        p.d_info.name,
+        p.h_info.full_name,
+        method_name,
+        acc_name,
+        experiment=e55_experiment(distribution),
+    )
+
+
+def _e55_all_results_exist(p: PretrainInfo, method_name: str, distribution: str) -> bool:
+    return all(os.path.exists(_e55_result_path(p, method_name, acc_name, distribution)) for acc_name in get_acc_names())
+
+
+def e55_protocol(args: tuple[str, str, str]) -> list[ExperimentOutcome]:
+    """One task of E5.5: the method ``method_name`` on the pair of ``info_path`` with the bags drawn from
+    ``distribution``; the caches of JAX are cleared after each task, as in ``e51_protocol``."""
+    try:
+        return _e55_task(*args)
+    finally:
+        jax.clear_caches()
+
+
+def _e55_task(info_path: str, method_name: str, distribution: str) -> list[ExperimentOutcome]:
+    p = PretrainInfo.load(info_path, fast=True)
+    if _e55_all_results_exist(p, method_name, distribution):
+        return [EXP.EXISTS(p, "all", method_name)]
+
+    n_classes = p.d_info.n_classes
+    kind = E55_METHODS[method_name][1]
+    static_columns = {"distribution": distribution, "bag_alpha": E55_BAG_ALPHAS[distribution]}
+    if kind is not None:
+        static_columns["prior_alpha"] = e54_alpha(kind, n_classes).tolist()
+    return _prior_task(
+        p,
+        method_name,
+        build_method=lambda: e55_method(method_name, n_classes),
+        requested_prevs=e55_requested_prevs(p.d_info.name, n_classes, distribution),
+        size=E55_SIZE,
+        result_path=lambda acc_name: _e55_result_path(p, method_name, acc_name, distribution),
+        static_columns=static_columns,
+    )
+
+
+def _e55_method_order(method_name: str) -> int:
+    """BayCAP-Hf, BayCAP-KDEy and SQS-B, then the methods without a prior."""
+    base = E55_METHODS[method_name][0]
+    return (*E55_PRIOR_BASES, *E55_REFERENCES).index(base)
+
+
+def e55_tasks(
+    datasets: list[str] | None = None,
+    classifiers: list[str] | None = None,
+    distributions: list[str] | None = None,
+    methods: list[str] | None = None,
+    log: Logger | None = None,
+) -> list[tuple[str, str, str]]:
+    """The tasks of E5.5 still to run, ``(info_path, method_name, distribution)``: the pairs of ``main`` restricted by
+    the arguments (e.g. the pilot), by distribution, then BayCAP-Hf, BayCAP-KDEy, SQS-B and the methods without a
+    prior."""
+    distributions = list(E55_DISTRIBUTIONS) if distributions is None else distributions
+    methods = list(E55_METHODS) if methods is None else methods
+    unknown = sorted(set(methods) - set(E55_METHODS)) + sorted(set(distributions) - set(E55_DISTRIBUTIONS))
+    if unknown:
+        raise ValueError(f"Unknown E5.5 methods or distributions: {unknown}")
+    paths = []
+    for path in load_info_paths(domain=DOMAIN):
+        p = PretrainInfo.load(path, fast=True)
+        if p.d_info.name not in get_filtered_datasets():
+            continue
+        if datasets is not None and p.d_info.name not in datasets:
+            continue
+        if classifiers is not None and p.h_info.name not in classifiers:
+            continue
+        paths.append((path, p))
+
+    tasks = []
+    for distribution in sorted(distributions, key=E55_DISTRIBUTIONS.index):
+        for method_name in sorted(methods, key=_e55_method_order):
+            for path, p in paths:
+                if _e55_all_results_exist(p, method_name, distribution):
+                    if log is not None:
+                        log.info(f"[{p.h_info.name}@{p.d_info.name}] {method_name} {distribution} exists, skipping")
+                    continue
+                tasks.append((path, method_name, distribution))
+    return tasks
+
+
+def e55_experiments(
+    log: Logger,
+    datasets: list[str] | None = None,
+    classifiers: list[str] | None = None,
+    distributions: list[str] | None = None,
+    methods: list[str] | None = None,
+) -> None:
+    """Run E5.5, per distribution (outcomes saved in its folder): the methods without a prior in the pool of the
+    regular methods of ``main`` (``N_JOBS`` workers, ``THREAD_LIMITS``), then the methods with a prior, which sample
+    with NUTS, in the BayCAP pool, as in ``main``."""
+    tasks = e55_tasks(datasets, classifiers, distributions, methods, log)
+    for distribution in sorted({task[2] for task in tasks}, key=E55_DISTRIBUTIONS.index):
+        part = [task for task in tasks if task[2] == distribution]
+        regular = [task for task in part if E55_METHODS[task[1]][1] is None]
+        bayes = [task for task in part if E55_METHODS[task[1]][1] is not None]
+        experiment = e55_experiment(distribution)
+        run_tasks(log, regular, worker=e55_protocol, n_jobs=capenv["N_JOBS"], experiment=experiment, env=THREAD_LIMITS)
+        run_tasks(log, bayes, worker=e55_protocol, n_jobs=BAYES_N_JOBS, experiment=experiment, env=BAYES_ENV)
+
+
 def save_experiment_results(log: Logger, results_gen: Iterable[list[ExperimentOutcome]]) -> None:
     save_outcomes(log, results_gen, experiment=EXPERIMENT)
 
@@ -785,44 +969,54 @@ def experiments(log: Logger) -> None:
 def parse_args(argv: list[str] | None = None):
     parser = ArgumentParser(
         description="The binform experiment; with --e51, E5.1 (priors on pi^Q, card WP-19); with --e54, E5.4 "
-        "(concentrated and sparse prevalence distributions, card WP-24)."
+        "(concentrated and sparse prevalence distributions, card WP-24); with --e55, E5.5 (right-side and wrong-side "
+        "priors under strong shifts, with SQS references, card WP-27)."
     )
     study = parser.add_mutually_exclusive_group()
     study.add_argument("--e51", action="store_true", help="Run E5.1 instead of the default configuration")
     study.add_argument("--e54", action="store_true", help="Run E5.4 instead of the default configuration")
+    study.add_argument("--e55", action="store_true", help="Run E5.5 instead of the default configuration")
     parser.add_argument(
-        "--datasets", nargs="+", default=None, help="E5.1/E5.4: only these datasets (default: those of main)"
+        "--datasets", nargs="+", default=None, help="E5.1/E5.4/E5.5: only these datasets (default: those of main)"
     )
     parser.add_argument(
-        "--classifiers", nargs="+", default=None, help="E5.1/E5.4: only these classifiers (default: all)"
+        "--classifiers", nargs="+", default=None, help="E5.1/E5.4/E5.5: only these classifiers (default: all)"
     )
     parser.add_argument("--sizes", nargs="+", type=int, default=None, help="E5.1/E5.4: bag sizes (default: 100 1000)")
-    parser.add_argument("--methods", nargs="+", default=None, help="E5.1/E5.4: only these methods (default: all six)")
+    parser.add_argument(
+        "--methods", nargs="+", default=None, help="E5.1/E5.4/E5.5: only these methods (default: all of the study)"
+    )
     parser.add_argument(
         "--distributions",
         nargs="+",
         choices=E54_DISTRIBUTIONS,
         default=None,
-        help="E5.4: only these distributions of the bags (default: centre edge)",
+        help="E5.4/E5.5: only these distributions of the bags (default: centre edge)",
     )
     pargs = parser.parse_args(argv)
+    study_args = pargs.e51 or pargs.e54 or pargs.e55
     restricted = any(getattr(pargs, name) is not None for name in ("datasets", "classifiers", "sizes", "methods"))
-    if restricted and not (pargs.e51 or pargs.e54):
-        parser.error("--datasets, --classifiers, --sizes and --methods need --e51 or --e54")
-    if pargs.distributions is not None and not pargs.e54:
-        parser.error("--distributions needs --e54")
+    if restricted and not study_args:
+        parser.error("--datasets, --classifiers, --sizes and --methods need --e51, --e54 or --e55")
+    if pargs.distributions is not None and not (pargs.e54 or pargs.e55):
+        parser.error("--distributions needs --e54 or --e55")
+    if pargs.sizes is not None and pargs.e55:
+        parser.error("--sizes does not apply to --e55 (|U|=1000 only)")
     return pargs
 
 
 def main() -> None:
     pargs = parse_args()
-    log = get_logger(id=E51_EXPERIMENT if pargs.e51 else E54_EXPERIMENT if pargs.e54 else EXPERIMENT)
+    study = {E51_EXPERIMENT: pargs.e51, E54_EXPERIMENT: pargs.e54, E55_EXPERIMENT: pargs.e55}
+    log = get_logger(id=next((name for name, chosen in study.items() if chosen), EXPERIMENT))
     try:
         log.info("-" * 31 + "  start  " + "-" * 31)
         if pargs.e51:
             e51_experiments(log, pargs.datasets, pargs.classifiers, pargs.sizes, pargs.methods)
         elif pargs.e54:
             e54_experiments(log, pargs.datasets, pargs.classifiers, pargs.distributions, pargs.sizes, pargs.methods)
+        elif pargs.e55:
+            e55_experiments(log, pargs.datasets, pargs.classifiers, pargs.distributions, pargs.methods)
         else:
             experiments(log)
     except Exception as error:
