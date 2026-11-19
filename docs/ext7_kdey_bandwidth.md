@@ -11,7 +11,7 @@ BayesKDEy estimates, for each class $\omega_j$, the density of the outputs of it
 | BayesKDEy with one bandwidth for all classes (`methods/baycap_kdey.py:BayCAPKDEy`, `bandwidth=0.1`), used by `BayCAP-KDEy-mlp-real` and `SQS-B` in `main` | [implemented], run and stored in `main` (E3.1, E3.3 of [[ext3_posterior_propagation]]) |
 | Quantifier classes `BayesKDEy`, `BayesMAPLS` used by `BayCAPKDEy`, `BayCAPMAPLS` and `SQSB` (no change of results) | [implemented] (card WP-25, in progress) |
 | Per-class bandwidths selected by leave-one-out likelihood on $V$, with densities normalised on the simplex (§T.4): `bandwidth="loo"` of `methods/bayes_kdey.py:BayesKDEy` | [implemented], not evaluated (card WP-25, in progress) |
-| E7.1 (`BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` against the stored methods with $b=0.1$) | [implemented], not run: methods in `main`, `tables/kdey_loo.py`, `plots/kdey_loo.py` (card WP-25, in progress, [[work_plan]] §III.2) |
+| E7.1 (`BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` against the stored methods with $b=0.1$) | [implemented], pilot run on 2026-11-19 (`mammographic`, `wine-quality`, 10 pairs), full run not done: methods in `main`, `tables/kdey_loo.py`, `plots/kdey_loo.py` (card WP-25, implemented, not evaluated, [[work_plan]] §III.2) |
 | Factorial grid-search study of $h$, the surrogate classifier and the quantifier (the earlier scope of Extension 7) | set aside on 2026-11-19, in [[optional_extensions]] §13 |
 
 # Experiments
