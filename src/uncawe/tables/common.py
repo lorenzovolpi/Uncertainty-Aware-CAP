@@ -36,5 +36,6 @@ METHOD_LATEX_LABELS = {
     "SQS-B": "\\sqsb",
     "SQS-B-loo": "\\sqsb{}-loo",
     "BayCAP-KDEy-mlp-real-loo": "\\bcapkdey{}-loo",
+    "BayCAP-KDEy-mlp-real-cal": "\\bcapkdey{}-cal",
     "O-LEAP": "LEAP",
 }

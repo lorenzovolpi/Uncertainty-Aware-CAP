@@ -12,6 +12,11 @@ $\hat b_j$, the value of a grid that maximises the leave-one-out log-likelihood 
 outputs (§T.2, §T.3), and the class densities are normalised on the simplex, where the outputs lie, in $K-1$ dimensions
 instead of the $K$ of QuaPy's Gaussian kernel (§T.4). With one bandwidth shared by the classes the two normalisations
 differ by a factor common to the classes, which cancels in the posterior; with per-class bandwidths it would not.
+
+WP-26 (E7.2) adds what the selection of one shared bandwidth on calibration bags needs
+(``methods/baycap_kdey.py:BayCAPKDEy`` with ``bandwidth="cal"``): the class densities at any shared bandwidth
+(:meth:`BayesKDEy.class_log_densities`) and the maximum-likelihood estimate of $\pi$ on many bags by EM
+(:func:`em_prevalences`, §T.8).
 """
 
 from collections.abc import Callable
@@ -45,6 +50,10 @@ LOO_BLOCK_ENTRIES = 10_000_000
 # it, or at its upper edge (0 for a class that keeps the default), and the leave-one-out log-likelihood per instance at
 # the selected bandwidth and at LOO_DEFAULT_BANDWIDTH (NaN for n_j < 2)
 LOO_SUMMARIES = ("bandwidths", "class_sizes", "bandwidth_edge", "loo_selected", "loo_default")
+# the EM estimate of the prevalences (E7.2, §T.8): a bag stops when no component changes by more than EM_TOL, after at
+# most EM_MAX_ITER steps
+EM_TOL = 1e-9
+EM_MAX_ITER = 10_000
 
 
 def kdey_model(test_log_densities, alpha, temperature: float = 1.0) -> None:
@@ -57,6 +66,57 @@ def kdey_model(test_log_densities, alpha, temperature: float = 1.0) -> None:
     prev = numpyro.sample(PREV, dist.Dirichlet(jnp.asarray(alpha)))
     log_likelihood = jnp.sum(jax_logsumexp(jnp.log(prev)[:, None] + test_log_densities, axis=0))
     numpyro.factor("loglik", (1.0 / temperature) * log_likelihood)
+
+
+def em_prevalences(
+    log_densities: np.ndarray, counts: np.ndarray, tol: float = EM_TOL, max_iter: int = EM_MAX_ITER
+) -> tuple[np.ndarray, np.ndarray]:
+    r"""The maximum-likelihood estimates of $\pi$ of the BayesKDEy model on several bags, by EM (E7.2, §T.8).
+
+    The bags are made of instances of one pool, possibly repeated: bag $s$ holds instance $u$ of the pool
+    ``counts[s, u]`` times. The log-likelihood of bag $s$ is $\ell_s(\pi)=\sum_u c_{su}\ln\sum_j\pi_j\hat p_j(z_u)$,
+    concave in $\pi$. From the uniform $\pi$, each EM step computes, for every instance, the probabilities
+    $r_{uj}=\pi_j\hat p_j(z_u)/\sum_k\pi_k\hat p_k(z_u)$ that it comes from each class and sets
+    $\pi_j\leftarrow\frac1{N_s}\sum_uc_{su}r_{uj}$, with $N_s=\sum_uc_{su}$; each step increases $\ell_s$. A bag stops
+    when no component of $\pi$ changes by more than ``tol``; the others go on, up to ``max_iter`` steps. An instance whose
+    log-density is $-\infty$ under every class has a likelihood that does not depend on $\pi$ and is left out.
+
+    :param log_densities: ``[j, u]``$=\ln\hat p_j(z_u)$, shape ``(K, n)``.
+    :param counts: the multiplicity of each instance in each bag, shape ``(S, n)``, non-negative, each row with a
+        positive sum.
+    :param tol: the largest change of a component of $\pi$ at which a bag has converged.
+    :param max_iter: the largest number of EM steps.
+    :return: the estimates, shape ``(S, K)``, and a boolean array of shape ``(S,)``, true for the bags that converged.
+    """
+    log_densities = np.asarray(log_densities, dtype=float)
+    counts = np.asarray(counts, dtype=float)
+    n_classes = log_densities.shape[0]
+    if counts.ndim != 2 or counts.shape[1] != log_densities.shape[1]:
+        raise ValueError(f"counts must have shape (S, {log_densities.shape[1]}); found {counts.shape}")
+    if np.any(counts < 0) or np.any(counts.sum(axis=1) <= 0):
+        raise ValueError("counts must be non-negative, with a positive sum in each bag")
+    # the instances that appear in no bag do not enter any estimate, nor those whose density is numerically 0 under
+    # every class (possible at small bandwidths far from every validation output), whose likelihood does not depend on pi
+    used = (counts.sum(axis=0) > 0) & np.isfinite(log_densities.max(axis=0))
+    # the densities of an instance are scaled by their largest value, which cancels in r_uj
+    log_p = log_densities[:, used]
+    densities = np.exp(log_p - log_p.max(axis=0, keepdims=True))
+    counts = counts[:, used]
+    # a bag left without instances keeps the uniform pi
+    sizes = np.maximum(counts.sum(axis=1), np.finfo(float).tiny)
+    prev = np.full((len(counts), n_classes), 1.0 / n_classes)
+    active = np.ones(len(counts), dtype=bool)
+    for _ in range(max_iter):
+        current = prev[active]
+        # mixture[s, u] = sum_k pi_sk p_k(z_u); new pi_sj = pi_sj / N_s sum_u c_su p_j(z_u) / mixture[s, u]
+        mixture = np.maximum(current @ densities, np.finfo(float).tiny)
+        updated = current * ((counts[active] / mixture) @ densities.T) / sizes[active, None]
+        changed = np.abs(updated - current).max(axis=1) > tol
+        prev[active] = updated
+        active[np.flatnonzero(active)[~changed]] = False
+        if not active.any():
+            break
+    return prev / prev.sum(axis=1, keepdims=True), ~active
 
 
 def loo_log_likelihood(points: np.ndarray, bandwidths, block_entries: int = LOO_BLOCK_ENTRIES) -> np.ndarray:
@@ -246,6 +306,20 @@ class BayesKDEy(BayesianQuantifier):
             bandwidths = np.asarray([kde.bandwidth_ for kde in self.kde_.mix_densities], dtype=float)
         self.bandwidths_ = bandwidths[self.class_order_]
 
+    def class_log_densities(self, outputs: np.ndarray, bandwidth: float) -> np.ndarray:
+        r"""The log-densities at ``outputs`` of QuaPy's class densities fitted on the validation outputs of the
+        quantifier with one bandwidth ``bandwidth`` shared by the classes (and the kernel and shrinkage of the
+        quantifier), whatever its own bandwidth (E7.2).
+
+        :param outputs: outputs of the input classifier, shape ``(n, K)``, columns in the order of
+            ``quantifier_classes_``.
+        :return: ``[j, u]``$=\ln\hat p_j(z_u)$, shape ``(K, n)``, rows in the order of ``val.classes_``.
+        """
+        self._check_is_fitted()
+        densities = _KernelDensities(self.kernel, bandwidth, self.shrinkage)
+        densities.fit(self.val_outputs_, self.val_labels_, self.quantifier_classes_)
+        return densities.log_densities(outputs)[self.class_order_]
+
     def selection_summaries(self) -> dict:
         """The ``LOO_SUMMARIES`` of the selection, vectors over the classes in the order of ``val.classes_``."""
         if not self.selects_bandwidth:
@@ -271,11 +345,14 @@ class BayesKDEy(BayesianQuantifier):
 
 
 __all__ = [
+    "EM_MAX_ITER",
+    "EM_TOL",
     "LOO",
     "LOO_DEFAULT_BANDWIDTH",
     "LOO_GRID",
     "LOO_SUMMARIES",
     "BayesKDEy",
+    "em_prevalences",
     "kdey_model",
     "loo_log_likelihood",
     "simplex_log_density",

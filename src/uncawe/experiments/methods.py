@@ -18,7 +18,7 @@ from sklearn.neural_network import MLPClassifier as MLP
 
 from uncawe.experiments.metrics import gen_acc_measure
 from uncawe.methods.baycap import BayCAP
-from uncawe.methods.baycap_kdey import BayCAPKDEy
+from uncawe.methods.baycap_kdey import CAL, BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
 from uncawe.methods.bayes_kdey import LOO
 from uncawe.methods.sqs_b import SQSB
@@ -136,6 +136,13 @@ METHOD_CLASS |= {name: METHOD_CLASS[base] for name, (base, _) in TEMPERED_VARIAN
 # as the stored method; name -> stored method. Outside the main tables, ranks and default plots (tables/main.py)
 LOO_VARIANTS = {"BayCAP-KDEy-mlp-real-loo": SQS_B_QUANTIFIER, "SQS-B-loo": SQS_B}
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in LOO_VARIANTS.items()}
+# the method of E7.2 of docs/ext7_kdey_bandwidth.md (card WP-26): BayCAP-KDEy-mlp-real with BayesKDEy at
+# bandwidth="cal" (one bandwidth shared by the classes, selected per pair over methods/bayes_kdey.py:LOO_GRID on 50
+# calibration bags of 1000 instances drawn from half of V, by the accuracy error of the EM estimate, then the method
+# fitted on the full V at the selected bandwidth), everything else, seeds included, as the stored method; name -> stored
+# method. Outside the main tables, ranks and default plots (tables/main.py)
+CAL_VARIANTS = {"BayCAP-KDEy-mlp-real-cal": SQS_B_QUANTIFIER}
+METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in CAL_VARIANTS.items()}
 # the methods run by main in the BayCAP pool, with BAYES_N_JOBS workers and BAYES_ENV
 BAYES_POOL_METHODS = (
     frozenset(BAYCAP_VARIANTS)
@@ -144,6 +151,7 @@ BAYES_POOL_METHODS = (
     | frozenset({SQS_B})
     | frozenset(TEMPERED_VARIANTS)
     | frozenset(LOO_VARIANTS)
+    | frozenset(CAL_VARIANTS)
 )
 
 
@@ -171,12 +179,18 @@ def sqs_s(acc, rho: float | None = None) -> PrediQuant:
 
 
 def fixed_c_method(
-    acc, name: str, prior="uniform", temperature: float = 1.0, bandwidth=KDEY_SETTINGS["bandwidth"]
+    acc,
+    name: str,
+    prior="uniform",
+    temperature: float = 1.0,
+    bandwidth=KDEY_SETTINGS["bandwidth"],
+    **kdey_options,
 ) -> BayCAPKDEy | BayCAPMAPLS:
     """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP; ``prior``
     is the Dirichlet parameter of the prior on $\\pi$ (uniform in ``main``; E5.1, ``experiments/binform.py``, varies
     it), ``temperature`` the posterior temperature ($1$ in E3.1 and E5.1; the other values are those of E5.2), and
-    ``bandwidth`` that of BayesKDEy ($0.1$; ``"loo"`` in E7.1)."""
+    ``bandwidth`` that of BayesKDEy ($0.1$; ``"loo"`` in E7.1, ``"cal"`` in E7.2); ``kdey_options`` are further
+    arguments of ``BayCAPKDEy`` (e.g. ``cal_nuts_check``)."""
     quantifier, source, estimand = FIXED_C_VARIANTS[name]
     common = {
         "input_classifier": source,
@@ -187,7 +201,9 @@ def fixed_c_method(
         "num_warmup": BAYES_WARMUPS,
     }
     if quantifier == "kdey":
-        return BayCAPKDEy(acc, c_prior="fixed", **(KDEY_SETTINGS | {"bandwidth": bandwidth}), **common)
+        return BayCAPKDEy(acc, c_prior="fixed", **(KDEY_SETTINGS | {"bandwidth": bandwidth}), **common, **kdey_options)
+    if kdey_options:
+        raise ValueError(f"{name} takes no option of BayCAPKDEy; found {sorted(kdey_options)}")
     return BayCAPMAPLS(acc, **common)
 
 
@@ -212,6 +228,13 @@ def loo_method(acc, name: str) -> BayCAPKDEy | SQSB:
     if base == SQS_B:
         return sqs_b(acc, bandwidth=LOO)
     return fixed_c_method(acc, base, bandwidth=LOO)
+
+
+def cal_method(acc, name: str, nuts_check: bool = False) -> BayCAPKDEy:
+    """The method ``name`` of E7.2 (``CAL_VARIANTS``): its stored method with ``bandwidth="cal"`` (grid ``LOO_GRID``,
+    $50$ calibration bags of $1000$ instances); ``nuts_check`` adds the pilot check of the EM estimate against the NUTS
+    posterior mean (``cal_nuts_check``)."""
+    return fixed_c_method(acc, CAL_VARIANTS[name], bandwidth=CAL, cal_nuts_check=nuts_check)
 
 
 def baycap_method(acc, name: str, temperature: float = 1.0) -> BayCAP:
@@ -282,6 +305,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
         yield name, tempered_method(acc, name)
     for name in LOO_VARIANTS:
         yield name, loo_method(acc, name)
+    for name in CAL_VARIANTS:
+        yield name, cal_method(acc, name)
 
 
 def get_method_names() -> list[str]:
