@@ -2,16 +2,17 @@
 
 ## Claim
 
-BayesKDEy estimates, for each class $\omega_j$, the density of the outputs of its input classifier from the validation set $V$ with a Gaussian kernel of bandwidth $b$. The bandwidth decides how sharp these class densities are, and so how narrow the posterior of $\pi^Q$ is and where it is centred. In `main` it is fixed at $b=0.1$ for every dataset, class and validation size. This extension selects the bandwidth of each class from $V$ alone, by maximising the leave-one-out likelihood of the class density (a label-safe selection that uses no target bag), and measures whether the two methods built on the posterior of BayesKDEy, `BayCAP-KDEy-mlp-real` and `SQS-B`, give better intervals with the selected bandwidths than with $b=0.1$ (E7.1). It is kept deliberately tight (user's decision of 2026-11-19): one experiment, no candidates for now.
+BayesKDEy estimates, for each class $\omega_j$, the density of the outputs of its input classifier from the validation set $V$ with a Gaussian kernel of bandwidth $b$. The bandwidth decides how sharp these class densities are, and so how narrow the posterior of $\pi^Q$ is and where it is centred. In `main` it is fixed at $b=0.1$ for every dataset, class and validation size. This extension asks whether a bandwidth selected from $V$ alone gives `BayCAP-KDEy-mlp-real` better intervals. E7.1 selected one bandwidth per class by the leave-one-out likelihood of the class densities: it fitted the densities better and made the intervals worse (pilot, closed). E7.2 selects one bandwidth per pair by the error it causes on the quantity the method estimates: $V$ is split in two halves, the method is fitted on one half, and the bandwidth is the value of a grid whose estimated accuracy is closest, on labelled bags drawn from the other half, to the accuracy that the true prevalences of the bags would give. It is kept deliberately tight (user's decision of 2026-11-19): one experiment at a time, no candidates for now.
 
 ## Status
 
 | Item | Status |
 |---|---|
-| BayesKDEy with one bandwidth for all classes (`methods/baycap_kdey.py:BayCAPKDEy`, `bandwidth=0.1`), used by `BayCAP-KDEy-mlp-real` and `SQS-B` in `main` | [implemented], run and stored in `main` (E3.1, E3.3 of [[ext3_posterior_propagation]]) |
+| BayesKDEy with one bandwidth for all classes (`methods/bayes_kdey.py:BayesKDEy`, `bandwidth=0.1`), used by `BayCAP-KDEy-mlp-real` and `SQS-B` in `main` | [implemented], run and stored in `main` (E3.1, E3.3 of [[ext3_posterior_propagation]]) |
 | Quantifier classes `BayesKDEy`, `BayesMAPLS` used by `BayCAPKDEy`, `BayCAPMAPLS` and `SQSB` (no change of results) | [implemented] (card WP-25, done) |
 | Per-class bandwidths selected by leave-one-out likelihood on $V$, with densities normalised on the simplex (§T.4): `bandwidth="loo"` of `methods/bayes_kdey.py:BayesKDEy` | [implemented], evaluated by the pilot of E7.1, not carried forward (card WP-25, done) |
 | E7.1 (`BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` against the stored methods with $b=0.1$) | [implemented], pilot run and analysed on 2026-11-19 (`mammographic`, `wine-quality`, 10 pairs); closed after the pilot, without the full run (user's decision of 2026-11-19): both methods worse on every metric; card WP-25, done ([[work_plan]] §II.29) |
+| E7.2 (`BayCAP-KDEy-mlp-real-cal`: one bandwidth per pair selected on calibration bags drawn from half of $V$, against the stored method with $b=0.1$) | [proposal], scheduled as card WP-26 ([[work_plan]] §III.2) |
 | Factorial grid-search study of $h$, the surrogate classifier and the quantifier (the earlier scope of Extension 7) | set aside on 2026-11-19, in [[optional_extensions]] §13 |
 
 # Experiments
@@ -57,13 +58,34 @@ BayesKDEy estimates, for each class $\omega_j$, the density of the outputs of it
   - **On `wine-quality` the centre moves, not only the width.** For `BayCAP-KDEy-mlp-real` on vanilla accuracy, the AE rises from $0.086$–$0.145$ to $0.172$–$0.228$ on the five pairs, the amplitude falls from $0.083$–$0.112$ to $0.063$–$0.083$, and the coverage from $0.05$–$0.31$ to $0.00$–$0.04$. On `mammographic` the change is small (AE $+0.003$, Winkler score $+0.13$ to $+0.18$) and `SQS-B` is unchanged: its error comes from the rates of $h$ on $V$ (E3.1), which the bandwidth does not touch (`kdey_loo_pairs.csv`).
   - **Conclusion.** A better fit of the class densities does not give better intervals (§T.6): the leave-one-out bandwidths make the posterior of $\pi^Q$ narrower and, on `wine-quality`, move it away from the target prevalence. New hypotheses, not tested: sharper class densities make the likelihood of a bag of $1000$ outputs more peaked, so the posterior is overconfident; on `wine-quality` the small classes get larger bandwidths ($0.04$–$0.063$) than the large ones ($0.02$), which changes how the outputs in the overlap regions are attributed to the classes. The `"loo"` option stays in the code, not carried forward. The bandwidth is to be selected by a criterion on the error of the CAP estimate instead (user's decision of 2026-11-19).
 
+## E7.2: One bandwidth per pair, selected on calibration bags drawn from $V$
+
+**Why.** E7.1 showed that the bandwidth that best fits the class densities is not the one that gives the best intervals: on `wine-quality` the leave-one-out bandwidths moved the centre of `BayCAP-KDEy-mlp-real` away from the target. A bandwidth should rather be judged by the error it causes on what the method estimates. That error can be measured without target labels on labelled bags drawn from $V$, as E5.3 did for the temperature: $V$ is split in two halves, the method is fitted on one and scored on bags drawn from the other, so that the bags are new data for the fitted densities (§T.9). The score keeps only the part of the error of the estimated accuracy that the bandwidth can change (§T.7), and it needs only the centre of the posterior, which the maximum-likelihood estimate of the same model gives at almost no cost (§T.8). One bandwidth is shared by the classes: a grid search per class would need $21^K$ fits, and with one bandwidth the normalisation issue of §T.4 does not arise. Only `BayCAP-KDEy-mlp-real` is studied; `SQS-B`, which shares its quantifier, is left out for now (user's decision of 2026-11-19).
+
+- **Design.**
+  - **Inputs:** the protocol of `main`: the $75$ pairs (datasets × the five classifiers, after FIX-8), $100$ target bags of size $1000$ per pair with the seeds of `main`; the stored `main` results of `BayCAP-KDEy-mlp-real` ($b=0.1$); the results of one new method of `main`, `BayCAP-KDEy-mlp-real-cal`, with its own run. For each pair, inside the fit of the method: $V$ split per class into $V_{\text{fit}}$ and $V_{\text{cal}}$, half each (stratified, seeded by the `random_state` of the method, so the same split for the five classifiers of a dataset); on $V_{\text{fit}}$, the MLP (cross-fitted validation outputs on $5$ folds, then trained on all of $V_{\text{fit}}$), the kernel densities at each $b$ of the grid, and the recalls $\hat d^{\text{fit}}$ of $h$; $S=50$ calibration bags of size $1000$ drawn with replacement from $V_{\text{cal}}$ at prevalences drawn uniformly on the simplex ($\operatorname{Dir}(\mathbf 1)$, QuaPy's UPP, as `main` draws its target bags; seeded, the same for every $b$), each with its true prevalence $\pi_s$ (the class proportions of the bag) and the outputs of the MLP of $V_{\text{fit}}$ on its instances. On small datasets each instance of $V_{\text{cal}}$ appears several times in a bag (`mammographic`: about $145$ instances).
+  - **Varied:** the bandwidth of BayesKDEy, shared by the classes: $b=0.1$ (stored) against $b_{\text{cal}}=\arg\min_{b\in\mathcal G}\frac1S\sum_{s=1}^S\big\lvert\hat d^{\text{fit}\top}(\hat\pi_s(b)-\pi_s)\big\rvert$ over the grid $\mathcal G=\{10^{-2+0.1k}:k=0,\dots,20\}$ of E7.1, where $\hat\pi_s(b)$ is the maximum-likelihood estimate of the BayesKDEy model (fitted on $V_{\text{fit}}$ at bandwidth $b$) on the outputs of bag $s$ (§T.7, §T.8); ties are broken towards the value closest to $0.1$ on the $\log_{10}$ scale. The deployed method is BayesKDEy refitted on the full $V$ at $b_{\text{cal}}$, as a practitioner would do (E5.3); with $b_{\text{cal}}=0.1$ it is the stored method. *Held fixed:* the Gaussian kernel, no shrinkage, the prior $\operatorname{Dir}(\mathbf 1)$, $\tau=1$, the MLP input, the fixed $\hat C$ of $h$ on the full $V$, the realised pushforward, NUTS with $500$ warm-up iterations, $1000$ draws and the seeds of `BayCAP-KDEy-mlp-real`.
+  - **Measures:**
+    - on the target bags, for `BayCAP-KDEy-mlp-real` and `BayCAP-KDEy-mlp-real-cal`, on the three metrics of `main`: AE, coverage, amplitude and Winkler score at $\alpha=0.05$, per bag, per pair and averaged over the pairs; per pair, paired bootstrap tests of the mean per-bag difference of AE and of the Winkler score (cal minus stored; $10{,}000$ seeded resamples of the $100$ bags, Holm over the $75$ pairs, per metric and score), and Wilcoxon signed-rank tests over the $75$ per-pair means;
+    - per pair, label-free on the target: $b_{\text{cal}}$, the calibration criterion over the whole grid, its value at $b_{\text{cal}}$ and at $0.1$, and the Spearman correlation across the pairs between the calibration gain (criterion at $0.1$ minus at $b_{\text{cal}}$) and the test gain (mean AE of the stored method minus that of the cal method, vanilla accuracy);
+    - pilot only, the check of §T.8: on the pilot pairs, the calibration criterion also computed with the NUTS posterior mean of $\pi$ in place of the maximum-likelihood estimate, for every $b$ and bag; per pair, both selected bandwidths, the number of grid steps between them, and the largest difference between the two criterion curves.
+  - **Estimand:** realised table for both methods on the target bags, scored against the realised table of each bag (`true_cts`), as every method of `main`. The calibration criterion scores the population accuracy $\hat d^{\text{fit}\top}\hat\pi_s(b)$ against $\hat d^{\text{fit}\top}\pi_s$, the part of the error of the centre that depends on $b$ (§T.7); it uses only the labels of $V$, so $b_{\text{cal}}$ is a method, not a reference.
+  - **Cost:** per pair, inside the fit: one MLP on $V_{\text{fit}}$, $21$ kernel-density fits, the log-densities of the instances of $V_{\text{cal}}$ under each class density at each $b$ (computed once per $b$ and indexed by the bags), $21\times50$ maximum-likelihood estimates by EM; then the target run as `BayCAP-KDEy-mlp-real`, $75\times100=7500$ NUTS runs. The pilot check adds $21\times50$ NUTS runs per pilot pair ($15\times1050=15{,}750$). A pilot first on `mammographic`, `wine-quality` and `poker_hand` with the five classifiers ($15$ pairs; user's decision of 2026-11-19).
+- **Representation.**
+  - **Summary table:** per metric, one row per method, with the means over the pairs of AE, coverage, amplitude and Winkler score; for the cal method, the pairs where its AE and its Winkler score are significantly (Holm) lower and higher than the stored ones and the two Wilcoxon $p$-values; also split by $K$ ($K=2$, $3\le K\le7$, $K\ge8$).
+  - **Per-pair table:** per metric, one row per pair: $K$, $b_{\text{cal}}$, the calibration criterion at $0.1$ and at $b_{\text{cal}}$, the test AE, coverage and Winkler score of both methods, and the two differences (bold where Holm $p<0.05$).
+  - **Bandwidth plot:** $b_{\text{cal}}$ per pair ($\log_{10}$ scale), one column per dataset ordered by $K$, markers by classifier, with $b=0.1$ and the edges of the grid marked.
+  - **Gain plot:** per pair, the test gain against the calibration gain (vanilla accuracy), coloured by $K$.
+  - **Pilot check table:** per pilot pair, $b_{\text{cal}}$ from the maximum-likelihood estimate and from the NUTS posterior mean, the steps between them and the largest difference of the criterion curves.
+- **Analysis.** Not run.
+
 # Candidate experiments
 
 None for now (user's decision of 2026-11-19).
 
 # Theory
 
-This part explains what E7.1 needs, step by step. We follow the notation of the reference paper: $C_{ij}=P(\hat Y=\omega_i\mid Y=\omega_j)$ for the target classifier $h$ and $T=C\operatorname{diag}(\pi)$ the population table, with predicted classes on rows and true classes on columns. The bandwidth enters only the posterior of $\pi^Q$; the bridge from $\pi$ to the table (the fixed $\hat C$ and the realised pushforward for BayCAP-KDEy, the forward bag for SQS-B) is that of [[ext3_posterior_propagation]] and is unchanged.
+This part explains what E7.1 (§T.1–§T.6) and E7.2 (§T.7–§T.9) need, step by step. We follow the notation of the reference paper: $C_{ij}=P(\hat Y=\omega_i\mid Y=\omega_j)$ for the target classifier $h$ and $T=C\operatorname{diag}(\pi)$ the population table, with predicted classes on rows and true classes on columns. The bandwidth enters only the posterior of $\pi^Q$; the bridge from $\pi$ to the table (the fixed $\hat C$ and the realised pushforward for BayCAP-KDEy, the forward bag for SQS-B) is that of [[ext3_posterior_propagation]] and is unchanged.
 
 ## T.1 BayesKDEy and the role of the bandwidth
 
@@ -153,6 +175,48 @@ E7.1 reports the share of classes at each edge. Many classes at the lower edge w
 
 The leave-one-out likelihood selects the bandwidth that best fits the class densities. The CAP methods are scored on their intervals for the realised table. The two goals are related, since the posterior of $\pi^Q$ is built from the class densities, but they are not the same: a better density fit could still give a posterior that is too narrow or too wide for the target bag, and the error that comes from $V$ itself (the rates of $h$, Extension 4) does not depend on $b$. E7.1 therefore measures whether a label-safe density criterion improves the intervals; it does not search for the bandwidth that would give the best intervals, which would need a different, quantification-oriented criterion.
 
+## T.7 The error that the bandwidth controls, and the calibration criterion
+
+**The centre of the method.** With a fixed $\hat C$, the population accuracy of a draw $\pi$ is $\hat d^\top\pi=\sum_j\hat C_{jj}\pi_j$, where $\hat d_j=\hat C_{jj}$ is the recall of $h$ on class $\omega_j$ measured on $V$. The realised pushforward adds the luck of the bag around it but, as E3.1 found, barely moves the centre, so the point estimate of `BayCAP-KDEy-mlp-real` is close to $\hat d^\top\bar\pi$, with $\bar\pi$ the posterior mean.
+
+**Three parts of the error.** Let $\pi$ be the true prevalence of a bag (its class proportions), $d$ the true recalls of $h$, and $A$ the accuracy of $h$ on the realised table of the bag. Adding and subtracting $\hat d^\top\pi$ and $d^\top\pi$,
+
+$$\hat d^\top\bar\pi-A=\underbrace{\hat d^\top(\bar\pi-\pi)}_{\text{(i) quantifier}}+\underbrace{(\hat d-d)^\top\pi}_{\text{(ii) rates of }h\text{ on }V}+\underbrace{d^\top\pi-A}_{\text{(iii) luck of the bag}}.$$
+
+The bandwidth enters only through $\bar\pi$, so only term (i) depends on $b$. Term (ii) depends on how far the recalls measured on $V$ are from the true ones, and term (iii) on which instances the bag happens to contain (Extension 4 calls them $e_2$ and $e_3$).
+
+**Only the differences between recalls matter.** The prevalences sum to $1$, so $\sum_j(\bar\pi_j-\pi_j)=0$ and, for any number $c$, $c\mathbf 1^\top(\bar\pi-\pi)=0$. Hence
+
+$$\hat d^\top(\bar\pi-\pi)=(\hat d-c\mathbf 1)^\top(\bar\pi-\pi)\quad\text{for every }c.$$
+
+An error that moves prevalence between two classes of equal recall does not change the accuracy; one between a class of recall $0.9$ and one of recall $0.5$ counts with weight $0.4$. This is why a score on the prevalences, such as $\lVert\bar\pi-\pi\rVert_1$, would not target the accuracy: it weights every direction of the error equally (user's question of 2026-11-19).
+
+**Why terms (ii) and (iii) are left out of the criterion.** On calibration bags drawn from $V_{\text{cal}}$, the accuracy $A_s$ is known, so the plain accuracy error $\lvert\hat d^{\text{fit}\top}\bar\pi_s-A_s\rvert$ could be used. But its term (ii) is $(\hat d^{\text{fit}}-d)^\top\pi_s$, where the recalls measured on $V_{\text{fit}}$ differ from the true ones by an amount that is about the same for every bag: call $\delta$ this common offset. Then each bag contributes $\lvert q_s(b)+\delta\rvert$, with $q_s(b)$ the term (i) of bag $s$, and the mean of $\lvert q_s(b)+\delta\rvert$ is smallest for a $b$ whose term (i) is close to $-\delta$ on average: the selection would choose a bandwidth whose quantifier error cancels the error of the recalls of $V_{\text{fit}}$. That error is a property of the half $V_{\text{fit}}$, not of the full $V$ on which the deployed method is fitted, so the cancellation would not carry over (the same reason as §T.9 of [[ext5_baycap_priors_tempering]]: the calibration bags cannot see the error that $V$ itself causes). Term (iii) does not depend on $b$ either; it only adds noise. The criterion therefore keeps term (i) alone, with the recalls of $V_{\text{fit}}$ and the true prevalences of the bags:
+
+$$\mathrm{crit}(b)=\frac1S\sum_{s=1}^S\big\lvert\hat d^{\text{fit}\top}(\hat\pi_s(b)-\pi_s)\big\rvert,\qquad b_{\text{cal}}=\arg\min_{b\in\mathcal G}\mathrm{crit}(b).$$
+
+In words: if the recalls of $h$ were exactly those measured, how much accuracy error would the quantifier cause at this bandwidth? The same construction gives a criterion for the other metrics, $\lvert A(\hat C\operatorname{diag}(\hat\pi_s))-A(\hat C\operatorname{diag}(\pi_s))\rvert$; E7.2 selects on vanilla accuracy only and reports the other metrics.
+
+## T.8 The maximum-likelihood estimate in place of the posterior mean
+
+**The approximation.** The criterion needs only the centre $\bar\pi_s(b)$ of the posterior of each bag, for $21$ bandwidths and $50$ bags per pair, about $1000$ posteriors per pair. With the uniform prior $\operatorname{Dir}(\mathbf 1)$, whose density is constant on the simplex, the posterior is proportional to the likelihood, so its highest point is the maximum-likelihood estimate $\hat\pi_s(b)$. For a bag of $N=1000$ outputs the posterior is concentrated: by the usual large-sample argument it is close to a Gaussian centred at $\hat\pi_s$ with a spread of order $1/\sqrt N$, so its mean is close to $\hat\pi_s$. E7.2 uses $\hat\pi_s(b)$ in the criterion. This is a new hypothesis, checked on the pilot (Measures).
+
+**Where it can fail.** The argument needs the maximum inside the simplex. Bags drawn from $\operatorname{Dir}(\mathbf 1)$ often have a class with a very small share, and then the maximum can sit on the boundary ($\hat\pi_{s,j}=0$), while the posterior mean, an average over the simplex, stays strictly positive. The two then differ by about the spread of the posterior in that direction, and the selected bandwidths may differ. The pilot reports how often they do.
+
+**Computing the estimate.** The log-likelihood $\ell(\pi)=\sum_u\ln\sum_j\pi_j\hat p_j(z_u)$ is a sum of logarithms of linear functions of $\pi$, so it is concave, and its maximum over the simplex (a convex set) is a single connected set of points with the same value. The EM algorithm reaches it: given the current $\pi$, it computes for each output the probabilities $r_{uj}=\pi_j\hat p_j(z_u)/\sum_k\pi_k\hat p_k(z_u)$ that it comes from each class, and sets the new $\pi_j$ to their average $\frac1N\sum_ur_{uj}$. Each step increases $\ell$, and the steps stop changing $\pi$ only at the maximum. The class densities $\hat p_j(z_u)$ are computed once per bandwidth for the instances of $V_{\text{cal}}$, so the cost is a few matrix products per bag.
+
+## T.9 Calibrating on half of $V$
+
+**Why the split.** If the calibration bags were drawn from the same instances on which the class densities are fitted, each output of a bag would sit on top of its own bump, and small bandwidths would look better than they are, for the reason that the ordinary likelihood prefers $b\to0$ (§T.2). Drawing the bags from $V_{\text{cal}}$, which the fitted densities have not seen, removes this.
+
+**The bandwidth of half the data.** The deployed method is fitted on all of $V$, twice the data of the calibration fit, so the best bandwidth for it is somewhat smaller. A standard property of kernel density estimation gives the size of the effect. The mean integrated squared error of a kernel density on $n$ points in $d$ dimensions is approximately $A\,b^4+B/(nb^d)$, a bias term that grows with $b$ and a variance term that shrinks with $b$ and with $n$ ($A,B>0$ depend on the density and the kernel, not on $n$ and $b$). Setting its derivative with respect to $b$ to zero,
+
+$$4A\,b^3-\frac{dB}{n\,b^{d+1}}=0\quad\Longrightarrow\quad b^{d+4}=\frac{dB}{4A\,n}\quad\Longrightarrow\quad b\propto n^{-1/(d+4)}.$$
+
+Halving $n$ multiplies the best bandwidth by $2^{1/(d+4)}$; with $d=K-1$, this is $1.15$ for $K=2$, $1.09$ for $K=5$ and $1.02$ for $K=26$, less than one step of the grid ($10^{0.1}\approx1.26$). The bias is noted and not corrected: $b_{\text{cal}}$ may be about one step larger than the best bandwidth for the full $V$ on the binary datasets.
+
+**Small $V_{\text{cal}}$.** A calibration bag has $1000$ instances drawn with replacement from $V_{\text{cal}}$, so on small datasets the same instances recur in many bags, and the $50$ bags carry less independent information than their size suggests. The criterion is still an average over prevalences that cover the simplex, which is what it is meant to probe.
+
 # Implementation
 
 Components:
@@ -161,18 +225,23 @@ Components:
 - **Per-class bandwidths:** the bandwidth is a hyperparameter of `BayesKDEy`, a positive number, `"scott"`, `"silverman"` or `"loo"`, passed through by `BayCAPKDEy` and `SQSB`. `"loo"` needs the Gaussian kernel and no shrinkage (and `c_prior="fixed"` in `BayCAPKDEy`), with a grid `bandwidth_grid` (default `LOO_GRID`, $\{10^{-2+0.1k}\}_{k=0}^{20}$). With `"loo"`, `_SelectedKernelDensities` selects $\hat b_j$ per class by the closed-form leave-one-out log-likelihood of §T.2 in $d=K-1$ dimensions (squared distances computed in chunks to bound memory on large classes), fits one `KernelDensity` per class with its $\hat b_j$, and returns log-densities corrected by $+\tfrac12\ln(2\pi\hat b_j^2)$ (§T.4); a class with $n_j<2$ keeps $0.1$. The selected bandwidths are stored (`bandwidths_`) and written per bag. Numeric bandwidths and `"scott"`/`"silverman"` keep QuaPy's densities unchanged.
 - **E7.1 in `main`:** two factory entries in `experiments/methods.py:LOO_VARIANTS`, `BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` (with the configuration and seed of `BayCAP-KDEy-mlp-real`, so the same selection and draws), excluded from the tables, ranks and default plots of `main`; per bag, the extra columns of the selection (`bandwidths`, `class_sizes`, `bandwidth_edge`, `loo_selected`, `loo_default`); the tables `tables/kdey_loo.py` and the plots `plots/kdey_loo.py`.
 
+- **E7.2, the selection:** `bandwidth="cal"` in `BayCAPKDEy` (with `c_prior="fixed"`, the Gaussian kernel and no shrinkage only), with the grid `bandwidth_grid` (default `LOO_GRID`), the number of calibration bags (default $50$) and the bag size (default $1000$). Its `fit` splits $V$ per class into halves with a generator seeded by `random_state`, fits the MLP on $V_{\text{fit}}$ (cross-fitted outputs), measures $\hat d^{\text{fit}}$, draws the calibration bags from $V_{\text{cal}}$ with QuaPy's UPP and its own seed, computes for each $b$ the log-densities of the instances of $V_{\text{cal}}$, the EM estimates of the bags (§T.8) and the criterion (§T.7), selects $b_{\text{cal}}$, and then fits the deployed BayesKDEy on the full $V$ at $b_{\text{cal}}$ exactly as the stored method does, so that the calibration consumes no random state of the deployed fit and $b_{\text{cal}}=0.1$ gives the draws of the stored method. A diagnostic option, for the pilot only, also computes the criterion with the NUTS posterior mean (§T.8). Per bag, `main` stores $b_{\text{cal}}$, the criterion curve, its values at $b_{\text{cal}}$ and at $0.1$ (and, with the diagnostic, the NUTS curve).
+- **E7.2 in `main`:** the factory entry `BayCAP-KDEy-mlp-real-cal` in `experiments/methods.py`, with the configuration and seed of `BayCAP-KDEy-mlp-real`, excluded from the tables, ranks and default plots of `main`; a table module and a plot module for E7.2, following [[work_plan]] Part V.
+
 Tests:
 
 - the closed-form leave-one-out log-likelihood equals the brute-force one (one `KernelDensity` per left-out point) on a small random set, with the $(K-1)$-dimensional normalisation;
 - on simplex data with $K=2$ and $K=3$, the corrected class density integrates to $1$ over the simplex surface up to the mass outside the simplex (checked numerically on data far from the edges);
 - the selection returns a known optimum on a toy set, and $0.01$ when the outputs of a class are all duplicated;
 - with a numeric `bandwidth`, the log-densities and the posterior draws are identical to those of the current code (stored results stay comparable);
-- `SQS-B-loo` and `BayCAP-KDEy-mlp-real-loo` share their prevalence draws for the same seeds, as `SQS-B` and `BayCAP-KDEy-mlp-real`.
+- `SQS-B-loo` and `BayCAP-KDEy-mlp-real-loo` share their prevalence draws for the same seeds, as `SQS-B` and `BayCAP-KDEy-mlp-real`;
+- E7.2: the split is stratified, disjoint and covers $V$; the calibration bags are reproducible for a seed and the same for every $b$; the EM estimate equals the maximiser of the log-likelihood found by a generic optimiser on a toy mixture; the criterion is invariant to adding a constant to the recalls (§T.7); with a grid of the single value $0.1$, `BayCAP-KDEy-mlp-real-cal` gives exactly the draws and tables of `BayCAP-KDEy-mlp-real`; the selection uses no target bag.
 
 Reproducibility and comparability:
 
 - The selection is deterministic given the cross-fitted outputs, which are seeded as in E3.1; the seeds of NUTS and of the bags are those of the stored methods, so the LOO variants differ from them only through the bandwidths.
 - The stored results of `main` are unchanged: the new methods add rows to `main`, and the shared-bandwidth path is not modified.
+- E7.2: the calibration is seeded by the `random_state` of the method and runs before the deployed fit without consuming its random state, so on the pairs where $b_{\text{cal}}=0.1$ the cal method reproduces the stored method bag by bag, and elsewhere it differs from it only through the bandwidth.
 
 # Appendix
 
@@ -182,13 +251,15 @@ None.
 
 ## B. Relation to other extensions
 
-- **[[ext3_posterior_propagation|Extension 3]]**: E7.1 changes only the bandwidth of the quantifier of `BayCAP-KDEy-mlp-real` (E3.1) and `SQS-B` (E3.3); the bridge from $\pi$ to the table is unchanged.
+- **[[ext3_posterior_propagation|Extension 3]]**: E7.1 and E7.2 change only the bandwidth of the quantifier of `BayCAP-KDEy-mlp-real` (E3.1) and, in E7.1, of `SQS-B` (E3.3); the bridge from $\pi$ to the table is unchanged.
+- **[[ext5_baycap_priors_tempering|Extension 5]], E5.3**: E7.2 reuses its calibration design (half of $V$, $50$ bags from $\operatorname{Dir}(\mathbf 1)$, the deployed method refitted on the full $V$) for the bandwidth instead of the temperature, with a criterion on the centre instead of the Winkler score.
 - **[[ext5_baycap_priors_tempering|Extension 5]]**: the prior on $\pi^Q$ and the temperature $\tau$ are held at $\operatorname{Dir}(\mathbf 1)$ and $1$, the values kept by Extension 5.
 - **[[ext4_uncertainty_budget|Extension 4]]**: the error coming from the rates of $h$ on $V$ does not depend on $b$ (§T.6).
-- **History.** Extension 7 was a factorial grid-search study of $h$, the surrogate classifier and the quantifier; it was narrowed to the bandwidth of BayesKDEy on 2026-11-19 (user's decision), and the earlier scope is set aside in [[optional_extensions]] §13.
+- **History.** Extension 7 was a factorial grid-search study of $h$, the surrogate classifier and the quantifier; it was narrowed to the bandwidth of BayesKDEy on 2026-11-19 (user's decision), and the earlier scope is set aside in [[optional_extensions]] §13. E7.1 (per-class leave-one-out bandwidths) was closed after its pilot on 2026-11-19 and E7.2 added the same day (user's decisions).
 
 ## C. Out of scope
 
 - the factorial optimisation of $h$, of surrogate classifiers and of other quantifiers ([[optional_extensions]] §13);
-- quantification-oriented selection of the bandwidth (by the error on bags drawn from $V$, as in the BayesKDEy paper), the Aitchison and ILR kernels and shrinkage;
+- selection of the bandwidth by the prevalence error, as in the BayesKDEy paper (§T.7 explains why E7.2 scores the accuracy instead), per-class bandwidths selected on calibration bags, the Aitchison and ILR kernels and shrinkage;
+- `SQS-B` in E7.2 (user's decision of 2026-11-19, for now);
 - the input classifier $h$ for BayesKDEy: only the MLP input of `main` is studied.
