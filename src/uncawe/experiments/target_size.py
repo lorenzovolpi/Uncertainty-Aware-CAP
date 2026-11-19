@@ -1,12 +1,22 @@
 r"""The study ``target_size``: the error split of two Bayesian CAP methods across the size $|V|$ of the validation set
 and the size $|U|$ of the target bag (E4.2 of ``docs/ext4_uncertainty_budget.md``; work-plan card WP-21 for E4.2b,
-the grid over $|V|$ at $|U|=1000$, and WP-22 for E4.2a, the grid over $|U|$ with the full $V$, ``--u-grid``).
+the grid over $|V|$ at $|U|=1000$, and WP-22 for E4.2a, the grid over $|U|$ with the full $V$, ``--u-grid``), and the
+accuracy and intervals of six CAP methods across the two sizes (E4.4, card WP-28: E4.4a ``--e44a``, E4.4b ``--e44b``).
 
 Scope: the datasets ``DATASETS`` of ``main`` and their pretrained classifiers LR and RF, in the classic domain; the
 methods ``BayesCAP-Hf-real`` (BayCAP with the Hf prior on $C$) and ``BayCAP-KDEy-mlp-real`` (BayesKDEy with an MLP
 input and a fixed $\hat C$), both with the realised pushforward, built as in ``main``
 (``experiments/methods.py``). Both target the realised table of the target bag and are scored against it
 (``true_cts``). $h$ is never retrained and the split $L/V$ of the pretrain files is unchanged.
+
+**E4.4 (WP-28).** The methods ``E44_METHODS``: the two above and ``SQS-H``, ``SQS-Hbs``, ``PQ`` (SQS-S) and ``SQS-B``,
+built as in ``main`` except that the SQS methods draw bags of ``sample_size`` $=|U|$ instances from $V$
+(``make_method``); on the $15$ datasets of ``main`` (``main_datasets``) with LR only. E4.4a (``--e44a``): the sizes
+``U_SIZES`` with the full $V$. E4.4b (``--e44b``): $|U|=1000$ and the levels ``E44_LEVELS`` (full, $1/\sqrt2$, $1/2$,
+$1/(2\sqrt2)$, $1/4$), with no threshold on the instances per class (``--no-class-threshold``, user's decision of
+2026-11-19); the cells below ``MIN_CLASS_COUNT`` are flagged afterwards from ``v_class_counts``
+(``tables/target_size_scores.py``). The scores (AE, Winkler score, coverage, amplitude) are computed by
+``tables/target_size_scores.py``. Both target the realised table of each bag and are scored against it.
 
 Purpose: the per-bag error split $e_1+e_2+e_3$ (``uncawe.error_split``) of the methods' mean tables, and its fixed and
 bag parts within a cell (§T.4), computed afterwards by ``tables/target_size.py``. A cell is (dataset, classifier,
@@ -17,12 +27,13 @@ method, prevalence, $|U|$, $|V|$ level, $V$ seed), with ``n_bags`` ($R$) bags.
   ($|U|\in\{100,300,1000,3000,10000\}$); the cells at $|U|=1000$ are those of E4.2b and, being stored, are skipped.
   Bags larger than the test pool repeat instances (they are drawn with replacement at every size).
 - **Validation sets.** The full $V$ (level ``full``, seed $0$ only) and nested, seeded, stratified subsamples of
-  $1/4$ and $1/16$ of $V$ (levels ``1/4`` and ``1/16``), $S_V$ seeds each (``--n-v-seeds``). For seed $s$, the
+  $1/4$ and $1/16$ of $V$ (levels ``1/4`` and ``1/16``; E4.4b adds $1/\sqrt2$, $1/2$, $1/(2\sqrt2)$, ``ALL_LEVELS``),
+  $S_V$ seeds each (``--n-v-seeds``). For seed $s$, the
   instances of each class of $V$ are permuted with a generator that depends only on the experiment seed, the dataset
   and $s$ (``subsample_index``), and the level of fraction $f$ keeps the first $\operatorname{round}(fn_j)$ of class
   $j$, so $V_{1/16}\subset V_{1/4}\subset V$ for each seed and every class keeps its share. A subsampled level runs on
   a dataset only if every class keeps at least ``MIN_CLASS_COUNT`` instances (user's decision of 2026-11-15, both
-  levels); ``--counts`` reports the counts without running any method. The methods are refitted on each subsample; on
+  levels), unless ``--no-class-threshold`` (E4.4b); every class keeps at least one instance; ``--counts`` reports the counts without running any method. The methods are refitted on each subsample; on
   the full $V$ they are fitted exactly as in ``main`` (same instances in the same order).
 - **Prevalences.** Three fixed vectors per dataset (``target_prevalences``): uniform $\mathbf 1/K$; ``skewed``, a draw
   from $\operatorname{Dir}(\mathbf 1)$ with a generator that depends only on the experiment seed and the dataset;
@@ -36,14 +47,16 @@ method, prevalence, $|U|$, $|V|$ level, $V$ seed), with ``n_bags`` ($R$) bags.
   its instances.
 
 Outputs: ``<OUT_DIR>/uncawe/target_size/u<|U|>/<level>/s<seed>/<domain>/<acc_name>/<dataset>/<classifier>/<method>.parquet``
-(``level`` is ``v1``, ``v1_4`` or ``v1_16``), one file per cell group (all prevalences and bags of a task), with the
-schema of ``main`` (the three metrics, the NUTS diagnostics and posterior summaries that ``main`` stores for the two
-methods) and the columns ``bag_size``, ``v_level``, ``v_fraction``, ``v_seed``, ``v_size``, ``v_class_counts``,
+(``level`` is one of ``LEVEL_DIRS``: ``v1``, ``v1_sqrt2``, ``v1_2``, ``v1_2sqrt2``, ``v1_4``, ``v1_16``), one file per
+cell group (all prevalences and bags of a task), with the schema of ``main`` (the three metrics, and the NUTS
+diagnostics and posterior summaries that ``main`` stores for the methods that sample with NUTS) and the columns ``bag_size``, ``v_level``, ``v_fraction``, ``v_seed``, ``v_size``, ``v_class_counts``,
 ``prevalence_kind``, ``requested_prev``, ``bag_index``, ``bag_seed``, ``config_hash`` and ``schema_version``. A file
-that exists is skipped. ``--counts`` writes ``<OUT_DIR>/uncawe/tables/target_size/v_counts.csv``.
+that exists is skipped. ``--counts`` writes ``<OUT_DIR>/uncawe/tables/target_size/v_counts.csv`` (with ``--e44b``,
+``v_counts_e44b.csv``, on the levels of E4.4b).
 
-Every method is a NumPyro method, so all the tasks run in one pool with ``BAYES_N_JOBS`` workers and ``BAYES_ENV``,
-and the caches of JAX are cleared after each task, as in ``main``.
+As in ``main``, the methods that sample with NumPyro (``BAYES_POOL_METHODS``) run in one pool with ``BAYES_N_JOBS``
+workers and ``BAYES_ENV``, the others (``SQS-H``, ``SQS-Hbs``, ``PQ``) in a pool with ``N_JOBS`` of ``cap.env`` and
+``THREAD_LIMITS``; the caches of JAX are cleared after each task.
 """
 
 import os
@@ -64,6 +77,7 @@ import jax
 import numpy as np
 import pandas as pd
 import quapy as qp
+from cap import env as capenv
 from cap.utils.commons import contingency_table, get_shift
 from quapy.data import LabelledCollection
 
@@ -72,14 +86,22 @@ from uncawe.experiments.execution import ExperimentOutcome, run_tasks, shutdown_
 from uncawe.experiments.methods import (
     BAYES_ENV,
     BAYES_N_JOBS,
+    BAYES_POOL_METHODS,
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
     SAMPLE_SIZE,
+    THREAD_LIMITS,
     baycap_method,
     fixed_c_method,
+    sqs_b,
+    sqs_h,
+    sqs_s,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
+from uncawe.methods.baycap import BayCAP
+from uncawe.methods.baycap_quantifier import QuantifierBayCAP
+from uncawe.methods.sqs_b import SQSB
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.util import get_logger, get_plain_prev, local_path
 
@@ -89,9 +111,26 @@ DOMAIN = "classic"
 DATASETS = ("mammographic", "german", "spambase", "wine-quality", "dry-bean", "letter")
 CLASSIFIERS = ("LR", "RF")
 METHODS = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
-# |V| levels: name -> fraction of V, and the folder of each level
+# E4.4 (WP-28, user's decision of 2026-11-19): the two methods of E4.2 and the SQS methods of main; O-LEAP left out
+E44_METHODS = METHODS + ("SQS-H", "SQS-Hbs", "PQ", "SQS-B")
+E44_CLASSIFIERS = ("LR",)
+# the SQS methods, whose bags of V get the size of the target bag in this study (make_method)
+SQS_METHODS = ("SQS-H", "SQS-Hbs", "PQ", "SQS-B")
+# |V| levels of E4.2: name -> fraction of V. Also part of ``config_hash``, so this dictionary stays as it is: the hash of
+# the stored cells of E4.2 must not change (the fraction of each cell is stored in ``v_fraction``)
 LEVELS = {"full": 1.0, "1/4": 1 / 4, "1/16": 1 / 16}
-LEVEL_DIRS = {"full": "v1", "1/4": "v1_4", "1/16": "v1_16"}
+# |V| levels of E4.4b, a geometric grid from V to V/4 (nested with those of E4.2)
+E44_LEVELS = {"full": 1.0, "1/sqrt2": 2**-0.5, "1/2": 1 / 2, "1/(2sqrt2)": 2**-1.5, "1/4": 1 / 4}
+# every level of the study, by decreasing fraction, and the folder of each level
+ALL_LEVELS = dict(sorted((LEVELS | E44_LEVELS).items(), key=lambda item: -item[1]))
+LEVEL_DIRS = {
+    "full": "v1",
+    "1/sqrt2": "v1_sqrt2",
+    "1/2": "v1_2",
+    "1/(2sqrt2)": "v1_2sqrt2",
+    "1/4": "v1_4",
+    "1/16": "v1_16",
+}
 MIN_CLASS_COUNT = 10
 PREVALENCE_KINDS = ("uniform", "skewed", "vertex")
 VERTEX_MASS = 0.9
@@ -137,7 +176,11 @@ def bag_seed(dataset: str, size: int, prevalence_index: int, bag_index: int) -> 
 
 def config_hash(n_bags: int) -> str:
     """A short hash of the settings that define the cells of a file: the experiment seed, $R$, the prevalences, the
-    subsampling rule and the NUTS settings; files with a different hash are not comparable cell by cell."""
+    subsampling rule and the NUTS settings; files with a different hash are not comparable cell by cell.
+
+    The hash does not depend on the level of a cell nor on the threshold on the classes, which do not change the
+    content of a cell: ``levels`` is the dictionary of E4.2 (``LEVELS``) and ``min_class_count`` its threshold, kept as
+    they were so that the cells of E4.2 keep their hash (``25fc61de00cb`` with $R=30$) and are reused by E4.4."""
     config = {
         "seed": int(qp.environ["_R_SEED"]),
         "n_bags": int(n_bags),
@@ -235,10 +278,12 @@ def subsample_counts(val_counts: np.ndarray, fraction: float) -> np.ndarray:
     return np.maximum(np.floor(fraction * val_counts + 0.5).astype(int), 1)
 
 
-def level_available(val_counts: np.ndarray, level: str, min_count: int = MIN_CLASS_COUNT) -> bool:
-    """Whether the level runs on a validation set with ``val_counts``: always for ``full``; for a subsample, if every
-    class keeps at least ``min_count`` instances."""
-    return level == "full" or int(subsample_counts(val_counts, LEVELS[level]).min()) >= min_count
+def level_available(val_counts: np.ndarray, level: str, min_count: int | None = MIN_CLASS_COUNT) -> bool:
+    """Whether the level runs on a validation set with ``val_counts``: always for ``full`` and with ``min_count=None``
+    (no threshold, E4.4b); for a subsample, if every class keeps at least ``min_count`` instances."""
+    if level == "full" or min_count is None:
+        return True
+    return int(subsample_counts(val_counts, ALL_LEVELS[level]).min()) >= min_count
 
 
 def subsample_index(val_y: np.ndarray, fraction: float, dataset: str, v_seed: int) -> np.ndarray:
@@ -269,6 +314,8 @@ class Task:
     level: str
     v_seed: int
     n_bags: int
+    # the threshold on the instances per class of a subsampled level; None: no threshold (E4.4b)
+    min_class_count: int | None = MIN_CLASS_COUNT
 
     @property
     def folder(self) -> str:
@@ -288,14 +335,29 @@ def _all_results_exist(p: PretrainInfo, task: Task) -> bool:
     return all(os.path.exists(_result_path(p, task, acc_name)) for acc_name in get_acc_names())
 
 
-def make_method(method_name: str):
-    """The method ``method_name`` of ``METHODS``, built as in ``main`` (same settings and seed)."""
+def make_method(method_name: str, size: int = SAMPLE_SIZE):
+    """The method ``method_name`` of ``E44_METHODS``, built as in ``main`` (same settings and seed), except that the
+    SQS methods draw bags of ``sample_size`` $=$ ``size`` instances from $V$, the size of the target bags of the task
+    (E4.4; at ``size`` $=1000$ they are the methods of ``main``)."""
     _, acc = next(gen_acc_measure(True))
     if method_name == "BayesCAP-Hf-real":
         return baycap_method(acc, method_name)
     if method_name == "BayCAP-KDEy-mlp-real":
         return fixed_c_method(acc, method_name)
-    raise ValueError(f"Unknown method {method_name}; the study runs {list(METHODS)}")
+    if method_name == "SQS-H":
+        return sqs_h(acc, bootstrap=False, sample_size=size)
+    if method_name == "SQS-Hbs":
+        return sqs_h(acc, bootstrap=True, sample_size=size)
+    if method_name == "PQ":
+        return sqs_s(acc, sample_size=size)
+    if method_name == "SQS-B":
+        return sqs_b(acc, sample_size=size)
+    raise ValueError(f"Unknown method {method_name}; the study runs {list(E44_METHODS)}")
+
+
+def _samples_with_nuts(method) -> bool:
+    """The methods that store the NUTS diagnostics and posterior summaries of each bag, as in ``main``."""
+    return isinstance(method, (BayCAP, QuantifierBayCAP, SQSB))
 
 
 def protocol(task: Task) -> list[ExperimentOutcome]:
@@ -319,11 +381,11 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
     n_classes = int(p.d_info.n_classes)
     val_y = np.asarray(dataset.V.y)
     val_counts = np.bincount(val_y, minlength=n_classes)
-    if not level_available(val_counts, task.level):
-        error = ValueError(f"{p.d_info.name}: level {task.level} keeps fewer than {MIN_CLASS_COUNT} of a class")
+    if not level_available(val_counts, task.level, task.min_class_count):
+        error = ValueError(f"{p.d_info.name}: level {task.level} keeps fewer than {task.min_class_count} of a class")
         return [EXP.ERROR(error, p, "ct", task.method_name, experiment=task.folder)]
 
-    v_index = subsample_index(val_y, LEVELS[task.level], p.d_info.name, task.v_seed)
+    v_index = subsample_index(val_y, ALL_LEVELS[task.level], p.d_info.name, task.v_seed)
     if task.level == "full":
         validation = dataset.V
     else:
@@ -343,7 +405,7 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
     )
 
     try:
-        method = make_method(task.method_name)
+        method = make_method(task.method_name, task.size)
         started = time()
         method = method.fit(validation, validation_posteriors)
         t_train = time() - started
@@ -353,9 +415,10 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
         estim_ct_ranges, diagnostics = [], []
         for bag in bags:
             estim_ct_ranges.append(method.predict_ct_range(dataset.U.X[bag.index], pool_posteriors[bag.index]))
-            started_diagnostics = time()
-            diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
-            t_diagnostics += time() - started_diagnostics
+            if _samples_with_nuts(method):
+                started_diagnostics = time()
+                diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
+                t_diagnostics += time() - started_diagnostics
         t_test_ave = (time() - started - t_diagnostics) / context.size
         estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
     except Exception as error:
@@ -363,11 +426,11 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
         return [EXP.ERROR(error, p, "ct", task.method_name, experiment=task.folder)]
 
     size = context.size
-    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]}
+    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]} if diagnostics else {}
     extra_columns |= {
         "bag_size": [task.size] * size,
         "v_level": [task.level] * size,
-        "v_fraction": [LEVELS[task.level]] * size,
+        "v_fraction": [ALL_LEVELS[task.level]] * size,
         "v_seed": [task.v_seed] * size,
         "v_size": [int(v_index.size)] * size,
         "v_class_counts": [v_class_counts.tolist()] * size,
@@ -448,11 +511,13 @@ def tasks(
     levels=tuple(LEVELS),
     n_v_seeds: int = N_V_SEEDS,
     n_bags: int = N_BAGS,
+    min_class_count: int | None = MIN_CLASS_COUNT,
     log: Logger | None = None,
 ) -> list[Task]:
     """The tasks still to run: every (pair, method, size, available level, $V$ seed), the full $V$ with seed $0$ only;
-    a subsampled level is left out on the datasets where a class would keep fewer than ``MIN_CLASS_COUNT``."""
-    unknown = sorted(set(methods) - set(METHODS)) + sorted(set(levels) - set(LEVELS))
+    a subsampled level is left out on the datasets where a class would keep fewer than ``min_class_count`` (never
+    with ``min_class_count=None``)."""
+    unknown = sorted(set(methods) - set(E44_METHODS)) + sorted(set(levels) - set(ALL_LEVELS))
     if unknown:
         raise ValueError(f"Unknown methods or levels: {unknown}")
     datasets, classifiers = list(datasets), list(classifiers)
@@ -463,15 +528,15 @@ def tasks(
         if name not in counts:
             counts[name] = _val_counts(p)
         for level in levels:
-            if not level_available(counts[name], level):
+            if not level_available(counts[name], level, min_class_count):
                 if log is not None:
-                    log.info(f"[{p.h_info.name}@{name}] level {level} skipped: a class keeps < {MIN_CLASS_COUNT}")
+                    log.info(f"[{p.h_info.name}@{name}] level {level} skipped: a class keeps < {min_class_count}")
                 continue
             seeds = [0] if level == "full" else range(n_v_seeds)
             for size in sizes:
                 for v_seed in seeds:
                     for method_name in methods:
-                        task = Task(path, method_name, int(size), level, int(v_seed), int(n_bags))
+                        task = Task(path, method_name, int(size), level, int(v_seed), int(n_bags), min_class_count)
                         if _all_results_exist(p, task):
                             if log is not None:
                                 log.info(f"[{p.h_info.name}@{name}] {method_name} {task.folder} exists, skipping")
@@ -480,25 +545,43 @@ def tasks(
     return out
 
 
+def split_pools(todo: list[Task]) -> tuple[list[Task], list[Task]]:
+    """The tasks of the methods that sample with NumPyro (``BAYES_POOL_METHODS``) and those of the other methods."""
+    bayes = [task for task in todo if task.method_name in BAYES_POOL_METHODS]
+    regular = [task for task in todo if task.method_name not in BAYES_POOL_METHODS]
+    return bayes, regular
+
+
 def run(log: Logger, **kwargs) -> None:
     todo = tasks(log=log, **kwargs)
-    log.info(f"{len(todo)} tasks to run")
-    run_tasks(log, todo, worker=protocol, n_jobs=BAYES_N_JOBS, experiment=EXPERIMENT, env=BAYES_ENV)
+    bayes, regular = split_pools(todo)
+    log.info(f"{len(todo)} tasks to run ({len(bayes)} NumPyro, {len(regular)} other)")
+    run_tasks(log, regular, worker=protocol, n_jobs=capenv["N_JOBS"], experiment=EXPERIMENT, env=THREAD_LIMITS)
+    run_tasks(log, bayes, worker=protocol, n_jobs=BAYES_N_JOBS, experiment=EXPERIMENT, env=BAYES_ENV)
 
 
-def count_table(datasets=DATASETS, n_v_seeds: int = N_V_SEEDS) -> pd.DataFrame:
-    """Per dataset, level and $V$ seed: the size of the subsample, its smallest class count and whether the level runs
-    (``level_available``), with the counts per class; the subsample itself is drawn, so the counts are checked."""
+def count_table(
+    datasets=DATASETS,
+    n_v_seeds: int = N_V_SEEDS,
+    levels=tuple(LEVELS),
+    classifiers=CLASSIFIERS,
+    min_class_count: int | None = MIN_CLASS_COUNT,
+) -> pd.DataFrame:
+    """Per dataset, level and $V$ seed: the size of the subsample, its smallest class count, whether the level runs
+    (``level_available`` with ``min_class_count``) and whether a class keeps fewer than ``MIN_CLASS_COUNT`` instances
+    (``below_threshold``, the flag of E4.4b), with the counts per class; the subsample itself is drawn, so the counts
+    are checked."""
     rows = []
     seen = set()
-    for _, p in _pretrains(list(datasets), list(CLASSIFIERS)):
+    for _, p in _pretrains(list(datasets), list(classifiers)):
         name = p.d_info.name
         if name in seen:
             continue
         seen.add(name)
         val_y = np.asarray(p.load_dataset_bundle().V.y)
         val_counts = np.bincount(val_y, minlength=int(p.d_info.n_classes))
-        for level, fraction in LEVELS.items():
+        for level in levels:
+            fraction = ALL_LEVELS[level]
             for v_seed in [0] if level == "full" else range(n_v_seeds):
                 index = subsample_index(val_y, fraction, name, v_seed)
                 counts = np.bincount(val_y[index], minlength=len(val_counts))
@@ -510,18 +593,22 @@ def count_table(datasets=DATASETS, n_v_seeds: int = N_V_SEEDS) -> pd.DataFrame:
                         "v_seed": v_seed,
                         "v_size": int(index.size),
                         "min_class_count": int(counts.min()),
-                        "runs": level_available(val_counts, level),
+                        "runs": level_available(val_counts, level, min_class_count),
+                        "below_threshold": bool(counts.min() < MIN_CLASS_COUNT),
                         "class_counts": counts.tolist(),
                     }
                 )
     return pd.DataFrame(rows)
 
 
-def write_counts(log: Logger, datasets=DATASETS, n_v_seeds: int = N_V_SEEDS) -> pd.DataFrame:
-    table = count_table(datasets, n_v_seeds)
+def write_counts(
+    log: Logger, datasets=DATASETS, n_v_seeds: int = N_V_SEEDS, suffix: str = "", **kwargs
+) -> pd.DataFrame:
+    """Write ``count_table`` (``kwargs``: its levels, classifiers and threshold) to ``v_counts<suffix>.csv``."""
+    table = count_table(datasets, n_v_seeds, **kwargs)
     out_dir = os.path.join(env.root_dir, "tables", EXPERIMENT)
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, "v_counts.csv")
+    path = os.path.join(out_dir, f"v_counts{suffix}.csv")
     table.to_csv(path, index=False)
     with pd.option_context("display.width", 250, "display.max_columns", None, "display.max_colwidth", 80):
         print(table.to_string(index=False))
@@ -529,32 +616,79 @@ def write_counts(log: Logger, datasets=DATASETS, n_v_seeds: int = N_V_SEEDS) -> 
     return table
 
 
+def main_datasets() -> list[str]:
+    """The $15$ datasets of ``main`` (``experiments/datasets.py:get_filtered_datasets``), those of E4.4."""
+    from uncawe.experiments.datasets import get_filtered_datasets
+
+    return list(get_filtered_datasets())
+
+
+# the grids of E4.4 (WP-28): the defaults that ``--e44a`` and ``--e44b`` give to the options not passed
+E44_PRESETS = {
+    "e44a": {"sizes": list(U_SIZES), "levels": ["full"], "class_threshold": True},
+    "e44b": {"sizes": [SAMPLE_SIZE], "levels": list(E44_LEVELS), "class_threshold": False},
+}
+
+
 def parse_args(argv: list[str] | None = None):
     parser = ArgumentParser(
-        description="The study target_size: the error split across |V| and |U| (E4.2, WP-21, WP-22)."
+        description="The study target_size: the error split across |V| and |U| (E4.2, WP-21, WP-22) and the scores "
+        "of six methods across |U| and |V| (E4.4, WP-28)."
     )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--run", action="store_true", help="Run the methods on the grid")
     mode.add_argument("--counts", action="store_true", help="Write the class counts of the subsamples of V only")
-    parser.add_argument("--datasets", nargs="+", default=list(DATASETS), choices=DATASETS)
-    parser.add_argument("--classifiers", nargs="+", default=list(CLASSIFIERS), choices=CLASSIFIERS)
-    parser.add_argument("--methods", nargs="+", default=list(METHODS), choices=METHODS)
-    parser.add_argument("--sizes", nargs="+", type=int, default=None, help="Bag sizes |U| (default: 1000)")
-    parser.add_argument("--levels", nargs="+", default=None, choices=tuple(LEVELS), help="|V| levels (default: all)")
-    parser.add_argument(
+    grid = parser.add_mutually_exclusive_group()
+    grid.add_argument(
         "--u-grid",
         action="store_true",
         help=f"E4.2a (WP-22): the sizes {list(U_SIZES)} with the full V only; excludes --sizes and --levels",
     )
+    grid.add_argument(
+        "--e44a",
+        action="store_true",
+        help=f"E4.4a (WP-28): the methods {list(E44_METHODS)}, the datasets of main, LR, the sizes {list(U_SIZES)} "
+        "with the full V; --datasets, --classifiers and --methods restrict it (e.g. the pilot)",
+    )
+    grid.add_argument(
+        "--e44b",
+        action="store_true",
+        help=f"E4.4b (WP-28): as --e44a, at |U|={SAMPLE_SIZE} with the levels {list(E44_LEVELS)} and no threshold on "
+        "the classes",
+    )
+    parser.add_argument("--datasets", nargs="+", default=None, help=f"Datasets (default: {list(DATASETS)})")
+    parser.add_argument("--classifiers", nargs="+", default=None, choices=CLASSIFIERS)
+    parser.add_argument("--methods", nargs="+", default=None, choices=E44_METHODS)
+    parser.add_argument("--sizes", nargs="+", type=int, default=None, help="Bag sizes |U| (default: 1000)")
+    parser.add_argument(
+        "--levels", nargs="+", default=None, choices=tuple(ALL_LEVELS), help="|V| levels (default: those of E4.2)"
+    )
+    parser.add_argument(
+        "--no-class-threshold",
+        action="store_true",
+        help=f"Run the subsampled levels also where a class keeps fewer than {MIN_CLASS_COUNT} instances (E4.4b)",
+    )
     parser.add_argument("--n-v-seeds", type=int, default=N_V_SEEDS, help=f"S_V (default: {N_V_SEEDS})")
     parser.add_argument("--n-bags", type=int, default=N_BAGS, help=f"R, bags per cell (default: {N_BAGS})")
     args = parser.parse_args(argv)
+    args.preset = "e44a" if args.e44a else "e44b" if args.e44b else None
+    if (args.u_grid or args.preset is not None) and (args.sizes is not None or args.levels is not None):
+        parser.error("--u-grid, --e44a and --e44b set the sizes and the levels; do not pass --sizes or --levels")
     if args.u_grid:
-        if args.sizes is not None or args.levels is not None:
-            parser.error("--u-grid sets the sizes and the levels; do not pass --sizes or --levels with it")
         args.sizes, args.levels = list(U_SIZES), ["full"]
+    if args.preset is not None:
+        preset = E44_PRESETS[args.preset]
+        args.sizes, args.levels = list(preset["sizes"]), list(preset["levels"])
+        args.no_class_threshold = args.no_class_threshold or not preset["class_threshold"]
+        args.datasets = main_datasets() if args.datasets is None else args.datasets
+        args.classifiers = list(E44_CLASSIFIERS) if args.classifiers is None else args.classifiers
+        args.methods = list(E44_METHODS) if args.methods is None else args.methods
+    args.datasets = list(DATASETS) if args.datasets is None else args.datasets
+    args.classifiers = list(CLASSIFIERS) if args.classifiers is None else args.classifiers
+    args.methods = list(METHODS) if args.methods is None else args.methods
     args.sizes = list(BAG_SIZES) if args.sizes is None else args.sizes
     args.levels = list(LEVELS) if args.levels is None else args.levels
+    args.min_class_count = None if args.no_class_threshold else MIN_CLASS_COUNT
     if any(size < 1 for size in args.sizes):
         parser.error(f"Bag sizes must be positive: {args.sizes}")
     return args
@@ -566,7 +700,15 @@ def main() -> None:
     try:
         log.info("-" * 31 + "  start  " + "-" * 31)
         if pargs.counts:
-            write_counts(log, pargs.datasets, pargs.n_v_seeds)
+            write_counts(
+                log,
+                pargs.datasets,
+                pargs.n_v_seeds,
+                suffix="" if pargs.preset is None else f"_{pargs.preset}",
+                levels=pargs.levels,
+                classifiers=pargs.classifiers,
+                min_class_count=pargs.min_class_count,
+            )
         else:
             run(
                 log,
@@ -577,6 +719,7 @@ def main() -> None:
                 levels=pargs.levels,
                 n_v_seeds=pargs.n_v_seeds,
                 n_bags=pargs.n_bags,
+                min_class_count=pargs.min_class_count,
             )
     except Exception as error:
         log.error(error)
