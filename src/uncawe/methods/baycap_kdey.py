@@ -14,6 +14,12 @@ hyperparameters (``quantifier_``), with the same draws (``tests/test_wp25_restru
 ``bandwidth="loo"`` (E7.1 of ``docs/ext7_kdey_bandwidth.md``), with ``c_prior="fixed"`` only: one bandwidth per class,
 selected by leave-one-out likelihood on $V$.
 
+Work-plan card WP-26 (E7.2 of ``docs/ext7_kdey_bandwidth.md``, §T.7–§T.9) adds ``bandwidth="cal"``, with
+``c_prior="fixed"`` only: one bandwidth shared by the classes, selected per pair inside ``fit`` from $V$ alone, on
+calibration bags drawn from half of $V$, by the accuracy error that the quantifier causes
+(:meth:`BayCAPKDEy.select_bandwidth`); the deployed method is then fitted on the full $V$ at the selected bandwidth
+exactly as with a numeric one.
+
 ``c_prior="hierarchical-f"`` gives the methods ``BayCAP-KDEy-Hf-<s>-real`` of E3.2 (work-plan card WP-13, §T.10–§T.13):
 each class of $V$ is split into cells by the prediction of $h$, the class density of BayesKDEy becomes the mixture
 $f_j=\sum_kC_{kj}\hat\phi_{kj}$ of the kernel densities of its cells, and $(\pi,C)$ are sampled jointly by NUTS, with the
@@ -30,9 +36,12 @@ import jax.numpy as jnp
 import numpy as np
 import numpyro
 import numpyro.distributions as dist
+import quapy as qp
 from cap.models.confidence import P_C_COND_Y, P_TEST_Y
 from jax.scipy.special import logsumexp
+from quapy.data import LabelledCollection
 from quapy.method._bayesian import _resolve_dirichlet_prior
+from quapy.protocol import UPP
 
 from uncawe.methods.baycap import (
     H_KAPPA,
@@ -49,7 +58,16 @@ from uncawe.methods.baycap import (
     realised_tables,
 )
 from uncawe.methods.baycap_quantifier import QuantifierBayCAP, _validate_prevalence_samples
-from uncawe.methods.bayes_kdey import LOO, LOO_SUMMARIES, BayesKDEy, kdey_model
+from uncawe.methods.bayes_kdey import (
+    LOO,
+    LOO_DEFAULT_BANDWIDTH,
+    LOO_GRID,
+    LOO_SUMMARIES,
+    BayesKDEy,
+    em_prevalences,
+    kdey_model,
+)
+from uncawe.methods.bayesian_quantifier import PREV, _validate_outputs
 
 # the prior on the columns of C: "fixed" holds C at the rates of h on V (E3.1), "hierarchical-f" samples C with the Hf
 # prior of BayCAP (E3.2)
@@ -64,6 +82,119 @@ CELL_OWN, CELL_PREDICTED, CELL_CLASS = 0, 1, 2
 # top-label ECE of the input classifier on its validation outputs
 CELL_SUMMARIES = ("c_mean", "c_sd", "mismatch", "n_empty_cells", "n_class_density_cells", "val_ece")
 KDEY_HF_SUMMARIES = HIERARCHICAL_SUMMARIES + KAPPA_SUMMARIES + CELL_SUMMARIES
+
+# the selection of one shared bandwidth on calibration bags drawn from half of V (E7.2): the number and the size of the
+# calibration bags, and the reference bandwidth (the stored one), towards which ties are broken and at which the
+# criterion is also reported
+CAL = "cal"
+CAL_BAGS = 50
+CAL_BAG_SIZE = 1000
+CAL_REFERENCE = LOO_DEFAULT_BANDWIDTH
+# the streams of the seeds of the calibration, derived from random_state (calibration_seed)
+CAL_SPLIT_STREAM, CAL_BAG_STREAM = 0, 1
+# per-bag summaries added by bandwidth="cal" (the selection is fixed by the fit, so the same for every bag): the selected
+# bandwidth b_cal, the criterion over bandwidth_grid (a vector), its values at b_cal and at CAL_REFERENCE, and the
+# number of (bandwidth, calibration bag) cells whose EM estimate did not converge, the sizes of V and of V_cal; with
+# cal_nuts_check, also the
+# bandwidth selected and the criterion curve computed with the NUTS posterior mean in place of the EM estimate
+CAL_SUMMARIES = (
+    "cal_bandwidth",
+    "cal_curve",
+    "cal_selected",
+    "cal_default",
+    "cal_em_unconverged",
+    "cal_n_val",
+    "cal_n_cal",
+)
+CAL_NUTS_SUMMARIES = ("cal_bandwidth_nuts", "cal_curve_nuts")
+
+
+def calibration_seed(random_state: int, stream: int) -> int:
+    """A 32-bit seed of the calibration of ``bandwidth="cal"``, from ``random_state`` and the stream (``CAL_*_STREAM``)
+    only, so that the split and the bags do not depend on the classifier $h$ or on any global random state."""
+    return int(np.random.SeedSequence([int(random_state), int(stream)]).generate_state(1)[0])
+
+
+def split_halves(labels: np.ndarray, classes: np.ndarray, seed: int) -> tuple[np.ndarray, np.ndarray]:
+    r"""Indices into $V$ of $V_{\text{fit}}$ and $V_{\text{cal}}$, each in increasing order (§T.9).
+
+    The instances of each class are permuted by one generator seeded by ``seed`` (class by class, in the order of
+    ``classes``); the first $\lfloor n_j/2\rfloor$ go to $V_{\text{cal}}$ and the others to $V_{\text{fit}}$, as the
+    split of E5.3 (``experiments/tau_select.py:split_index``). Raises ``ValueError`` if a class has fewer than $2$
+    instances.
+    """
+    labels = np.asarray(labels)
+    rng = np.random.default_rng(seed)
+    fit, cal = [], []
+    for class_ in classes:
+        members = np.flatnonzero(labels == class_)
+        if len(members) < 2:
+            raise ValueError(
+                f"every class needs at least 2 instances in V to be split; class {class_} has {len(members)}"
+            )
+        permuted = rng.permutation(members)
+        cal.append(permuted[: len(members) // 2])
+        fit.append(permuted[len(members) // 2 :])
+    return np.sort(np.concatenate(fit)), np.sort(np.concatenate(cal))
+
+
+def calibration_bags(
+    labels: np.ndarray, classes: np.ndarray, n_bags: int, size: int, seed: int
+) -> tuple[np.ndarray, np.ndarray]:
+    r"""The calibration bags, drawn from a labelled pool (here $V_{\text{cal}}$) by QuaPy's UPP, as ``main`` draws its
+    target bags: prevalences uniform on the simplex ($\operatorname{Dir}(\mathbf 1)$), instances drawn with
+    replacement within each class, ``random_state=seed``.
+
+    :return: the indices into the pool of the instances of each bag, shape ``(n_bags, size)``, and the true prevalence
+        of each bag (its class proportions), shape ``(n_bags, K)``, columns in the order of ``classes``.
+    """
+    labels = np.asarray(labels)
+    pool = LabelledCollection(np.arange(len(labels)).reshape(-1, 1), labels, classes=classes)
+    protocol = UPP(pool, sample_size=size, repeats=n_bags, random_state=seed, return_type="labelled_collection")
+    # QuaPy's temp_seed restores the global NumPy state but writes the seed into qp.environ["_R_SEED"], the experiment
+    # seed, which must stay as it is
+    had_seed, experiment_seed = "_R_SEED" in qp.environ, qp.environ.get("_R_SEED")
+    try:
+        samples = list(protocol())
+    finally:
+        if had_seed:
+            qp.environ["_R_SEED"] = experiment_seed
+        else:
+            qp.environ.pop("_R_SEED", None)
+    index = np.stack([np.asarray(sample.X).ravel().astype(int) for sample in samples])
+    prevalences = np.stack([np.asarray(sample.prevalence(), dtype=float) for sample in samples])
+    return index, prevalences
+
+
+def class_recalls(labels: np.ndarray, predicted: np.ndarray, classes: np.ndarray) -> np.ndarray:
+    r"""The recall $\hat d_j=\hat C_{jj}$ of $h$ on each class, the share of its instances predicted as itself."""
+    labels, predicted = np.asarray(labels), np.asarray(predicted)
+    return np.asarray([np.mean(predicted[labels == class_] == class_) for class_ in classes], dtype=float)
+
+
+def accuracy_criterion(estimates: np.ndarray, prevalences: np.ndarray, recalls: np.ndarray) -> np.ndarray:
+    r"""The calibration criterion of §T.7, $\frac1S\sum_s\lvert\hat d^\top(\hat\pi_s-\pi_s)\rvert$: the mean over
+    the bags of the accuracy error that the quantifier causes if the recalls of $h$ are $\hat d$.
+
+    :param estimates: $\hat\pi_s$, shape ``(..., S, K)`` (e.g. one row of bags per bandwidth).
+    :param prevalences: the true prevalences $\pi_s$ of the bags, shape ``(S, K)``.
+    :param recalls: $\hat d$, shape ``(K,)``.
+    :return: the criterion, shape ``(...)``.
+    """
+    errors = (np.asarray(estimates, dtype=float) - np.asarray(prevalences, dtype=float)) @ np.asarray(recalls, float)
+    return np.abs(errors).mean(axis=-1)
+
+
+def select_from_curve(grid, curve: np.ndarray, reference: float = CAL_REFERENCE) -> int:
+    r"""The index of the smallest value of ``curve`` over ``grid``; among values equal up to rounding (relative
+    difference $10^{-9}$), the bandwidth closest to ``reference`` on the $\log_{10}$ scale, and the smaller of two at the
+    same distance."""
+    grid, curve = np.asarray(grid, dtype=float), np.asarray(curve, dtype=float)
+    if not np.isfinite(curve).any():
+        raise ValueError("the criterion is not finite at any bandwidth")
+    best = np.nanmin(curve)
+    ties = np.flatnonzero(np.isclose(curve, best, rtol=1e-9, atol=0.0))
+    return int(ties[np.argmin(np.abs(np.log10(grid[ties]) - np.log10(reference)))])
 
 
 def kdey_hf_loglik(prev, rates, log_cells, pred=None):
@@ -121,6 +252,12 @@ class BayCAPKDEy(QuantifierBayCAP):
       :class:`uncawe.methods.bayes_kdey.BayesKDEy`), and each draw is pushed through the rate matrix $\hat C$ of $h$ on
       $V$. After each ``predict_ct_range`` call, :meth:`last_posterior_summaries` returns ``FIXED_SUMMARIES``, and, with
       ``bandwidth="loo"``, the ``LOO_SUMMARIES`` of the selection too.
+    - ``bandwidth="cal"`` (E7.2, ``c_prior="fixed"``, Gaussian kernel and no shrinkage only): ``fit`` first selects
+      one bandwidth shared by the classes from $V$ alone (:meth:`select_bandwidth`, §T.7–§T.9), then fits the method on
+      the full $V$ at the selected bandwidth ``cal_bandwidth_`` exactly as with that numeric bandwidth: the selection
+      draws its randomness from its own seeds (:func:`calibration_seed`) and consumes no random state of the deployed
+      fit, so a selected $0.1$ gives the draws of ``bandwidth=0.1``. The per-bag summaries add ``CAL_SUMMARIES`` (and
+      ``CAL_NUTS_SUMMARIES`` with ``cal_nuts_check``).
     - ``c_prior="hierarchical-f"`` (E3.2, §T.10–§T.13): ``fit`` splits each class $\omega_j$ of $V$ into the cells
       $V_{kj}$ of the instances that $h$ predicts as $\omega_k$ and fits one kernel density $\hat\phi_{kj}$ per cell on
       the validation outputs of the input classifier (cross-fitted for ``mlp``). An empty cell takes the density of all
@@ -138,15 +275,22 @@ class BayCAPKDEy(QuantifierBayCAP):
     :param estimand: ``"population"`` or ``"realised"``.
     :param c_prior: ``"fixed"`` or ``"hierarchical-f"``.
     :param kernel: kernel of BayesKDEy (``"gaussian"``, ``"aitchison"`` or ``"ilr"``).
-    :param bandwidth: bandwidth of BayesKDEy, a positive number, ``"scott"``, ``"silverman"`` or ``"loo"`` (per-class
-        bandwidths selected by leave-one-out likelihood; Gaussian kernel, no shrinkage and ``c_prior="fixed"`` only).
-    :param bandwidth_grid: the grid of ``"loo"``; ``bayes_kdey.LOO_GRID`` if ``None``.
+    :param bandwidth: bandwidth of BayesKDEy, a positive number, ``"scott"``, ``"silverman"``, ``"loo"`` (per-class
+        bandwidths selected by leave-one-out likelihood) or ``"cal"`` (one bandwidth selected on calibration bags);
+        ``"loo"`` and ``"cal"`` need the Gaussian kernel, no shrinkage and ``c_prior="fixed"``.
+    :param bandwidth_grid: the grid of ``"loo"`` and ``"cal"``; ``bayes_kdey.LOO_GRID`` if ``None``.
     :param shrinkage: shrinkage of BayesKDEy, in $[0,1)$, $0$ with the Gaussian kernel.
     :param num_warmup: number of NUTS warm-up iterations.
     :param num_samples: number of posterior draws retained after warm-up.
     :param temperature: temperature $\tau$ of the likelihood of the bag.
     :param prior: Dirichlet parameter of the prior on $\pi$ (``"uniform"``, a positive scalar or a vector).
-    :param random_state: seed of NUTS, of the MLP and of the multinomial draws; ``qp.environ["_R_SEED"]`` if ``None``.
+    :param random_state: seed of NUTS, of the MLP and of the multinomial draws, and the root of the seeds of the
+        calibration of ``"cal"``; ``qp.environ["_R_SEED"]`` if ``None``.
+    :param cal_bags: the number $S$ of calibration bags of ``"cal"``.
+    :param cal_bag_size: the size of a calibration bag of ``"cal"``.
+    :param cal_nuts_check: with ``"cal"``, also compute the criterion with the NUTS posterior mean in place of the EM
+        estimate, for every bandwidth and calibration bag (the pilot check of E7.2, §T.8); it does not change the
+        selection.
     """
 
     def __init__(
@@ -156,7 +300,7 @@ class BayCAPKDEy(QuantifierBayCAP):
         estimand: Literal["population", "realised"] = "population",
         c_prior: Literal["fixed", "hierarchical-f"] = "fixed",
         kernel: Literal["gaussian", "aitchison", "ilr"] = "gaussian",
-        bandwidth: float | Literal["scott", "silverman", "loo"] = 0.1,
+        bandwidth: float | Literal["scott", "silverman", "loo", "cal"] = 0.1,
         bandwidth_grid=None,
         shrinkage: float = 0.0,
         num_warmup: int = 500,
@@ -164,6 +308,9 @@ class BayCAPKDEy(QuantifierBayCAP):
         temperature: float = 1.0,
         prior: str | Number | np.ndarray = "uniform",
         random_state: int | None = None,
+        cal_bags: int = CAL_BAGS,
+        cal_bag_size: int = CAL_BAG_SIZE,
+        cal_nuts_check: bool = False,
     ) -> None:
         if c_prior not in KDEY_C_PRIORS:
             raise ValueError(f"c_prior must be one of {KDEY_C_PRIORS}; found {c_prior!r}")
@@ -177,17 +324,43 @@ class BayCAPKDEy(QuantifierBayCAP):
             prior=prior,
             random_state=random_state,
         )
-        if c_prior != "fixed" and bandwidth == LOO:
-            raise ValueError('bandwidth="loo" is implemented only with c_prior="fixed"')
+        if c_prior != "fixed" and bandwidth in (LOO, CAL):
+            raise ValueError(f'bandwidth="{bandwidth}" is implemented only with c_prior="fixed"')
         self.c_prior = c_prior
         self.kernel = kernel
         self.bandwidth = bandwidth
         self.bandwidth_grid = bandwidth_grid
         self.shrinkage = shrinkage
+        self.cal_bags = int(cal_bags)
+        self.cal_bag_size = int(cal_bag_size)
+        self.cal_nuts_check = bool(cal_nuts_check)
+        if self.calibrates_bandwidth:
+            if kernel != "gaussian" or shrinkage != 0:
+                raise ValueError('bandwidth="cal" needs the Gaussian kernel and no shrinkage')
+            grid = np.asarray(self._cal_grid(), dtype=float)
+            if grid.ndim != 1 or len(grid) == 0 or np.any(grid <= 0) or np.any(np.diff(grid) <= 0):
+                raise ValueError("bandwidth_grid must be a non-empty increasing sequence of positive numbers")
+            if self.cal_bags < 1 or self.cal_bag_size < 1:
+                raise ValueError("cal_bags and cal_bag_size must be positive")
         # checks the hyperparameters of the quantifier
         self._make_quantifier()
 
+    @property
+    def calibrates_bandwidth(self) -> bool:
+        """Whether the bandwidth is selected on calibration bags (``bandwidth="cal"``)."""
+        return isinstance(self.bandwidth, str) and self.bandwidth == CAL
+
+    def _cal_grid(self) -> tuple:
+        return LOO_GRID if self.bandwidth_grid is None else tuple(self.bandwidth_grid)
+
     def _make_quantifier(self) -> BayesKDEy:
+        if self.calibrates_bandwidth:
+            # the deployed quantifier: BayesKDEy at the selected bandwidth (the reference before the selection, to check
+            # the hyperparameters), built exactly as with a numeric bandwidth
+            bandwidth = getattr(self, "cal_bandwidth_", CAL_REFERENCE)
+            return BayesKDEy(
+                kernel=self.kernel, bandwidth=bandwidth, shrinkage=self.shrinkage, **self._quantifier_settings()
+            )
         return BayesKDEy(
             kernel=self.kernel,
             bandwidth=self.bandwidth,
@@ -195,6 +368,115 @@ class BayCAPKDEy(QuantifierBayCAP):
             shrinkage=self.shrinkage,
             **self._quantifier_settings(),
         )
+
+    def fit(self, val: LabelledCollection, posteriors: np.ndarray):
+        """Measure the rates of $h$ on $V$ and fit the quantifier; with ``bandwidth="cal"``, select the bandwidth first
+        (:meth:`select_bandwidth`)."""
+        if self.calibrates_bandwidth:
+            self.select_bandwidth(val, posteriors)
+        return super().fit(val, posteriors)
+
+    def select_bandwidth(self, val: LabelledCollection, posteriors: np.ndarray) -> float:
+        r"""Select one bandwidth shared by the classes on calibration bags drawn from half of $V$ (E7.2, §T.7–§T.9).
+
+        1. $V$ is split per class into $V_{\text{fit}}$ and $V_{\text{cal}}$, half each (:func:`split_halves`, seed
+           ``calibration_seed(random_state, CAL_SPLIT_STREAM)``).
+        2. On $V_{\text{fit}}$: BayesKDEy with the input classifier of the method (for ``mlp``, the MLP with its
+           cross-fitted outputs, then trained on all of $V_{\text{fit}}$) and the recalls $\hat d^{\text{fit}}$ of $h$.
+        3. ``cal_bags`` bags of ``cal_bag_size`` instances drawn from $V_{\text{cal}}$ by UPP
+           (:func:`calibration_bags`, seed ``calibration_seed(random_state, CAL_BAG_STREAM)``), the same for every
+           bandwidth, each with its true prevalence $\pi_s$ and the outputs of the input classifier of $V_{\text{fit}}$.
+        4. For each $b$ of the grid: the class densities on $V_{\text{fit}}$ at $b$, their log-densities at the outputs
+           of $V_{\text{cal}}$ (once per $b$), the EM estimate $\hat\pi_s(b)$ of each bag (:func:`em_prevalences`) and
+           the criterion $\frac1S\sum_s\lvert\hat d^{\text{fit}\top}(\hat\pi_s(b)-\pi_s)\rvert$
+           (:func:`accuracy_criterion`); the criterion is also computed at ``CAL_REFERENCE`` if it is not in the grid.
+        5. $b_{\text{cal}}$ is the bandwidth of smallest criterion, ties broken towards ``CAL_REFERENCE``
+           (:func:`select_from_curve`).
+
+        Only the labels of $V$ are used. With ``cal_nuts_check``, step 4 is repeated with the posterior mean of a NUTS
+        run of the model of BayesKDEy (prior, temperature and NUTS settings of the method) in place of the EM estimate;
+        the selection still uses the EM estimate.
+
+        :return: $b_{\text{cal}}$, also stored in ``cal_bandwidth_``.
+        """
+        posteriors = np.asarray(posteriors, dtype=float)
+        classes = np.asarray(val.classes_)
+        _validate_outputs(posteriors, len(val), len(classes))
+        labels = np.asarray(val.y)
+        predicted = classes[np.argmax(posteriors, axis=1)]
+        fit_index, cal_index = split_halves(labels, classes, calibration_seed(self.random_state, CAL_SPLIT_STREAM))
+        half = BayesKDEy(
+            kernel=self.kernel, bandwidth=CAL_REFERENCE, shrinkage=self.shrinkage, **self._quantifier_settings()
+        )
+        half.fit(LabelledCollection(val.X[fit_index], labels[fit_index], classes=classes), posteriors[fit_index])
+        cal_outputs = half.outputs(val.X[cal_index], posteriors[cal_index])
+        recalls = class_recalls(labels[fit_index], predicted[fit_index], classes)
+        bag_index, prevalences = calibration_bags(
+            labels[cal_index],
+            classes,
+            self.cal_bags,
+            self.cal_bag_size,
+            calibration_seed(self.random_state, CAL_BAG_STREAM),
+        )
+        counts = np.stack([np.bincount(index, minlength=len(cal_index)) for index in bag_index])
+
+        grid = np.asarray(self._cal_grid(), dtype=float)
+        with_reference = grid if np.any(np.isclose(grid, CAL_REFERENCE)) else np.append(grid, CAL_REFERENCE)
+        estimates = np.empty((len(with_reference), len(bag_index), len(classes)))
+        nuts_means = np.empty_like(estimates) if self.cal_nuts_check else None
+        unconverged = 0
+        alpha = _resolve_dirichlet_prior(self.prior, len(classes))
+        for g, bandwidth in enumerate(with_reference):
+            log_densities = half.class_log_densities(cal_outputs, float(bandwidth))
+            estimates[g], converged = em_prevalences(log_densities, counts)
+            unconverged += int(np.sum(~converged))
+            if nuts_means is not None:
+                for s, index in enumerate(bag_index):
+                    args = {
+                        "test_log_densities": log_densities[:, index],
+                        "alpha": alpha,
+                        "temperature": self.temperature,
+                    }
+                    mcmc = half.run_nuts(kdey_model, args, None)
+                    nuts_means[g, s] = np.asarray(jax.device_get(mcmc.get_samples()[PREV])).mean(axis=0)
+
+        curve = accuracy_criterion(estimates, prevalences, recalls)
+        reference = int(np.flatnonzero(np.isclose(with_reference, CAL_REFERENCE))[0])
+        best = select_from_curve(grid, curve[: len(grid)])
+        self.cal_grid_ = grid
+        self.cal_split_ = (fit_index, cal_index)
+        self.cal_bag_index_ = bag_index
+        self.cal_prevalences_ = prevalences
+        self.cal_recalls_ = recalls
+        self.cal_estimates_ = estimates[: len(grid)]
+        self.cal_curve_ = curve[: len(grid)]
+        self.cal_selected_ = float(curve[best])
+        self.cal_default_ = float(curve[reference])
+        self.cal_em_unconverged_ = unconverged
+        self.cal_bandwidth_ = float(grid[best])
+        if nuts_means is not None:
+            curve_nuts = accuracy_criterion(nuts_means, prevalences, recalls)
+            self.cal_nuts_means_ = nuts_means[: len(grid)]
+            self.cal_curve_nuts_ = curve_nuts[: len(grid)]
+            self.cal_bandwidth_nuts_ = float(grid[select_from_curve(grid, self.cal_curve_nuts_)])
+        return self.cal_bandwidth_
+
+    def calibration_summaries(self) -> dict:
+        """The ``CAL_SUMMARIES`` of the selection (and ``CAL_NUTS_SUMMARIES`` with ``cal_nuts_check``)."""
+        if not hasattr(self, "cal_bandwidth_"):
+            raise RuntimeError('calibration_summaries exist only after fitting with bandwidth="cal"')
+        summaries = {
+            "cal_bandwidth": self.cal_bandwidth_,
+            "cal_curve": self.cal_curve_.copy(),
+            "cal_selected": self.cal_selected_,
+            "cal_default": self.cal_default_,
+            "cal_em_unconverged": self.cal_em_unconverged_,
+            "cal_n_val": int(len(self.cal_split_[0]) + len(self.cal_split_[1])),
+            "cal_n_cal": len(self.cal_split_[1]),
+        }
+        if self.cal_nuts_check:
+            summaries |= {"cal_bandwidth_nuts": self.cal_bandwidth_nuts_, "cal_curve_nuts": self.cal_curve_nuts_.copy()}
+        return summaries
 
     @property
     def kde_(self):
@@ -280,6 +562,8 @@ class BayCAPKDEy(QuantifierBayCAP):
             cts = super().predict_ct_range(X, posteriors)
             if self.quantifier_.selects_bandwidth:
                 self._last_summaries |= self.quantifier_.selection_summaries()
+            if self.calibrates_bandwidth:
+                self._last_summaries |= self.calibration_summaries()
             return cts
         self._check_is_fitted()
         posteriors = np.asarray(posteriors, dtype=float)
@@ -347,6 +631,12 @@ class BayCAPKDEy(QuantifierBayCAP):
 
 
 __all__ = [
+    "CAL",
+    "CAL_BAGS",
+    "CAL_BAG_SIZE",
+    "CAL_NUTS_SUMMARIES",
+    "CAL_REFERENCE",
+    "CAL_SUMMARIES",
     "CELL_CLASS",
     "CELL_OWN",
     "CELL_PREDICTED",
@@ -355,7 +645,13 @@ __all__ = [
     "KDEY_HF_SUMMARIES",
     "LOO_SUMMARIES",
     "BayCAPKDEy",
+    "accuracy_criterion",
+    "calibration_bags",
+    "calibration_seed",
+    "class_recalls",
     "kdey_hf_loglik",
     "kdey_hf_model",
     "kdey_model",
+    "select_from_curve",
+    "split_halves",
 ]

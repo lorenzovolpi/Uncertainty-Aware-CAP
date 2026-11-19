@@ -42,6 +42,8 @@ METHOD_COLORS = {
     # E7.1: the methods with per-class leave-one-out bandwidths
     "BayCAP-KDEy-mlp-real-loo": "#1B7837",
     "SQS-B-loo": "#B35806",
+    # E7.2: BayCAP-KDEy with one bandwidth selected on calibration bags
+    "BayCAP-KDEy-mlp-real-cal": "#2166AC",
     "DoC": "#54A24B",
     "QuAcc_NxN": "#72B7B2",
     "B-CBPE": "#FF0000",
@@ -74,6 +76,7 @@ METHOD_PLOT_LABELS = {
     "BayCAP-KDEy-Hf-h-real": "BayCAP-KDEy-Hf-h-real",
     "BayCAP-KDEy-Hf-mlp-real": "BayCAP-KDEy-Hf-mlp-real",
     "BayCAP-KDEy-mlp-real-loo": "BayCAP-KDEy-mlp-real-loo",
+    "BayCAP-KDEy-mlp-real-cal": "BayCAP-KDEy-mlp-real-cal",
 }
 
 ACC_NAME = "vanilla_accuracy"

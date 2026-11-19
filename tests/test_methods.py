@@ -9,6 +9,7 @@ from uncawe.experiments.methods import (
     BAYES_POOL_METHODS,
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
+    CAL_VARIANTS,
     FIXED_C_VARIANTS,
     KDEY_HF_VARIANTS,
     LOO_VARIANTS,
@@ -18,6 +19,7 @@ from uncawe.experiments.methods import (
     SQS_B,
     SQS_B_QUANTIFIER,
     TEMPERED_VARIANTS,
+    cal_method,
     gen_methods,
     get_method_names,
 )
@@ -136,7 +138,8 @@ class BayCAPFactoryTest(unittest.TestCase):
             | set(E32_METHODS)
             | {"SQS-B"}
             | set(TEMPERED_VARIANTS)
-            | set(LOO_VARIANTS),
+            | set(LOO_VARIANTS)
+            | set(CAL_VARIANTS),
         )
         for name in get_method_names():
             self.assertEqual(
@@ -316,6 +319,49 @@ class PQRhoFactoryTest(unittest.TestCase):
                 self.assertNotIn(name, DEFAULT_METHODS)
                 self.assertNotIn(name, AVC_METHODS)
                 self.assertNotIn(name, BAYES_POOL_METHODS)
+
+
+class CalFactoryTest(unittest.TestCase):
+    """The method of E7.2 (card WP-26): the stored method with bandwidth="cal", outside the main set."""
+
+    def setUp(self):
+        self.methods = dict(gen_methods())
+
+    def test_name_class_and_configuration(self):
+        self.assertEqual(CAL_VARIANTS, {"BayCAP-KDEy-mlp-real-cal": "BayCAP-KDEy-mlp-real"})
+        method, reference = self.methods["BayCAP-KDEy-mlp-real-cal"], self.methods["BayCAP-KDEy-mlp-real"]
+        self.assertIs(METHOD_CLASS["BayCAP-KDEy-mlp-real-cal"], BayCAPKDEy)
+        self.assertIsInstance(method, BayCAPKDEy)
+        self.assertEqual((reference.bandwidth, method.bandwidth), (0.1, "cal"))
+        self.assertIsNone(method.bandwidth_grid)
+        self.assertEqual((method.cal_bags, method.cal_bag_size, method.cal_nuts_check), (50, 1000, False))
+        for attribute in (
+            "input_classifier",
+            "estimand",
+            "c_prior",
+            "kernel",
+            "shrinkage",
+            "temperature",
+            "prior",
+            "num_samples",
+            "num_warmup",
+            "random_state",
+        ):
+            with self.subTest(attribute=attribute):
+                self.assertEqual(getattr(method, attribute), getattr(reference, attribute))
+        self.assertTrue(cal_method(None, "BayCAP-KDEy-mlp-real-cal", nuts_check=True).cal_nuts_check)
+
+    def test_excluded_from_main_tables_ranks_and_default_plots_and_run_in_the_bayes_pool(self):
+        name = "BayCAP-KDEy-mlp-real-cal"
+        self.assertNotIn(name, MAIN_SET)
+        self.assertIn(name, main_tables.EXCLUDED_METHODS)
+        self.assertIn(name, rank.EXCLUDED_METHODS)
+        self.assertNotIn(name, DEFAULT_METHODS)
+        self.assertNotIn(name, AVC_METHODS)
+        self.assertIn(name, BAYES_POOL_METHODS)
+        self.assertIn(name, METHOD_COLORS)
+        self.assertIn(name, METHOD_PLOT_LABELS)
+        self.assertIn(name, METHOD_LATEX_LABELS)
 
 
 if __name__ == "__main__":

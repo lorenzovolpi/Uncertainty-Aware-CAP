@@ -47,6 +47,7 @@ from uncawe.experiments.methods import (
     BAYES_ENV,
     BAYES_N_JOBS,
     BAYES_POOL_METHODS,
+    CAL_VARIANTS,
     SAMPLE_SIZE,
     THREAD_LIMITS,
     gen_methods,
@@ -329,11 +330,15 @@ def experiments(
     classifiers: list[str] | None = None,
     methods: list[str] | None = None,
     longest_first: list[str] | None = None,
+    kdey_cal_check: bool = False,
 ) -> None:
     """Run every method on every pair of ``domain``; ``datasets``, ``classifiers`` and ``methods`` restrict the run
     (e.g. a pilot) without changing the protocol of the pairs and methods that remain. With ``longest_first`` (a list of
     result folders, empty for ``main`` and its backups) the tasks of each pool run longest first, with the costs
-    estimated from the times stored in those folders; by default they run in the order of the pretrain files."""
+    estimated from the times stored in those folders; by default they run in the order of the pretrain files. With
+    ``kdey_cal_check`` the methods of E7.2 (``CAL_VARIANTS``) also compute their calibration criterion with the NUTS
+    posterior mean (the pilot check of §T.8, ``cal_nuts_check``), which adds per-bag columns and training time but does
+    not change their selection or draws."""
     method_names = get_method_names() if methods is None else methods
     unknown = sorted(set(method_names) - set(get_method_names()))
     if unknown:
@@ -365,6 +370,8 @@ def experiments(
         for method_name, method in gen_methods():
             if method_name not in method_names:
                 continue
+            if kdey_cal_check and method_name in CAL_VARIANTS:
+                method.cal_nuts_check = True
             args = (info_path, method_name, method)
             (bayes_args if method_name in BAYES_POOL_METHODS else regular_args).append(args)
 
@@ -401,11 +408,24 @@ def main() -> None:
         "folders of OUT_DIR/uncawe, the first that has a task (default with no names: main, then every main_* folder "
         "by name); without the option, the tasks run in the order of the pretrain files",
     )
+    parser.add_argument(
+        "--kdey-cal-check",
+        action="store_true",
+        help="The methods of E7.2 also compute their calibration criterion with the NUTS posterior mean (pilot check)",
+    )
     pargs = parser.parse_args()
 
     try:
         log.info("-" * 31 + "  start  " + "-" * 31)
-        experiments(log, pargs.domain, pargs.datasets, pargs.classifiers, pargs.methods, pargs.longest_first)
+        experiments(
+            log,
+            pargs.domain,
+            pargs.datasets,
+            pargs.classifiers,
+            pargs.methods,
+            pargs.longest_first,
+            pargs.kdey_cal_check,
+        )
     except Exception as error:
         log.error(error)
         print_exception(error)
