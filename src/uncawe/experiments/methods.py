@@ -207,10 +207,11 @@ def fixed_c_method(
     return BayCAPMAPLS(acc, **common)
 
 
-def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"]) -> SQSB:
+def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"], prior="uniform") -> SQSB:
     """SQS-B of E3.3 with BayesKDEy as the quantifier of ``SQS_B_QUANTIFIER`` (input classifier, kernel, prior,
     temperature, NUTS settings and default seed), bags of ``SAMPLE_SIZE`` instances, and the bandwidth ``bandwidth``
-    ($0.1$; ``"loo"`` in E7.1)."""
+    ($0.1$; ``"loo"`` in E7.1); ``prior`` is the Dirichlet parameter of the prior on $\\pi$ (uniform in ``main``; E5.5,
+    ``experiments/binform.py``, varies it)."""
     _, source, _ = FIXED_C_VARIANTS[SQS_B_QUANTIFIER]
     return SQSB(
         acc,
@@ -219,6 +220,7 @@ def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"]) -> SQSB:
         num_samples=BOOTSTRAP_ITERS,
         num_warmup=BAYES_WARMUPS,
         sample_size=SAMPLE_SIZE,
+        prior=prior,
     )
 
 

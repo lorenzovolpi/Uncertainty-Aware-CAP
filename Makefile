@@ -30,7 +30,7 @@ LOCAL_OUT  ?= ./output
 PULL_DIRS  ?= tables plots
 LOG_LINES  ?= 300
 FOLLOW     ?=
-RESULTS    ?= main binform binform_e51 binform_e54 predist eb_binary main_e52_check target_size tau_select
+RESULTS    ?= main binform binform_e51 binform_e54 binform_e55 predist eb_binary main_e52_check target_size tau_select
 
 # Files and directories of OLD_DIR worth keeping in REMOTE_DIR (never overwritten if already present).
 OLD_FILES  ?= env.json sorted_sets.json output
@@ -52,6 +52,8 @@ EXP_binform          := python -m uncawe.binform
 EXP_binform-e51      := python -m uncawe.binform --e51
 # E5.4: --datasets connect-4 poker_hand letter in ARGS for the pilot
 EXP_binform-e54      := python -m uncawe.binform --e54
+# E5.5: --datasets connect-4 poker_hand letter in ARGS for the pilot
+EXP_binform-e55      := python -m uncawe.binform --e55
 EXP_predist          := python -m uncawe.predist
 EXP_eb-binary        := python -m uncawe.experiments.eb_binary
 EXP_tempering-check  := python -m uncawe.experiments.tempering_check
@@ -65,6 +67,7 @@ EXP_tables-coverage-amplitude := python -m uncawe.tables.coverage_amplitude --cl
 EXP_tables-binform   := python -m uncawe.tables.binform
 EXP_tables-binform-prior := python -m uncawe.tables.binform_prior
 EXP_tables-binform-centre-edge := python -m uncawe.tables.binform_centre_edge
+EXP_tables-binform-side-prior := python -m uncawe.tables.binform_side_prior
 EXP_tables-estimand-gap := python -m uncawe.tables.estimand_gap
 EXP_tables-displacement := python -m uncawe.tables.displacement
 EXP_tables-pushforward := python -m uncawe.tables.pushforward
@@ -91,6 +94,7 @@ EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
 EXP_plot-binform     := python -m uncawe.plots.binform_simplex
 EXP_plot-binform-prior := python -m uncawe.plots.binform_prior
 EXP_plot-binform-centre-edge := python -m uncawe.plots.binform_centre_edge
+EXP_plot-binform-side-prior := python -m uncawe.plots.binform_side_prior
 EXP_plot-displacement := python -m uncawe.plots.displacement
 EXP_plot-pushforward := python -m uncawe.plots.pushforward
 EXP_plot-eb-prior    := python -m uncawe.plots.eb_prior
