@@ -54,16 +54,25 @@ def load_table(path: str | None = None) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def plot_winkler(table: pd.DataFrame, method: str, acc_name: str = ACC_NAME):
-    """The Winkler score of the uniform prior against that of each informative prior, one column per bag size."""
+def plot_winkler(
+    table: pd.DataFrame,
+    method: str,
+    acc_name: str = ACC_NAME,
+    priors: tuple[str, ...] = OTHER_PRIORS,
+    labels: dict[str, str] = PRIOR_LABELS,
+    title: str | None = None,
+):
+    """The Winkler score of the uniform prior against that of each informative prior in ``priors`` (columns
+    ``<prior>_winkler`` of ``table``, labelled by ``labels``), one column per bag size. The defaults are those of E5.1;
+    E5.4 (``plots/binform_centre_edge.py``) passes its roles and title."""
     rows = table.loc[(table["method"] == method) & (table["acc_name"] == acc_name)]
     if rows.empty:
         return None
     sizes = sorted(rows["size"].unique())
     fig, axes = plt.subplots(
-        len(OTHER_PRIORS),
+        len(priors),
         len(sizes),
-        figsize=(5.0 * len(sizes) + 1.5, 4.6 * len(OTHER_PRIORS)),
+        figsize=(5.0 * len(sizes) + 1.5, 4.6 * len(priors)),
         layout="constrained",
         squeeze=False,
     )
@@ -71,7 +80,7 @@ def plot_winkler(table: pd.DataFrame, method: str, acc_name: str = ACC_NAME):
     sc = None
     for col, size in enumerate(sizes):
         part = rows.loc[rows["size"] == size]
-        for row, prior in enumerate(OTHER_PRIORS):
+        for row, prior in enumerate(priors):
             ax = axes[row, col]
             x, y = "uniform_winkler", f"{prior}_winkler"
             sc = scatter_by_classifier(ax, part, x, y, "n_classes", SEQUENTIAL_CMAP, norm)
@@ -82,14 +91,14 @@ def plot_winkler(table: pd.DataFrame, method: str, acc_name: str = ACC_NAME):
             ax.plot((low, high), (low, high), **IDENTITY_LINE)
             ax.set_xlim(low, high)
             ax.set_ylim(low, high)
-            style_scatter_axes(ax, "Winkler score, uniform prior", f"Winkler score, {PRIOR_LABELS[prior]} prior")
-            ax.set_title(f"$|U|={size}$, {PRIOR_LABELS[prior]}", fontsize=font_size(11))
+            style_scatter_axes(ax, "Winkler score, uniform prior", f"Winkler score, {labels[prior]} prior")
+            ax.set_title(f"$|U|={size}$, {labels[prior]}", fontsize=font_size(11))
     if sc is not None:
         fig.colorbar(sc, ax=axes).set_label("$K$", fontsize=font_size(12))
     classifier_legend(fig, rows, loc="center left", bbox_to_anchor=(1.0, 0.5))
-    fig.suptitle(
-        f"E5.1, {method_plot_label(method)}: prior on $\\pi^Q$ ({ACC_LABELS[acc_name]})", fontsize=font_size(12)
-    )
+    if title is None:
+        title = f"E5.1, {method_plot_label(method)}: prior on $\\pi^Q$ ({ACC_LABELS[acc_name]})"
+    fig.suptitle(title, fontsize=font_size(12))
     return fig
 
 
