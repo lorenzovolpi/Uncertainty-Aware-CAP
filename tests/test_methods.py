@@ -11,6 +11,7 @@ from uncawe.experiments.methods import (
     BOOTSTRAP_ITERS,
     FIXED_C_VARIANTS,
     KDEY_HF_VARIANTS,
+    LOO_VARIANTS,
     METHOD_CLASS,
     PQ_RHO_VARIANTS,
     SAMPLE_SIZE,
@@ -130,7 +131,12 @@ class BayCAPFactoryTest(unittest.TestCase):
     def test_bayes_pool_holds_every_baycap_method(self):
         self.assertEqual(
             BAYES_POOL_METHODS,
-            set(BAYCAP_METHODS) | set(E31_METHODS) | set(E32_METHODS) | {"SQS-B"} | set(TEMPERED_VARIANTS),
+            set(BAYCAP_METHODS)
+            | set(E31_METHODS)
+            | set(E32_METHODS)
+            | {"SQS-B"}
+            | set(TEMPERED_VARIANTS)
+            | set(LOO_VARIANTS),
         )
         for name in get_method_names():
             self.assertEqual(
@@ -163,21 +169,19 @@ class BayCAPFactoryTest(unittest.TestCase):
         for labels in (METHOD_COLORS, METHOD_PLOT_LABELS, METHOD_LATEX_LABELS):
             self.assertIn("SQS-B", labels)
 
-    def test_factory_builds_sqs_b_on_the_quantifier_of_baycap_kdey_mlp_real(self):
-        # E3.3 (card WP-18): the quantifier has the configuration and seeds of BayCAP-KDEy-mlp-real, so the same draws
+    def test_factory_builds_sqs_b_with_the_quantifier_settings_of_baycap_kdey_mlp_real(self):
+        # E3.3 (card WP-18): BayesKDEy with the configuration and seeds of BayCAP-KDEy-mlp-real, so the same draws;
+        # since WP-25 SQSB builds its own BayesKDEy from these settings
         self.assertEqual((SQS_B, SQS_B_QUANTIFIER), ("SQS-B", "BayCAP-KDEy-mlp-real"))
         method = self.methods["SQS-B"]
         self.assertIs(METHOD_CLASS["SQS-B"], SQSB)
         self.assertIsInstance(method, SQSB)
         reference = self.methods[SQS_B_QUANTIFIER]
-        quantifier = method.quantifier
-        self.assertIs(type(quantifier), BayCAPKDEy)
-        self.assertIsNot(quantifier, reference)
         for attribute in (
             "input_classifier",
-            "c_prior",
             "kernel",
             "bandwidth",
+            "bandwidth_grid",
             "shrinkage",
             "temperature",
             "prior",
@@ -186,10 +190,58 @@ class BayCAPFactoryTest(unittest.TestCase):
             "random_state",
         ):
             with self.subTest(attribute=attribute):
-                self.assertEqual(getattr(quantifier, attribute), getattr(reference, attribute))
-        self.assertEqual((quantifier.input_classifier, quantifier.c_prior), ("mlp", "fixed"))
+                self.assertEqual(getattr(method, attribute), getattr(reference, attribute))
+        self.assertEqual((reference.input_classifier, reference.c_prior), ("mlp", "fixed"))
         self.assertEqual((method.num_samples, method.sample_size), (BOOTSTRAP_ITERS, SAMPLE_SIZE))
         self.assertEqual(method.random_state, qp.environ["_R_SEED"])
+
+
+class LOOFactoryTest(unittest.TestCase):
+    """The two methods of E7.1 (card WP-25): the stored method with bandwidth="loo", outside the main set."""
+
+    def setUp(self):
+        self.methods = dict(gen_methods())
+
+    def test_names_and_classes(self):
+        self.assertEqual(LOO_VARIANTS, {"BayCAP-KDEy-mlp-real-loo": "BayCAP-KDEy-mlp-real", "SQS-B-loo": "SQS-B"})
+        for name, base in LOO_VARIANTS.items():
+            with self.subTest(method=name):
+                self.assertIs(METHOD_CLASS[name], METHOD_CLASS[base])
+                self.assertIs(type(self.methods[name]), type(self.methods[base]))
+
+    def test_same_configuration_as_the_stored_method_except_the_bandwidth(self):
+        for name, base in LOO_VARIANTS.items():
+            method, reference = self.methods[name], self.methods[base]
+            self.assertEqual((reference.bandwidth, method.bandwidth), (0.1, "loo"))
+            self.assertIsNone(method.bandwidth_grid)
+            for attribute in (
+                "input_classifier",
+                "kernel",
+                "shrinkage",
+                "temperature",
+                "prior",
+                "num_samples",
+                "num_warmup",
+                "random_state",
+            ):
+                with self.subTest(method=name, attribute=attribute):
+                    self.assertEqual(getattr(method, attribute), getattr(reference, attribute))
+        self.assertEqual(self.methods["SQS-B-loo"].sample_size, self.methods["SQS-B"].sample_size)
+        kdey = self.methods["BayCAP-KDEy-mlp-real-loo"]
+        self.assertEqual((kdey.estimand, kdey.c_prior), ("realised", "fixed"))
+
+    def test_excluded_from_main_tables_ranks_and_default_plots_and_run_in_the_bayes_pool(self):
+        for name in LOO_VARIANTS:
+            with self.subTest(method=name):
+                self.assertNotIn(name, MAIN_SET)
+                self.assertIn(name, main_tables.EXCLUDED_METHODS)
+                self.assertIn(name, rank.EXCLUDED_METHODS)
+                self.assertNotIn(name, DEFAULT_METHODS)
+                self.assertNotIn(name, AVC_METHODS)
+                self.assertIn(name, BAYES_POOL_METHODS)
+                self.assertIn(name, METHOD_COLORS)
+                self.assertIn(name, METHOD_PLOT_LABELS)
+                self.assertIn(name, METHOD_LATEX_LABELS)
 
 
 class SeededQuantifierTest(unittest.TestCase):

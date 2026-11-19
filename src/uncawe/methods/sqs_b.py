@@ -4,15 +4,18 @@ WP-18).
 The SQS methods of ``main`` estimate the table of $h$ on the target bag by drawing bags from $V$ at an estimated target
 prevalence: ``SQS-H`` draws all of them at one estimate of PACC, ``SQS-Hbs`` one bag at the estimate of PACC on each
 bootstrap resample of the target (``cap-ml``'s ``RQBS``). :class:`SQSB` draws one bag at each draw $\pi^{(r)}$ of the
-posterior of a Bayesian quantifier, so that the uncertainty on $\pi^Q$ comes from the posterior instead of the
-bootstrap. Its structure is that of ``RQBS`` (user's decision of 2026-11-10); the quantifier is a
-:class:`uncawe.methods.baycap_quantifier.QuantifierBayCAP` with a fixed rate matrix, reused through its ``fit``,
-``outputs`` and ``sample_prevalences``, so that, for the same seeds, SQS-B and the BayCAP method of the same quantifier
-share their prevalence draws (``SQS-B`` and ``BayCAP-KDEy-mlp-real`` in ``main``).
+posterior of BayesKDEy, so that the uncertainty on $\pi^Q$ comes from the posterior instead of the bootstrap. Its
+structure is that of ``RQBS`` (user's decision of 2026-11-10). Until work-plan card WP-25 the quantifier was a BayCAP
+method with a fixed rate matrix (``BayCAPKDEy``), used only for its posterior draws and its $\hat C$; since WP-25 the
+class builds its own :class:`uncawe.methods.bayes_kdey.BayesKDEy` from its hyperparameters (``bandwidth`` included,
+also ``"loo"``, E7.1 of ``docs/ext7_kdey_bandwidth.md``) and measures $\hat C$ itself, with the same results
+(``tests/test_wp25_restructure.py``). For the same hyperparameters and seed, SQS-B and ``BayCAP-KDEy-mlp-real`` share
+their prevalence draws.
 """
 
 from collections.abc import Callable
-from typing import Self
+from numbers import Number
+from typing import Literal, Self
 
 import numpy as np
 import quapy as qp
@@ -20,13 +23,10 @@ from cap.models.confidence import CTCAPWithConfidence, _temp_np_seed
 from cap.models.cont_table import CAPContingencyTable
 from cap.models.utils import smooth
 from quapy.data import LabelledCollection
+from sklearn.metrics import confusion_matrix
 
-from uncawe.methods.baycap_quantifier import (
-    FIXED_SUMMARIES,
-    QuantifierBayCAP,
-    _validate_prevalence_samples,
-    accuracy_moments,
-)
+from uncawe.methods.baycap_quantifier import FIXED_SUMMARIES, _validate_prevalence_samples, accuracy_moments
+from uncawe.methods.bayes_kdey import BayesKDEy
 
 # the smoothing of the prevalence draws before the bags are drawn, as in RQBS (cap.models.utils.smooth)
 SMOOTHING = 1e-5
@@ -92,15 +92,15 @@ class SQSB(CAPContingencyTable, CTCAPWithConfidence):
     r"""SQS-B: one validation bag per posterior draw of a Bayesian quantifier (E3.3; code name ``SQSB``, method
     ``SQS-B`` of ``main``).
 
-    ``fit`` fits the quantifier on $V$ (its rates $\hat C$ of $h$, its input classifier and its densities) and keeps the
-    outputs of $h$ on $V$ with their labels, as ``cap-ml``'s ``RQBS``. ``predict_ct_range`` takes the
-    ``quantifier.num_samples`` draws $\pi^{(r)}$ of the posterior of $\pi^Q$ given the bag, smooths each as ``RQBS``
-    ($\epsilon=10^{-5}$), and draws one bag of ``sample_size`` instances of $V$ per draw with QuaPy's
-    ``LabelledCollection.sampling_index`` (class counts $N^Q\pi^{(r)}_j$ rounded, the remainder assigned at random,
-    instances drawn with replacement within each class); all the bags are drawn sequentially from the NumPy state
-    seeded by ``random_state`` at each call, as in ``RQBS``. It returns the normalised tables of $h$ on these bags (true
-    classes on rows, the ``cap-ml`` layout, i.e. the transpose of the paper's tables); ``predict_ct`` returns their
-    mean.
+    ``fit`` fits the quantifier (``quantifier_``, a :class:`uncawe.methods.bayes_kdey.BayesKDEy` built from the
+    hyperparameters of the method), measures the rates $\hat C$ of $h$ on $V$, and keeps the outputs of $h$ on $V$ with
+    their labels, as ``cap-ml``'s ``RQBS``. ``predict_ct_range`` takes the ``num_samples`` draws $\pi^{(r)}$ of the
+    posterior of $\pi^Q$ given the bag, smooths each as ``RQBS`` ($\epsilon=10^{-5}$), and draws one bag of
+    ``sample_size`` instances of $V$ per draw with QuaPy's ``LabelledCollection.sampling_index`` (class counts
+    $N^Q\pi^{(r)}_j$ rounded, the remainder assigned at random, instances drawn with replacement within each class); all
+    the bags are drawn sequentially from the NumPy state seeded by ``random_state`` at each call, as in ``RQBS``. It
+    returns the normalised tables of $h$ on these bags (true classes on rows, the ``cap-ml`` layout, i.e. the transpose
+    of the paper's tables); ``predict_ct`` returns their mean.
 
     *Estimand:* the realised table of the target sample, as every SQS method: each table is that of $h$ on a simulated
     bag of the target's size, built forwards, from true classes to predictions (§T.14). The predictions of $h$ on the
@@ -113,52 +113,92 @@ class SQSB(CAPContingencyTable, CTCAPWithConfidence):
     ($\sigma_p$), ``sigma_g`` ($\bar\sigma_g$ of the realised pushforward with the same draws, §T.8), ``val_ece`` (of
     the input classifier of the quantifier), ``sigma_f``
     ($\bar\sigma_f=\sqrt{\frac1R\sum_r\sigma_f^2(\pi^{(r)})}$, :func:`forward_bag_variances`), and ``s_rec``, ``s_prec``
-    at $\bar\pi$ (:func:`luck_spreads`). ``last_bag_indices_`` holds the positions in $V$ of the instances of the last
-    bags, of shape ``(R, sample_size)``.
+    at $\bar\pi$ (:func:`luck_spreads`); with ``bandwidth="loo"``, also the ``LOO_SUMMARIES`` of the selection.
+    ``last_bag_indices_`` holds the positions in $V$ of the instances of the last bags, of shape
+    ``(R, sample_size)``.
 
     :param acc: a ``cap-ml`` contingency-table performance function.
-    :param quantifier: a :class:`QuantifierBayCAP` with a fixed rate matrix (e.g. ``BayCAPKDEy`` with
-        ``c_prior="fixed"``); its ``num_samples`` is the number of bags, its ``random_state`` seeds NUTS and its MLP.
+    :param input_classifier: input classifier of BayesKDEy, ``"h"`` or ``"mlp"``.
+    :param kernel: kernel of BayesKDEy.
+    :param bandwidth: bandwidth of BayesKDEy, a positive number, ``"scott"``, ``"silverman"`` or ``"loo"``.
+    :param bandwidth_grid: the grid of ``"loo"``; ``bayes_kdey.LOO_GRID`` if ``None``.
+    :param shrinkage: shrinkage of BayesKDEy.
+    :param num_warmup: number of NUTS warm-up iterations.
+    :param num_samples: number of posterior draws, also the number of bags.
+    :param temperature: temperature $\tau$ of the likelihood of BayesKDEy.
+    :param prior: Dirichlet parameter of the prior on $\pi$ (``"uniform"``, a positive scalar or a vector).
     :param sample_size: the size $N^Q$ of each bag; ``qp.environ["SAMPLE_SIZE"]`` if ``None``.
-    :param random_state: seed of the bags; ``qp.environ["_R_SEED"]`` if ``None``.
+    :param random_state: seed of NUTS, of the MLP and of the bags; ``qp.environ["_R_SEED"]`` if ``None``.
     """
 
     def __init__(
         self,
         acc: Callable,
-        quantifier: QuantifierBayCAP,
+        input_classifier: Literal["h", "mlp"] = "mlp",
+        kernel: Literal["gaussian", "aitchison", "ilr"] = "gaussian",
+        bandwidth: float | Literal["scott", "silverman", "loo"] = 0.1,
+        bandwidth_grid=None,
+        shrinkage: float = 0.0,
+        num_warmup: int = 500,
+        num_samples: int = 1000,
+        temperature: float = 1.0,
+        prior: str | Number | np.ndarray = "uniform",
         sample_size: int | None = None,
         random_state: int | None = None,
     ) -> None:
-        if not isinstance(quantifier, QuantifierBayCAP):
-            raise TypeError(f"quantifier must be a QuantifierBayCAP; found {type(quantifier).__name__}")
-        if getattr(quantifier, "c_prior", "fixed") != "fixed":
-            raise ValueError(f"quantifier must have a fixed rate matrix; found c_prior={quantifier.c_prior!r}")
         CAPContingencyTable.__init__(self, acc)
-        self.quantifier = quantifier
+        self.input_classifier = input_classifier
+        self.kernel = kernel
+        self.bandwidth = bandwidth
+        self.bandwidth_grid = bandwidth_grid
+        self.shrinkage = shrinkage
+        self.num_warmup = num_warmup
+        self.num_samples = num_samples
+        self.temperature = temperature
+        self.prior = prior
         self.sample_size = qp.environ["SAMPLE_SIZE"] if sample_size is None else sample_size
         self.random_state = qp.environ["_R_SEED"] if random_state is None else random_state
         if self.sample_size is None:
             raise ValueError(
                 'sample_size cannot be None; it must be specified directly or by setting qp.environ["SAMPLE_SIZE"]'
             )
+        # checks the hyperparameters of the quantifier
+        self._make_quantifier()
 
-    @property
-    def num_samples(self) -> int:
-        """The number of bags per target, one per posterior draw."""
-        return self.quantifier.num_samples
+    def _make_quantifier(self) -> BayesKDEy:
+        """The unfitted BayesKDEy, built from the hyperparameters of the method."""
+        return BayesKDEy(
+            input_classifier=self.input_classifier,
+            kernel=self.kernel,
+            bandwidth=self.bandwidth,
+            bandwidth_grid=self.bandwidth_grid,
+            shrinkage=self.shrinkage,
+            num_warmup=self.num_warmup,
+            num_samples=self.num_samples,
+            temperature=self.temperature,
+            prior=self.prior,
+            random_state=self.random_state,
+        )
 
     def fit(self, val: LabelledCollection, posteriors: np.ndarray) -> Self:
-        """Fit the quantifier on $V$ and keep the outputs of $h$ on $V$, with the labels as indices of ``val.classes_``."""
-        self.quantifier.fit(val, posteriors)
+        """Fit the quantifier on $V$, measure the rates of $h$ on $V$, and keep the outputs of $h$ on $V$, with the labels
+        as indices of ``val.classes_``."""
+        self.quantifier_ = self._make_quantifier().fit(val, posteriors)
         classes = np.asarray(val.classes_)
         self.classes_ = classes
+        posteriors = np.asarray(posteriors, dtype=float)
+        # cap-ml layout: row j is the column C_{:j} of the paper, the rates of the instances of class j
+        predicted = classes[np.argmax(posteriors, axis=1)]
+        self.rate_matrix_ = confusion_matrix(val.y, predicted, labels=classes, normalize="true")
         position = {class_: index for index, class_ in enumerate(classes.tolist())}
         labels = np.asarray([position[y] for y in np.asarray(val.y).tolist()], dtype=int)
-        self.val_post = LabelledCollection(
-            instances=np.asarray(posteriors, dtype=float), labels=labels, classes=np.arange(len(classes))
-        )
+        self.val_post = LabelledCollection(instances=posteriors, labels=labels, classes=np.arange(len(classes)))
         return self
+
+    @property
+    def bandwidths_(self) -> np.ndarray:
+        """The bandwidth of each class of BayesKDEy, in the order of ``classes_``."""
+        return self.quantifier_.bandwidths_
 
     def predict_ct_range(self, X: np.ndarray, posteriors: np.ndarray) -> np.ndarray:
         r"""Return the normalised tables of $h$ on one bag of $V$ per posterior draw (true classes on rows).
@@ -168,10 +208,10 @@ class SQSB(CAPContingencyTable, CTCAPWithConfidence):
         """
         if not hasattr(self, "val_post"):
             raise RuntimeError("SQSB must be fitted before prediction")
-        q = self.quantifier
+        q = self.quantifier_
         posteriors = np.asarray(posteriors, dtype=float)
         n_classes = len(self.classes_)
-        prevalences = q.sample_prevalences(q.outputs(X, posteriors))[:, q._quantifier_to_rate_order]
+        prevalences = q.sample_prevalences(q.outputs(X, posteriors))
         _validate_prevalence_samples(prevalences, n_classes)
 
         # the draws of NUTS are float32: smoothed in double precision, each sums to 1 as sampling_index requires; the
@@ -187,7 +227,7 @@ class SQSB(CAPContingencyTable, CTCAPWithConfidence):
         labels = self.val_post.y[indices]
         predictions = self.val_post.X.argmax(axis=1)[indices]
 
-        rates = q.rate_matrix_
+        rates = self.rate_matrix_
         pred_counts = np.bincount(np.argmax(posteriors, axis=1), minlength=n_classes)
         acc_sd, sigma_g = accuracy_moments(prevalences, rates, pred_counts)
         prev_mean = prevalences.mean(axis=0)
@@ -201,6 +241,8 @@ class SQSB(CAPContingencyTable, CTCAPWithConfidence):
             "s_rec": s_rec,
             "s_prec": s_prec,
         }
+        if q.selects_bandwidth:
+            self._last_summaries |= q.selection_summaries()
         return bag_tables(labels, predictions, n_classes)
 
     def predict_ct(self, X: np.ndarray, posteriors: np.ndarray) -> np.ndarray:
@@ -209,7 +251,7 @@ class SQSB(CAPContingencyTable, CTCAPWithConfidence):
 
     def last_nuts_diagnostics(self) -> dict[str, float]:
         """Return the NUTS diagnostics of the posterior of $\\pi$ of the last ``predict_ct_range`` call."""
-        return self.quantifier.last_nuts_diagnostics()
+        return self.quantifier_.last_nuts_diagnostics()
 
     def last_posterior_summaries(self) -> dict:
         """Return the ``SQSB_SUMMARIES`` of the last ``predict_ct_range`` call."""

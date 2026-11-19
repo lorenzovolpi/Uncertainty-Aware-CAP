@@ -13,6 +13,7 @@ from test_baycap_fixed import DATA, SETTINGS
 
 from uncawe.methods.baycap_kdey import BayCAPKDEy
 from uncawe.methods.baycap_quantifier import NUTS_DIAGNOSTICS, accuracy_moments
+from uncawe.methods.bayes_kdey import BayesKDEy
 from uncawe.methods.sqs_b import (
     SMOOTHING,
     SQSB,
@@ -26,13 +27,14 @@ SAMPLE_SIZE = 200
 N_CLASSES = 3
 
 
-def _quantifier(**kwargs) -> BayCAPKDEy:
-    """The quantifier of SQS-B in E3.3: BayesKDEy with an MLP input and a fixed C."""
+def _baycap_kdey(**kwargs) -> BayCAPKDEy:
+    """The BayCAP method whose prevalence draws SQS-B shares: BayesKDEy with an MLP input and a fixed C."""
     return BayCAPKDEy(vanilla_acc, **({"input_classifier": "mlp", "c_prior": "fixed"} | SETTINGS | kwargs))
 
 
-def _sqsb(random_state: int = 7, val: LabelledCollection = DATA.val, **kwargs) -> SQSB:
-    method = SQSB(vanilla_acc, _quantifier(**kwargs), sample_size=SAMPLE_SIZE, random_state=random_state)
+def _sqsb(random_state: int = SETTINGS["random_state"], val: LabelledCollection = DATA.val, **kwargs) -> SQSB:
+    settings = SETTINGS | {"random_state": random_state}
+    method = SQSB(vanilla_acc, input_classifier="mlp", sample_size=SAMPLE_SIZE, **settings, **kwargs)
     return method.fit(val, DATA.val_posteriors)
 
 
@@ -79,21 +81,29 @@ class SQSBTest(unittest.TestCase):
         cls.method = _sqsb()
         cls.cts = cls.method.predict_ct_range(DATA.X_u, DATA.u_posteriors)
         cls.indices = cls.method.last_bag_indices_
-        cls.prevalences = cls.method.quantifier._last_nuts[0]["prev"][0]
+        cls.prevalences = cls.method.quantifier_._last_nuts[0]["prev"][0]
 
-    def test_rejects_quantifiers_without_a_fixed_rate_matrix(self):
+    def test_checks_its_hyperparameters_and_needs_a_fit(self):
         with self.assertRaises(ValueError):
-            SQSB(vanilla_acc, _quantifier(c_prior="hierarchical-f"), sample_size=SAMPLE_SIZE)
-        with self.assertRaises(TypeError):
-            SQSB(vanilla_acc, object(), sample_size=SAMPLE_SIZE)
+            SQSB(vanilla_acc, input_classifier="svm", sample_size=SAMPLE_SIZE)
+        with self.assertRaises(ValueError):
+            SQSB(vanilla_acc, kernel="aitchison", bandwidth="loo", sample_size=SAMPLE_SIZE)
         with self.assertRaises(RuntimeError):
-            unfitted = SQSB(vanilla_acc, _quantifier(), sample_size=SAMPLE_SIZE, random_state=0)
+            unfitted = SQSB(vanilla_acc, sample_size=SAMPLE_SIZE, random_state=0)
             unfitted.predict_ct_range(DATA.X_u, DATA.u_posteriors)
 
+    def test_quantifier_is_bayes_kdey_with_the_hyperparameters_of_the_method(self):
+        quantifier = self.method.quantifier_
+        self.assertIsInstance(quantifier, BayesKDEy)
+        for attribute in ("input_classifier", "kernel", "bandwidth", "shrinkage", "num_samples", "random_state"):
+            with self.subTest(attribute=attribute):
+                self.assertEqual(getattr(quantifier, attribute), getattr(self.method, attribute))
+
     def test_draws_equal_those_of_baycap_kdey(self):
-        baycap = _quantifier(estimand="realised").fit(DATA.val, DATA.val_posteriors)
+        baycap = _baycap_kdey(estimand="realised").fit(DATA.val, DATA.val_posteriors)
         baycap.predict_ct_range(DATA.X_u, DATA.u_posteriors)
         np.testing.assert_array_equal(self.prevalences, baycap._last_nuts[0]["prev"][0])
+        np.testing.assert_array_equal(self.method.rate_matrix_, baycap.rate_matrix_)
         self.assertEqual(self.method.num_samples, SETTINGS["num_samples"])
 
     def test_one_bag_of_sample_size_per_draw_with_the_counts_of_sampling_index(self):
@@ -127,7 +137,7 @@ class SQSBTest(unittest.TestCase):
         second = _sqsb().predict_ct_range(DATA.X_u, DATA.u_posteriors)
         self.assertEqual(np.random.random(), before)
         np.testing.assert_array_equal(second, self.cts)
-        other = _sqsb(random_state=8).predict_ct_range(DATA.X_u, DATA.u_posteriors)
+        other = _sqsb(random_state=SETTINGS["random_state"] + 1).predict_ct_range(DATA.X_u, DATA.u_posteriors)
         self.assertFalse(np.array_equal(other, self.cts))
 
     def test_labels_other_than_class_indices(self):
@@ -137,7 +147,7 @@ class SQSBTest(unittest.TestCase):
     def test_centre_is_the_population_accuracy_of_the_draws(self):
         # §T.14: given a draw, the accuracy of the bag is a mean of binomials with mean sum_j pi_j d_j
         accuracies = np.trace(self.cts, axis1=1, axis2=2)
-        recalls = np.diag(self.method.quantifier.rate_matrix_)
+        recalls = np.diag(self.method.rate_matrix_)
         population = self.prevalences @ recalls
         sigma_f = self.method.last_posterior_summaries()["sigma_f"]
         standard_error = sigma_f / np.sqrt(len(accuracies))
@@ -147,13 +157,13 @@ class SQSBTest(unittest.TestCase):
         self.assertEqual(set(self.method.last_nuts_diagnostics()), set(NUTS_DIAGNOSTICS))
         summaries = self.method.last_posterior_summaries()
         self.assertEqual(tuple(summaries), SQSB_SUMMARIES)
-        rates = self.method.quantifier.rate_matrix_
+        rates = self.method.rate_matrix_
         pred_counts = np.bincount(DATA.u_posteriors.argmax(axis=1), minlength=N_CLASSES)
         acc_sd, sigma_g = accuracy_moments(self.prevalences, rates, pred_counts)
         np.testing.assert_allclose(summaries["prev_mean"], self.prevalences.mean(axis=0))
         self.assertAlmostEqual(summaries["acc_sd"], acc_sd)
         self.assertAlmostEqual(summaries["sigma_g"], sigma_g)
-        self.assertEqual(summaries["val_ece"], self.method.quantifier.val_ece_)
+        self.assertEqual(summaries["val_ece"], self.method.quantifier_.val_ece_)
         recalls = np.diag(rates)
         sigma_f2 = [p @ (recalls * (1 - recalls)) / SAMPLE_SIZE for p in self.prevalences]
         self.assertAlmostEqual(summaries["sigma_f"], np.sqrt(np.mean(sigma_f2)))

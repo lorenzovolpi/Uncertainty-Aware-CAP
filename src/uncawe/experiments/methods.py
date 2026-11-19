@@ -20,6 +20,7 @@ from uncawe.experiments.metrics import gen_acc_measure
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
+from uncawe.methods.bayes_kdey import LOO
 from uncawe.methods.sqs_b import SQSB
 
 BAYES_WARMUPS = 500
@@ -114,9 +115,10 @@ FIXED_C_VARIANTS = {
 KDEY_HF_VARIANTS = {f"BayCAP-KDEy-Hf-{source}-real": source for source in ("h", "mlp")}
 # the settings of BayesKDEy in E3.1 and E3.2
 KDEY_SETTINGS = {"kernel": "gaussian", "bandwidth": 0.1, "shrinkage": 0.0}
-# SQS-B of E3.3 (methods/sqs_b.py:SQSB, card WP-18): one bag of SAMPLE_SIZE instances of V per posterior draw of the
-# quantifier of BayCAP-KDEy-mlp-real (BayesKDEy with an MLP input and a fixed C, same settings and seeds, so the same
-# prevalence draws); the bags are seeded with the experiment seed, as SQS-H(bs)
+# SQS-B of E3.3 (methods/sqs_b.py:SQSB, card WP-18): one bag of SAMPLE_SIZE instances of V per posterior draw of
+# BayesKDEy with the configuration and seed of the quantifier of BayCAP-KDEy-mlp-real (MLP input, same settings, so the
+# same prevalence draws); the bags are seeded with the experiment seed, as SQS-H(bs). Since WP-25, SQSB builds its own
+# BayesKDEy (methods/bayes_kdey.py) from these settings, with the same draws
 SQS_B = "SQS-B"
 SQS_B_QUANTIFIER = "BayCAP-KDEy-mlp-real"
 # the tempered methods of E5.2 of docs/ext5_baycap_priors_tempering.md (card WP-20): BayesCAP-Hf-real with its two
@@ -128,6 +130,12 @@ TEMPERATURE_LEVELS = (0.5, 2.0, 4.0, 8.0)
 TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
 TEMPERED_VARIANTS = {f"{base}-t{tau:g}": (base, tau) for base in TEMPERED_BASES for tau in TEMPERATURE_LEVELS}
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, (base, _) in TEMPERED_VARIANTS.items()}
+# the methods of E7.1 of docs/ext7_kdey_bandwidth.md (card WP-25): BayCAP-KDEy-mlp-real and SQS-B with BayesKDEy at
+# bandwidth="loo" (one bandwidth per class, selected by leave-one-out likelihood on the cross-fitted validation outputs
+# of the MLP over methods/bayes_kdey.py:LOO_GRID, densities normalised on the simplex), everything else, seeds included,
+# as the stored method; name -> stored method. Outside the main tables, ranks and default plots (tables/main.py)
+LOO_VARIANTS = {"BayCAP-KDEy-mlp-real-loo": SQS_B_QUANTIFIER, "SQS-B-loo": SQS_B}
+METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in LOO_VARIANTS.items()}
 # the methods run by main in the BayCAP pool, with BAYES_N_JOBS workers and BAYES_ENV
 BAYES_POOL_METHODS = (
     frozenset(BAYCAP_VARIANTS)
@@ -135,6 +143,7 @@ BAYES_POOL_METHODS = (
     | frozenset(KDEY_HF_VARIANTS)
     | frozenset({SQS_B})
     | frozenset(TEMPERED_VARIANTS)
+    | frozenset(LOO_VARIANTS)
 )
 
 
@@ -161,10 +170,13 @@ def sqs_s(acc, rho: float | None = None) -> PrediQuant:
     )
 
 
-def fixed_c_method(acc, name: str, prior="uniform", temperature: float = 1.0) -> BayCAPKDEy | BayCAPMAPLS:
+def fixed_c_method(
+    acc, name: str, prior="uniform", temperature: float = 1.0, bandwidth=KDEY_SETTINGS["bandwidth"]
+) -> BayCAPKDEy | BayCAPMAPLS:
     """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP; ``prior``
     is the Dirichlet parameter of the prior on $\\pi$ (uniform in ``main``; E5.1, ``experiments/binform.py``, varies
-    it), and ``temperature`` the posterior temperature ($1$ in E3.1 and E5.1; the other values are those of E5.2)."""
+    it), ``temperature`` the posterior temperature ($1$ in E3.1 and E5.1; the other values are those of E5.2), and
+    ``bandwidth`` that of BayesKDEy ($0.1$; ``"loo"`` in E7.1)."""
     quantifier, source, estimand = FIXED_C_VARIANTS[name]
     common = {
         "input_classifier": source,
@@ -175,8 +187,31 @@ def fixed_c_method(acc, name: str, prior="uniform", temperature: float = 1.0) ->
         "num_warmup": BAYES_WARMUPS,
     }
     if quantifier == "kdey":
-        return BayCAPKDEy(acc, c_prior="fixed", **KDEY_SETTINGS, **common)
+        return BayCAPKDEy(acc, c_prior="fixed", **(KDEY_SETTINGS | {"bandwidth": bandwidth}), **common)
     return BayCAPMAPLS(acc, **common)
+
+
+def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"]) -> SQSB:
+    """SQS-B of E3.3 with BayesKDEy as the quantifier of ``SQS_B_QUANTIFIER`` (input classifier, kernel, prior,
+    temperature, NUTS settings and default seed), bags of ``SAMPLE_SIZE`` instances, and the bandwidth ``bandwidth``
+    ($0.1$; ``"loo"`` in E7.1)."""
+    _, source, _ = FIXED_C_VARIANTS[SQS_B_QUANTIFIER]
+    return SQSB(
+        acc,
+        input_classifier=source,
+        **(KDEY_SETTINGS | {"bandwidth": bandwidth}),
+        num_samples=BOOTSTRAP_ITERS,
+        num_warmup=BAYES_WARMUPS,
+        sample_size=SAMPLE_SIZE,
+    )
+
+
+def loo_method(acc, name: str) -> BayCAPKDEy | SQSB:
+    """The method ``name`` of E7.1 (``LOO_VARIANTS``): its stored method with ``bandwidth="loo"``."""
+    base = LOO_VARIANTS[name]
+    if base == SQS_B:
+        return sqs_b(acc, bandwidth=LOO)
+    return fixed_c_method(acc, base, bandwidth=LOO)
 
 
 def baycap_method(acc, name: str, temperature: float = 1.0) -> BayCAP:
@@ -219,7 +254,7 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
     yield "SQS-H", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=False)
     yield "SQS-Hbs", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=True)
-    yield SQS_B, SQSB(acc, fixed_c_method(acc, SQS_B_QUANTIFIER), sample_size=SAMPLE_SIZE)
+    yield SQS_B, sqs_b(acc)
     yield "PQ", sqs_s(acc)
     # BayesCAP is built from BayCAP, with the draws of cap-ml's ACC_BayesCAP, so that it stores the NUTS diagnostics
     for name in BAYCAP_VARIANTS:
@@ -245,6 +280,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
         yield name, sqs_s(acc, rho)
     for name in TEMPERED_VARIANTS:
         yield name, tempered_method(acc, name)
+    for name in LOO_VARIANTS:
+        yield name, loo_method(acc, name)
 
 
 def get_method_names() -> list[str]:
