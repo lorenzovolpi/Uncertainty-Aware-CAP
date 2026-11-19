@@ -315,6 +315,7 @@ This part tracks all implementation and experimentation work of the project: wha
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
 | WP-24 | E5.4: concentrated and sparse prevalence distributions for BayCAP-Hf and BayCAP-KDEy (extended `binform`) | experiment | Scheduled | — | 2026-11-18 |
+| WP-25 | E7.1: per-class leave-one-out bandwidth for BayesKDEy in `BayCAP-KDEy-mlp-real` and `SQS-B` | experiment | Scheduled | — | 2026-11-19 |
 
 Kinds: **method** (a CAP method or a component of one), **experiment** (an experiment module together with its tables and plots), **analysis** (tables, plots or post-hoc scores on stored results, with no new runs), **infra** (shared infrastructure), **fix** (a Part IV entry, with ID `FIX-<n>`, once the user schedules it).
 
@@ -375,6 +376,26 @@ Entry template:
 - **Done when:** the code and tests are merged; the pilot (`connect-4`, `poker_hand`, `letter`, with the five classifiers) and the full run are done with stored results.
 - **Commands:** to be filled when the code exists.
 - **Log:** 2026-11-18: card added; E5.4 promoted directly to the main section of the extension, with $\lambda=3$ and $\beta=1/3$ (user's decision).
+- **Outcome:**
+
+### WP-25 E7.1: per-class leave-one-out bandwidth for BayesKDEy in `BayCAP-KDEy-mlp-real` and `SQS-B`
+
+- **Kind / status:** experiment / Scheduled
+- **Source:** [[ext7_kdey_bandwidth]] (E7.1)
+- **Goal:** measure whether a bandwidth selected from $V$ alone improves the methods built on the posterior of BayesKDEy. BayesKDEy estimates, for each class $\omega_j$, the density of the outputs of its input classifier (an MLP trained on $V$, validation outputs cross-fitted on $5$ folds) by a Gaussian kernel density; `main` uses one bandwidth $b=0.1$ for every class and dataset. The card makes the bandwidth of `methods/baycap_kdey.py:BayCAPKDEy` a hyperparameter that takes either a positive number (or `"scott"`/`"silverman"`, as now) or `"loo"`: with `"loo"`, each class gets its own $\hat b_j=\arg\max_{b\in\mathcal G}\sum_{i=1}^{n_j}\ln\hat p_{j,-i}(z_{j,i})$, the leave-one-out log-likelihood of the class density on its $n_j$ validation outputs, over the grid $\mathcal G=\{10^{-2+0.1k}:k=0,\dots,20\}$ (log-spaced from $0.01$ to $1$, containing $0.1$; a parameter `bandwidth_grid`), computed in closed form from the pairwise distances of the class; a class with $n_j<2$ keeps $0.1$. Because the outputs lie on the simplex ($K-1$ dimensions) while QuaPy's Gaussian kernel is normalised in $K$, the per-class densities and the selection use the kernel normalised in $K-1$ dimensions (log-density of `KernelDensity` plus $\tfrac12\ln(2\pi b_j^2)$); with a shared bandwidth the extra factor cancels in the posterior, with per-class bandwidths it would reweight the classes by $1/b_j$ and bias the selection towards small $b$. `SQSB` (`methods/sqs_b.py`) takes its quantifier as a configured `BayCAPKDEy`, so it gets the selection through it, with the same draws as the BayCAP method on the same quantifier. Two new methods of `main`: `BayCAP-KDEy-mlp-real-loo` (BayesKDEy with the MLP input, fixed $\hat C$, realised pushforward, `bandwidth="loo"`) and `SQS-B-loo` (SQS-B on that quantifier); everything else as `BayCAP-KDEy-mlp-real` and `SQS-B` (Gaussian kernel, no shrinkage, prior $\operatorname{Dir}(\mathbf 1)$, $\tau=1$, NUTS with $500$ warm-up iterations, $1000$ draws and the same seeds, bags of `SQS-B` as in E3.3). Protocol of `main`: the $75$ pairs and $100$ bags of size $1000$ per pair. Measures (vanilla accuracy, macro-F1, macro-K): AE, coverage, amplitude, Winkler score at $\alpha=0.05$; per pair, the difference of the mean Winkler score between each LOO method and its stored counterpart, with paired bootstrap tests ($10{,}000$ seeded resamples of the $100$ per-bag differences, Holm-adjusted over the $75$ pairs) and a Wilcoxon signed-rank test over the $75$ per-pair means; per pair and class, label-free: $\hat b_j$, $n_j$, whether $\hat b_j$ is at an edge of $\mathcal G$, the leave-one-out log-likelihood per instance at $\hat b_j$ and at $0.1$. No oracle bandwidth (user's decision of 2026-11-19). No decision rule.
+- **Estimand:** the realised table of each bag (`true_cts`), for the four methods; the selection of $\hat b_j$ uses no target labels and no target bag.
+- **Scope:**
+  - `methods/baycap_kdey.py`: `bandwidth="loo"` and `bandwidth_grid` in `BayCAPKDEy` (with `c_prior="fixed"` and the Gaussian kernel only; an error otherwise), the selection and the per-class densities in `_KernelDensities`, the selected bandwidths stored (`bandwidths_`); numeric bandwidths and `"scott"`/`"silverman"` unchanged;
+  - `methods/sqs_b.py`: no new parameter; the selected bandwidths of its quantifier reported with its summaries;
+  - `experiments/methods.py`: the factory entries `BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo`, excluded from the tables, ranks and default plots of `main`; per bag, the selected $\hat b_j$, the class sizes and the edge flags;
+  - a table module and a plot module for E7.1 (summary table, per-pair table, $\hat b_j$ against $n_j$ per dataset, Winkler difference against the median of $\log_{10}(\hat b_j/0.1)$); `Makefile` targets;
+  - tests: the closed-form leave-one-out log-likelihood equals the brute-force one on a small set; the corrected density integrates to $1$ on the simplex surface for $K=2,3$ (data far from the edges); the selection finds a known optimum on a toy set and returns $0.01$ when all outputs of a class are duplicated; with a numeric bandwidth the log-densities and the posterior draws are identical to the current ones; `SQS-B-loo` and `BayCAP-KDEy-mlp-real-loo` share their prevalence draws; §II.12 updated (the methods in `src/uncawe/methods/` that should move to `cap-ml`).
+- **Depends on:** none (WP-8 and WP-18, which added `BayCAPKDEy` and `SQSB`, are done).
+- **Comparability:** the stored results of `main` are unchanged (the shared-bandwidth path is not modified); the two new methods add rows to `main` with the seeds of their stored counterparts, so they differ from them only through the bandwidths. Cost: one run of `main` on `bcuda` with `JAX=cpu` for the two methods, $2\times75\times100$ NUTS runs, as `BayCAP-KDEy-mlp-real` and `SQS-B`; the selection costs $O(n_j^2)$ per class (distances computed in chunks), negligible against NUTS.
+- **Deviations from Part V:** none expected.
+- **Done when:** the code and tests are merged; the full run (and the pilot, if the user asks for one) is done with stored results.
+- **Commands:** to be filled when the code exists.
+- **Log:** 2026-11-19: card added; E7.1 decided with per-class bandwidths, no oracle reference, the grid $\{10^{-2+0.1k}\}_{k=0}^{20}$, and the bandwidth as a hyperparameter of `BayCAPKDEy` (a number or `"loo"`) used by `SQSB` through its quantifier (user's decisions).
 - **Outcome:**
 
 ## III.3 Completed cards

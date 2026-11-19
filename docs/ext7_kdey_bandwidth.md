@@ -10,7 +10,7 @@ BayesKDEy estimates, for each class $\omega_j$, the density of the outputs of it
 |---|---|
 | BayesKDEy with one bandwidth for all classes (`methods/baycap_kdey.py:BayCAPKDEy`, `bandwidth=0.1`), used by `BayCAP-KDEy-mlp-real` and `SQS-B` in `main` | [implemented], run and stored in `main` (E3.1, E3.3 of [[ext3_posterior_propagation]]) |
 | Per-class bandwidths selected by leave-one-out likelihood on $V$, with densities normalised on the simplex (§T.4) | [proposal], not implemented |
-| E7.1 (`BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` against the stored methods with $b=0.1$) | [proposal], not scheduled |
+| E7.1 (`BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` against the stored methods with $b=0.1$) | [proposal], scheduled as card WP-25 ([[work_plan]] §III.2) |
 | Factorial grid-search study of $h$, the surrogate classifier and the quantifier (the earlier scope of Extension 7) | set aside on 2026-11-19, in [[optional_extensions]] §13 |
 
 # Experiments
@@ -135,7 +135,7 @@ The leave-one-out likelihood selects the bandwidth that best fits the class dens
 
 Components:
 
-- **Per-class bandwidths in `methods/baycap_kdey.py`:** `BayCAPKDEy` accepts `bandwidth="loo"` (with `c_prior="fixed"` and the Gaussian kernel only) and a grid `bandwidth_grid` (default $\{10^{-2+0.1k}\}_{k=0}^{20}$). With `"loo"`, `_KernelDensities` selects $\hat b_j$ per class by the closed-form leave-one-out log-likelihood of §T.2 in $d=K-1$ dimensions (squared distances computed in chunks to bound memory on large classes), fits one `KernelDensity` per class with its $\hat b_j$, and returns log-densities corrected by $+\tfrac12\ln(2\pi\hat b_j^2)$ (§T.4); a class with $n_j<2$ keeps $0.1$. The selected bandwidths are stored (`bandwidths_`) and written per bag. Numeric bandwidths and `"scott"`/`"silverman"` keep QuaPy's densities unchanged.
+- **Per-class bandwidths in `methods/baycap_kdey.py`:** the bandwidth is a hyperparameter of `BayCAPKDEy`, a positive number, `"scott"`, `"silverman"` or `"loo"` (user's decision of 2026-11-19); `SQSB` takes a configured `BayCAPKDEy` as its quantifier, so it gets the selection through it and has no parameter of its own. `BayCAPKDEy` accepts `bandwidth="loo"` (with `c_prior="fixed"` and the Gaussian kernel only) and a grid `bandwidth_grid` (default $\{10^{-2+0.1k}\}_{k=0}^{20}$). With `"loo"`, `_KernelDensities` selects $\hat b_j$ per class by the closed-form leave-one-out log-likelihood of §T.2 in $d=K-1$ dimensions (squared distances computed in chunks to bound memory on large classes), fits one `KernelDensity` per class with its $\hat b_j$, and returns log-densities corrected by $+\tfrac12\ln(2\pi\hat b_j^2)$ (§T.4); a class with $n_j<2$ keeps $0.1$. The selected bandwidths are stored (`bandwidths_`) and written per bag. Numeric bandwidths and `"scott"`/`"silverman"` keep QuaPy's densities unchanged.
 - **E7.1 in `main`:** two factory entries in `experiments/methods.py`, `BayCAP-KDEy-mlp-real-loo` and `SQS-B-loo` (the latter on the quantifier of the former, as `SQS-B` on `BayCAP-KDEy-mlp-real`), excluded from the tables, ranks and default plots of `main`; per bag, the extra columns of the selected $\hat b_j$, the class sizes and the edge flags; a table module and a plot module for E7.1, following [[work_plan]] Part V.
 
 Tests:
