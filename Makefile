@@ -59,6 +59,11 @@ EXP_eb-binary        := python -m uncawe.experiments.eb_binary
 EXP_tempering-check  := python -m uncawe.experiments.tempering_check
 # the study target_size (E4.2): pass --run (or --counts, the class counts of the subsamples of V only) in ARGS
 EXP_target-size      := python -m uncawe.experiments.target_size
+# E4.4a and E4.4b (WP-28): the six methods, the datasets of main, LR; --datasets in ARGS restricts them (the pilot);
+# target-size-e44b-counts writes the class counts of the levels of E4.4b (v_counts_e44b.csv), without running a method
+EXP_target-size-e44a := python -m uncawe.experiments.target_size --run --e44a
+EXP_target-size-e44b := python -m uncawe.experiments.target_size --run --e44b
+EXP_target-size-e44b-counts := python -m uncawe.experiments.target_size --counts --e44b
 # the study tau_select (E5.3): --pilot for the pilot datasets, no ARGS for the full run
 EXP_tau-select       := python -m uncawe.experiments.tau_select
 EXP_tables-main      := python -m uncawe.tables.main --classic
@@ -85,6 +90,7 @@ EXP_tables-pq-rho    := python -m uncawe.tables.pq_rho
 EXP_tables-sqs-b     := python -m uncawe.tables.sqs_b
 EXP_tables-tempering := python -m uncawe.tables.tempering
 EXP_tables-target-size := python -m uncawe.tables.target_size
+EXP_tables-target-size-scores := python -m uncawe.tables.target_size_scores
 EXP_tables-tau-select := python -m uncawe.tables.tau_select
 EXP_tables-kdey-loo  := python -m uncawe.tables.kdey_loo
 EXP_tables-kdey-cal  := python -m uncawe.tables.kdey_cal
@@ -110,6 +116,8 @@ EXP_plot-pq-rho      := python -m uncawe.plots.pq_rho
 EXP_plot-sqs-b       := python -m uncawe.plots.sqs_b
 EXP_plot-tempering   := python -m uncawe.plots.tempering
 EXP_plot-target-size := python -m uncawe.plots.target_size
+# E4.4: --without poker_hand in ARGS for the check of E4.4b
+EXP_plot-target-size-scores := python -m uncawe.plots.target_size_scores
 EXP_plot-tau-select  := python -m uncawe.plots.tau_select
 EXP_plot-kdey-loo    := python -m uncawe.plots.kdey_loo
 EXP_plot-kdey-cal    := python -m uncawe.plots.kdey_cal

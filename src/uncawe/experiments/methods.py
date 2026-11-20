@@ -164,13 +164,21 @@ def pacc():
     return PACC(MLP(random_state=qp.environ["_R_SEED"]))
 
 
-def sqs_s(acc, rho: float | None = None) -> PrediQuant:
-    """SQS-S as in ``PQ`` (PACC(MLP), 10,000 candidates, gamma=0.1, L1, m=1000), with the allocation ``rho``."""
+def sqs_h(acc, bootstrap: bool, sample_size: int = SAMPLE_SIZE) -> RQBS:
+    """SQS-H (``bootstrap=False``, one estimate of the target prevalence) or SQS-Hbs (``bootstrap=True``, one bag per
+    bootstrap estimate of the prevalence): cap-ml's RQBS with PACC(MLP), ``BOOTSTRAP_ITERS`` bags of ``sample_size``
+    instances of $V$ ($1000$ in ``main``; the size of the target bag in E4.4, ``experiments/target_size.py``)."""
+    return RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=sample_size, bootstrap=bootstrap)
+
+
+def sqs_s(acc, rho: float | None = None, sample_size: int = SAMPLE_SIZE) -> PrediQuant:
+    """SQS-S as in ``PQ`` (PACC(MLP), 10,000 candidates, gamma=0.1, L1, m=1000), with the allocation ``rho``;
+    ``sample_size`` is the size of the candidate bags ($1000$ in ``main``; the size of the target bag in E4.4)."""
     return PrediQuant(
         acc,
         pacc(),
         num_samples=BOOTSTRAP_ITERS,
-        sample_size=SAMPLE_SIZE,
+        sample_size=sample_size,
         alpha=0.1,
         distance="l1",
         predict_train_prev=True,
@@ -207,11 +215,11 @@ def fixed_c_method(
     return BayCAPMAPLS(acc, **common)
 
 
-def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"], prior="uniform") -> SQSB:
+def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"], prior="uniform", sample_size: int = SAMPLE_SIZE) -> SQSB:
     """SQS-B of E3.3 with BayesKDEy as the quantifier of ``SQS_B_QUANTIFIER`` (input classifier, kernel, prior,
-    temperature, NUTS settings and default seed), bags of ``SAMPLE_SIZE`` instances, and the bandwidth ``bandwidth``
-    ($0.1$; ``"loo"`` in E7.1); ``prior`` is the Dirichlet parameter of the prior on $\\pi$ (uniform in ``main``; E5.5,
-    ``experiments/binform.py``, varies it)."""
+    temperature, NUTS settings and default seed), bags of ``sample_size`` instances (``SAMPLE_SIZE`` in ``main``; the
+    size of the target bag in E4.4), and the bandwidth ``bandwidth`` ($0.1$; ``"loo"`` in E7.1); ``prior`` is the
+    Dirichlet parameter of the prior on $\\pi$ (uniform in ``main``; E5.5, ``experiments/binform.py``, varies it)."""
     _, source, _ = FIXED_C_VARIANTS[SQS_B_QUANTIFIER]
     return SQSB(
         acc,
@@ -219,7 +227,7 @@ def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"], prior="uniform") -> SQSB:
         **(KDEY_SETTINGS | {"bandwidth": bandwidth}),
         num_samples=BOOTSTRAP_ITERS,
         num_warmup=BAYES_WARMUPS,
-        sample_size=SAMPLE_SIZE,
+        sample_size=sample_size,
         prior=prior,
     )
 
@@ -277,8 +285,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     yield "L-CBPE", CBPE(acc_name, calib_method="lascal")
     # SQS-H as in the paper (one estimate of the target prevalence) and with a bootstrap of the prevalence (one bag per
     # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
-    yield "SQS-H", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=False)
-    yield "SQS-Hbs", RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=SAMPLE_SIZE, bootstrap=True)
+    yield "SQS-H", sqs_h(acc, bootstrap=False)
+    yield "SQS-Hbs", sqs_h(acc, bootstrap=True)
     yield SQS_B, sqs_b(acc)
     yield "PQ", sqs_s(acc)
     # BayesCAP is built from BayCAP, with the draws of cap-ml's ACC_BayesCAP, so that it stores the NUTS diagnostics

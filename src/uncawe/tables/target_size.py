@@ -1,8 +1,8 @@
 r"""The error split within the cells of the study ``target_size`` (work-plan cards WP-21, E4.2b of
 ``docs/ext4_uncertainty_budget.md``, the parts across $|V|$, and WP-22, E4.2a, the parts across $|U|$ with the full $V$).
 
-Inputs: the stored results of ``experiments/target_size.py`` (vanilla accuracy, every bag size, $|V|$ level and $V$
-seed found, ``schema_version`` at least ``SCHEMA_VERSION``) for ``BayesCAP-Hf-real`` and ``BayCAP-KDEy-mlp-real``,
+Inputs: the stored results of ``experiments/target_size.py`` on the grid of E4.2 (its six datasets and levels; vanilla
+accuracy, every bag size, $|V|$ level and $V$ seed found, ``schema_version`` at least ``SCHEMA_VERSION``) for ``BayesCAP-Hf-real`` and ``BayCAP-KDEy-mlp-real``,
 both scored against the realised table of each bag (``true_cts``), and the pool recalls $d^{\text{pool}}$ of each pair
 (``tables/error_split.py:load_pool_info``). The split uses the true prevalence of the bag and the labels of the pool,
 so it is an analysis, not a method.
@@ -68,6 +68,7 @@ import pandas as pd
 from uncawe import env
 from uncawe import error_split as es
 from uncawe.experiments.target_size import (
+    DATASETS,
     DOMAIN,
     EXPERIMENT,
     LEVELS,
@@ -125,13 +126,15 @@ def result_files(root: str | None = None, acc_name: str = ACC_NAME) -> list[str]
 
 
 def load_results(root: str | None = None, methods=METHODS) -> pd.DataFrame:
-    """Every stored row of ``methods`` with ``schema_version >= SCHEMA_VERSION``, concatenated."""
+    """Every stored row of ``methods`` with ``schema_version >= SCHEMA_VERSION`` on the grid of E4.2 (its datasets
+    ``DATASETS`` and levels ``LEVELS``), concatenated; the other cells of the study (E4.4, WP-28) are left out."""
     frames = []
     for path in result_files(root):
         df = ResultsDataFrame.load_result(path)
         if "schema_version" not in df.columns or not (df["schema_version"] >= SCHEMA_VERSION).all():
             continue
-        frames.append(pd.DataFrame(df.loc[df["method"].isin(methods)]))
+        keep = df["method"].isin(methods) & df["dataset"].isin(DATASETS) & df["v_level"].isin(list(LEVELS))
+        frames.append(pd.DataFrame(df.loc[keep]))
     if not frames:
         raise RuntimeError(f"No {EXPERIMENT} results found for {list(methods)}.")
     return pd.concat(frames, ignore_index=True)
