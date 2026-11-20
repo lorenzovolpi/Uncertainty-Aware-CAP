@@ -9,8 +9,8 @@ Average Confidence (AC) estimates the accuracy of a classifier $h$ on an unlabel
 | Item | Status |
 |---|---|
 | `L-CBPE`: `cap-ml`'s `CBPE(calib_method="lascal")`, AC with LasCal and the highest-density interval of the Poisson-binomial distribution, binary datasets only (`experiments/methods.py`) | [implemented], run and stored in `main` (binary datasets); excluded from the main tables, the rank table and the coverage vs amplitude plot |
-| `AC`: AC with LasCal and the central interval of the Poisson-binomial distribution, any number of classes, vanilla accuracy only (`methods/ac.py`) | [implemented] (card WP-29, branch `wp-29/average-confidence`), run and stored in `main` (75 pairs, 2026-11-20) |
-| E8.1 (`AC` against `L-CBPE` in a separate table, `tables/average_confidence.py`) | [implemented], card WP-29, run (no pilot, user's decision) and analysed (below) |
+| `AC`: AC with LasCal and the central interval of the Poisson-binomial distribution, any number of classes, vanilla accuracy only (`methods/ac.py`) | [implemented] (card WP-29, merged `b17b9b0`, [[work_plan]] §II.31), run and stored in `main` (75 pairs, 2026-11-20) |
+| E8.1 (`AC` against `L-CBPE` in a separate table, `tables/average_confidence.py`) | [implemented], card WP-29 (done), run (no pilot, user's decision) and analysed (below) |
 
 # Experiments
 
