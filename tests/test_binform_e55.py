@@ -535,6 +535,40 @@ class TablesTest(unittest.TestCase):
             # the first violin (BayCAP-Hf, uniform) is the same in the two figures
             np.testing.assert_allclose(figures["right"][1][0], figures["wrong"][1][0])
         self.assertIsNone(plots.plot_violins(bags, "edge", "right", "macro-K"))
+        with self.assertRaises(ValueError):
+            plots.plot_violins(bags, "edge", "right", level="datasets")
+
+    def test_violin_means(self):
+        bags = self.bags
+        fig = plots.plot_violins(bags, "edge", "right")
+        ax = fig.axes[1]  # Winkler score
+        diamonds = [c for c in ax.collections if c.get_offsets().shape[0] == 9][-1]
+        part = bags.loc[
+            (bags["distribution"] == "edge") & (bags["method"] == "BayesCAP-Hf-real") & (bags["role"] == "uniform")
+        ]
+        expected = np.log10(max(part["winkler"].mean(), plots.FLOOR))
+        self.assertAlmostEqual(diamonds.get_offsets()[0][1], expected)
+        self.assertEqual([t.get_text() for t in fig.legends[0].get_texts()], ["median", "mean"])
+        plt.close(fig)
+
+    def test_pair_violins(self):
+        means = plots.pair_means(self.bags)
+        self.assertEqual(len(means), len(self.bags.groupby(plots.PAIR_KEYS)))
+        # the per-pair means are those of the per-pair table
+        for method in binform.E55_PRIOR_BASES:
+            for role in bsp.ROLES:
+                for distribution in binform.E55_DISTRIBUTIONS:
+                    mine = means.loc[
+                        (means["method"] == method) & (means["role"] == role) & (means["distribution"] == distribution)
+                    ].sort_values(["dataset", "classifier"])
+                    table = self.table.loc[
+                        (self.table["method"] == method) & (self.table["distribution"] == distribution)
+                    ].sort_values(["dataset", "classifier"])
+                    np.testing.assert_allclose(mine["winkler"], table[f"{role}_winkler"])
+        fig = plots.plot_violins(self.bags, "centre", "wrong", level="pairs")
+        self.assertIn("per-pair means", fig.get_suptitle())
+        fig.canvas.draw()
+        plt.close(fig)
 
     def test_scatter(self):
         for distribution in binform.E55_DISTRIBUTIONS:
@@ -556,8 +590,9 @@ class TablesTest(unittest.TestCase):
             with patch.object(plots, "plot_dir", return_value=out_dir), patch("builtins.print"):
                 plots.generate_plots(args)
             names = sorted(f for f in os.listdir(out_dir) if f.endswith(".png"))
-            self.assertEqual(len(names), 2 + 3)
+            self.assertEqual(len(names), 2 + 2 + 3)
             self.assertIn("binform_side_prior_violins_edge_wrong_vanilla_accuracy.png", names)
+            self.assertIn("binform_side_prior_pair_violins_edge_wrong_vanilla_accuracy.png", names)
 
 
 if __name__ == "__main__":

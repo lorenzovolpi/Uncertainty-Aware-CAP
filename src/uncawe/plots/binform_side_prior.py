@@ -12,7 +12,13 @@ against it.
   $\log_{10}$ of the values, floored at $10^{-5}$ (``FLOOR``; an AE of $0$ or a Winkler score of $0$, from an interval
   of zero width that covers, would have no logarithm); bags where the method produced no draws are left out. For
   BayCAP-Hf, BayCAP-KDEy and SQS-B two violins, uniform prior (light, hatched) and the informative prior of the figure;
-  for SQS-H, SQS-Hbs and SQS-S one violin, the same in the two figures of a distribution. A white dot marks the median.
+  for SQS-H, SQS-Hbs and SQS-S one violin, the same in the two figures of a distribution. A white dot marks the median
+  and a black diamond the arithmetic mean of the values (not floored, drawn at $\max(\text{mean},10^{-5})$): the
+  Winkler score is skewed, so the median follows the typical bag while the mean includes the large penalties of the
+  intervals that miss.
+- **Pair violins** (``pair-violins``): the same figures with, per violin, the $75$ per-pair means over the $100$ bags
+  (``pair_means``) instead of the bags, with the pairs drawn as points. The mean of a violin is then the value of the
+  summary table (mean over the pairs of the per-pair means), so the diamonds follow the ranking of the tables.
 - **Scatter** (``winkler``): per method with a prior, distribution and metric, the per-pair Winkler score with the uniform
   prior against that with the right-side (top) and the wrong-side prior (bottom), as in E5.4
   (``plots/binform_prior.py:plot_winkler``).
@@ -40,7 +46,9 @@ from uncawe.tables.binform_prior import ACC_LABELS
 from uncawe.tables.binform_side_prior import INFORMATIVE_ROLES, NO_PRIOR, ROLE_LABELS, csv_path
 
 PLOT_NAME = "binform_side_prior"
-FIGURES = ("violins", "winkler")
+FIGURES = ("violins", "pair-violins", "winkler")
+LEVELS = ("bags", "pairs")
+PAIR_KEYS = ["acc_name", "distribution", "method", "role", "dataset", "classifier"]
 FLOOR = 1e-5
 PANELS = {"ae": "AE", "winkler": "Winkler score"}
 DISTRIBUTION_TITLES = {
@@ -77,11 +85,29 @@ def log_values(bags: pd.DataFrame, score: str) -> np.ndarray:
     return np.log10(np.maximum(values, FLOOR))
 
 
-def plot_violins(bags: pd.DataFrame, distribution: str, role: str, acc_name: str = ACC_NAME):
-    """The violin figure of ``distribution`` and the informative prior ``role``; ``None`` without rows."""
+def finite_mean(bags: pd.DataFrame, score: str) -> float:
+    """The arithmetic mean of the finite values of ``score`` (not floored); NaN without values."""
+    values = bags[score].to_numpy(dtype=float)
+    values = values[np.isfinite(values)]
+    return float(values.mean()) if values.size else np.nan
+
+
+def pair_means(bags: pd.DataFrame) -> pd.DataFrame:
+    """Per pair (and metric, distribution, method, role), the means over the bags of the scores of ``PANELS``, NaN
+    values left out: the per-pair values that the summary table averages."""
+    return bags.groupby(PAIR_KEYS, as_index=False, dropna=False)[list(PANELS)].mean()
+
+
+def plot_violins(bags: pd.DataFrame, distribution: str, role: str, acc_name: str = ACC_NAME, level: str = "bags"):
+    """The violin figure of ``distribution`` and the informative prior ``role``, over the bags or (``level="pairs"``)
+    over the per-pair means of ``pair_means``; ``None`` without rows."""
+    if level not in LEVELS:
+        raise ValueError(f"unknown level {level!r}, expected one of {LEVELS}")
     rows = bags.loc[(bags["distribution"] == distribution) & (bags["acc_name"] == acc_name)]
     if rows.empty:
         return None
+    if level == "pairs":
+        rows = pair_means(rows)
     cells = [
         (base, r, part)
         for base, r in violin_cells(role)
@@ -93,7 +119,11 @@ def plot_violins(bags: pd.DataFrame, distribution: str, role: str, acc_name: str
         positions = np.arange(len(cells))
         keep = [i for i, d in enumerate(data) if d.size > 0]
         parts = ax.violinplot(
-            [data[i] for i in keep], positions=positions[keep], widths=0.8, showextrema=False, bw_method=0.15
+            [data[i] for i in keep],
+            positions=positions[keep],
+            widths=0.8,
+            showextrema=False,
+            bw_method=0.15 if level == "bags" else 0.3,
         )
         for body, i in zip(parts["bodies"], keep):
             base, r, _ = cells[i]
@@ -104,8 +134,17 @@ def plot_violins(bags: pd.DataFrame, distribution: str, role: str, acc_name: str
             body.set_alpha(0.45 if uniform else 0.9)
             if uniform:
                 body.set_hatch("///")
+        if level == "pairs":
+            rng = np.random.default_rng(0)
+            for i in keep:
+                jitter = rng.uniform(-0.12, 0.12, data[i].size)
+                ax.scatter(positions[i] + jitter, data[i], s=5, color="#1f1f1f", alpha=0.35, linewidth=0, zorder=2)
         medians = [np.median(data[i]) for i in keep]
+        means = [np.log10(max(finite_mean(cells[i][2], score), FLOOR)) for i in keep]
         ax.scatter(positions[keep], medians, s=22, color="white", edgecolor="#1f1f1f", linewidth=0.8, zorder=3)
+        ax.scatter(
+            positions[keep], means, s=30, marker="D", color="#1f1f1f", edgecolor="white", linewidth=0.6, zorder=4
+        )
         ax.set_xticks(positions)
         ax.set_xticklabels(
             [f"{method_plot_label(base)}\n{ROLE_LABELS[r]}" for base, r, _ in cells],
@@ -123,8 +162,14 @@ def plot_violins(bags: pd.DataFrame, distribution: str, role: str, acc_name: str
         ax.grid(axis="x", visible=False)
         ax.set_axisbelow(True)
         ax.set_title(label, fontsize=font_size(11))
+    markers = [
+        plt.Line2D([], [], marker="o", linestyle="", markersize=5, color="white", markeredgecolor="#1f1f1f"),
+        plt.Line2D([], [], marker="D", linestyle="", markersize=5, color="#1f1f1f", markeredgecolor="white"),
+    ]
+    fig.legend(markers, ["median", "mean"], loc="outside lower center", ncols=2, fontsize=font_size(8), frameon=False)
+    unit = "every bag" if level == "bags" else "per-pair means over the bags"
     fig.suptitle(
-        f"E5.5: {DISTRIBUTION_TITLES[distribution]}, {ROLE_LABELS[role]} prior ({ACC_LABELS[acc_name]})",
+        f"E5.5: {DISTRIBUTION_TITLES[distribution]}, {ROLE_LABELS[role]} prior, {unit} ({ACC_LABELS[acc_name]})",
         fontsize=font_size(12),
     )
     return fig
@@ -151,16 +196,21 @@ def _save(fig, stem: str, args) -> None:
 
 def generate_plots(args):
     out_dir = plot_dir()
-    if "violins" in args.figures:
+    levels = {"violins": "bags", "pair-violins": "pairs"}
+    if any(figure in args.figures for figure in levels):
         bags = load_table("bags", args.bags_csv)
+    for figure, level in levels.items():
+        if figure not in args.figures:
+            continue
+        prefix = f"{PLOT_NAME}_{figure.replace('-', '_')}"
         for acc_name in args.metrics:
             for distribution in args.distributions:
                 for role in INFORMATIVE_ROLES:
-                    fig = plot_violins(bags, distribution, role, acc_name)
+                    fig = plot_violins(bags, distribution, role, acc_name, level)
                     if fig is None:
                         print(f"no bags for {distribution} ({acc_name}), skipped")
                         continue
-                    _save(fig, os.path.join(out_dir, f"{PLOT_NAME}_violins_{distribution}_{role}_{acc_name}"), args)
+                    _save(fig, os.path.join(out_dir, f"{prefix}_{distribution}_{role}_{acc_name}"), args)
     if "winkler" in args.figures:
         table = load_table("pairs", args.csv)
         for acc_name in args.metrics:
