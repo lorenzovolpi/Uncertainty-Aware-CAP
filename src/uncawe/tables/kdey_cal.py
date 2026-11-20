@@ -64,10 +64,21 @@ GRID_STEP = float(np.diff(np.log10(GRID)).mean())
 SHORT_LABELS = {STORED_METHOD: "KDEy", CAL_METHOD: "KDEy cal"}
 
 
-def load_all(acc_name: str) -> dict[str, pd.DataFrame]:
-    """The stored ``main`` rows of both methods for ``acc_name``, restricted to the pairs stored for both; empty if
-    there is none."""
-    frames = {method: tempering.load_method(method, acc_name) for method in METHODS}
+# the results folder of the cal method: main, or the archived EM pilot of E7.2a (PILOT_EM_EXPERIMENT; the stored method
+# is always read from main)
+CAL_EXPERIMENT = "main"
+PILOT_EM_EXPERIMENT = "main_e72a_pilot_em"
+
+
+def load_all(acc_name: str, cal_experiment: str = CAL_EXPERIMENT) -> dict[str, pd.DataFrame]:
+    """The stored rows of both methods for ``acc_name`` (the cal method from ``cal_experiment``, the stored one from
+    ``main``), restricted to the pairs stored for both; empty if there is none."""
+    frames = {
+        method: tempering.load_method(method, acc_name, experiment=cal_experiment)
+        if method == CAL_METHOD
+        else tempering.load_method(method, acc_name)
+        for method in METHODS
+    }
     if any(df.empty for df in frames.values()):
         return {}
     pairs = eb_prior.common_pairs(frames)
@@ -156,11 +167,11 @@ def pair_rows(frames: dict[str, pd.DataFrame], acc_name: str) -> list[dict]:
     return rows
 
 
-def pair_table(acc_names=None) -> pd.DataFrame:
+def pair_table(acc_names=None, cal_experiment: str = CAL_EXPERIMENT) -> pd.DataFrame:
     """One row per metric and pair with stored results of both methods, ordered as the tables of E3.1."""
     tables = []
     for acc_name in acc_names or get_acc_names():
-        frames = load_all(acc_name)
+        frames = load_all(acc_name, cal_experiment)
         if not frames:
             continue
         table = pd.DataFrame(pair_rows(frames, acc_name))
@@ -172,10 +183,10 @@ def pair_table(acc_names=None) -> pd.DataFrame:
     return pd.concat(tables, ignore_index=True)
 
 
-def curve_table(acc_name: str = "vanilla_accuracy") -> pd.DataFrame:
+def curve_table(acc_name: str = "vanilla_accuracy", cal_experiment: str = CAL_EXPERIMENT) -> pd.DataFrame:
     """One row per pair and bandwidth of the grid: the criterion, and the NUTS criterion where stored (from the rows of
     the cal method for ``acc_name``; the selection does not depend on the metric)."""
-    frames = load_all(acc_name)
+    frames = load_all(acc_name, cal_experiment)
     if not frames:
         raise RuntimeError(f"No pair of main has stored results for all of {METHODS}.")
     rows = []
@@ -386,9 +397,9 @@ def _write(out_dir: str, stem: str, styler, caption_text: str, label: str) -> No
 
 
 def gen_tables(pargs):
-    table = pair_table(pargs.metrics)
+    table = pair_table(pargs.metrics, pargs.cal_experiment)
     summary = summary_table(table)
-    curves = curve_table()
+    curves = curve_table(cal_experiment=pargs.cal_experiment)
     check = check_table(table)
     out_dir = table_dir(pargs)
     os.makedirs(os.path.join(out_dir, "tabular"), exist_ok=True)
@@ -451,6 +462,12 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--pdf", action="store_true", help="Generate PDF from tables")
     parser.add_argument("-a", "--all", action="store_true", help="Generate both tables and PDF")
     parser.add_argument("--metrics", nargs="+", choices=get_acc_names(), default=None, help="Default: all three")
+    parser.add_argument(
+        "--cal-experiment",
+        default=CAL_EXPERIMENT,
+        help=f"Results folder of the cal method (default: {CAL_EXPERIMENT}; {PILOT_EM_EXPERIMENT} for the archived EM "
+        "pilot of E7.2a, with --table-dir to keep its tables apart)",
+    )
     parser.add_argument(
         "--table-dir",
         "--output-dir",

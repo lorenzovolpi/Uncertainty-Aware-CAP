@@ -143,6 +143,12 @@ class TablesTest(unittest.TestCase):
         for name in kc.TABLES:
             self.assertIn("E7.2", kc.caption("macro-F1", name))
 
+    def test_the_cal_method_can_be_read_from_the_archived_pilot(self):
+        with patch.object(kc.tempering, "load_method", side_effect=_load_method) as load:
+            kc.load_all("vanilla_accuracy", kc.PILOT_EM_EXPERIMENT)
+        folders = {call.args[0]: call.kwargs.get("experiment") for call in load.call_args_list}
+        self.assertEqual(folders, {kc.CAL_METHOD: kc.PILOT_EM_EXPERIMENT, kc.STORED_METHOD: None})
+
     def test_plots(self):
         for fig in (plots.plot_bandwidths(self.table), plots.plot_gain(self.table, "vanilla_accuracy")):
             self.assertGreater(len(fig.axes), 0)

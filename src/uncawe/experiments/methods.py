@@ -240,11 +240,17 @@ def loo_method(acc, name: str) -> BayCAPKDEy | SQSB:
     return fixed_c_method(acc, base, bandwidth=LOO)
 
 
+# the solver of the estimate of pi on a calibration bag in the methods of E7.2: QuaPy's KDEyML (SLSQP), as the
+# bandwidth selection of the BayesKDEy paper (user's decision of 2026-11-20, after the gate of the solver; the pilot of
+# E7.2a used EM, the default of BayCAPKDEy)
+CAL_SOLVER = "slsqp"
+
+
 def cal_method(acc, name: str, nuts_check: bool = False) -> BayCAPKDEy:
     """The method ``name`` of E7.2 (``CAL_VARIANTS``): its stored method with ``bandwidth="cal"`` (grid ``LOO_GRID``,
-    $50$ calibration bags of $1000$ instances); ``nuts_check`` adds the pilot check of the EM estimate against the NUTS
-    posterior mean (``cal_nuts_check``)."""
-    return fixed_c_method(acc, CAL_VARIANTS[name], bandwidth=CAL, cal_nuts_check=nuts_check)
+    $50$ calibration bags of $1000$ instances, the estimate of QuaPy's ``KDEyML``, ``CAL_SOLVER``); ``nuts_check`` adds
+    the pilot check of the estimate against the NUTS posterior mean (``cal_nuts_check``)."""
+    return fixed_c_method(acc, CAL_VARIANTS[name], bandwidth=CAL, cal_nuts_check=nuts_check, cal_solver=CAL_SOLVER)
 
 
 def baycap_method(acc, name: str, temperature: float = 1.0) -> BayCAP:
