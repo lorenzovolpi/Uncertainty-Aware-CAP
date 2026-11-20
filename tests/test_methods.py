@@ -335,6 +335,7 @@ class CalFactoryTest(unittest.TestCase):
         self.assertEqual((reference.bandwidth, method.bandwidth), (0.1, "cal"))
         self.assertIsNone(method.bandwidth_grid)
         self.assertEqual((method.cal_bags, method.cal_bag_size, method.cal_nuts_check), (50, 1000, False))
+        self.assertEqual(method.cal_solver, "slsqp")
         for attribute in (
             "input_classifier",
             "estimand",
