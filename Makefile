@@ -98,6 +98,7 @@ EXP_tables-kdey-loo  := python -m uncawe.tables.kdey_loo
 EXP_tables-kdey-cal  := python -m uncawe.tables.kdey_cal
 EXP_tables-kdey-cal-solver := python -m uncawe.tables.kdey_cal_solver
 EXP_tables-kdey-tcal := python -m uncawe.tables.kdey_tcal
+EXP_tables-average-confidence := python -m uncawe.tables.average_confidence
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic

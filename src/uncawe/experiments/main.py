@@ -56,6 +56,7 @@ from uncawe.experiments.methods import (
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
 from uncawe.experiments.task_order import TaskKey, default_reference_experiments, sort_longest_first
+from uncawe.methods.ac import AC
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_quantifier import QuantifierBayCAP
 from uncawe.methods.sqs_b import SQSB
@@ -227,10 +228,13 @@ def _evaluate_direct_method(
             t_train = time() - started
 
             started = time()
-            estim_acc_ranges = [
-                method.predict_range(sample.X, posteriors)
-                for sample, posteriors in zip(dataset.test_prot(), dataset.test_prot_posteriors)
-            ]
+            estim_acc_ranges, lascal_columns = [], []
+            for sample, posteriors in zip(dataset.test_prot(), dataset.test_prot_posteriors):
+                estim_acc_ranges.append(method.predict_range(sample.X, posteriors))
+                # AC (E8.1 of docs/ext8_average_confidence.md): the temperature selected by LasCal and the fallback
+                # flag of each bag, only for the metric it estimates; reading them costs nothing measurable
+                if isinstance(method, AC) and method.last_lascal_columns() is not None:
+                    lascal_columns.append(method.last_lascal_columns())
             t_test_ave = (time() - started) / dataset.test_prot.total()
         except Exception as error:
             print_exception(error)
@@ -249,6 +253,9 @@ def _evaluate_direct_method(
             estim_cts=[None] * context.size,
             t_train=t_train,
             t_test_ave=t_test_ave,
+            extra_columns=(
+                {name: [d[name] for d in lascal_columns] for name in lascal_columns[0]} if lascal_columns else None
+            ),
         )
         results.append(
             EXP.SUCCESS(
