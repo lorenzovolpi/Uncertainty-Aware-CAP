@@ -503,49 +503,74 @@ class TablesTest(unittest.TestCase):
     # ----------------------------------------------------------------------------------------------- plots
 
     def test_violin_cells_and_floor(self):
-        cells = plots.violin_cells("right")
-        self.assertEqual(len(cells), 9)
-        self.assertEqual(cells[:2], [("BayesCAP-Hf-real", "uniform"), ("BayesCAP-Hf-real", "right")])
-        self.assertEqual(cells[-3:], [(name, "none") for name in binform.E55_REFERENCES])
-        # the uniform and SQS violins are the same in the two figures of a distribution
-        shared = set(cells) & set(plots.violin_cells("wrong"))
-        self.assertEqual(len(shared), 3 + 3)
+        cells = plots.violin_cells()
+        self.assertEqual(len(cells), 3 + 3 * 3)
+        methods = list(dict.fromkeys(method for method, _, _ in cells))
+        self.assertEqual(methods, ["PQ", "SQS-H", "SQS-Hbs", "SQS-B", "BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real"])
+        self.assertEqual([plots.short_label(m) for m in methods][-2:], ["BayCAP-Hf", "BayCAP-KDEy"])
+        # wrong side on the left, uniform in the middle, right side on the right
+        self.assertEqual([role for method, role, _ in cells if method == "SQS-B"], ["wrong", "uniform", "right"])
+        self.assertEqual([role for method, role, _ in cells if method == "PQ"], ["none"])
+        positions = [position for _, _, position in cells]
+        self.assertEqual(positions, sorted(positions))
         values = plots.log_values(pd.DataFrame({"ae": [0.0, 1e-7, 0.01, np.nan]}), "ae")
         np.testing.assert_allclose(values, [-5.0, -5.0, -2.0])
+
+    def test_violin_stats_closed_tails(self):
+        values = np.array([-2.0, -1.5, -1.2, -1.0, -0.4])
+        stats = plots.violin_stats(values, 0.3)
+        # the density extends beyond the extreme values and closes towards zero there
+        self.assertLess(stats["coords"][0], values.min())
+        self.assertGreater(stats["coords"][-1], values.max())
+        self.assertLess(stats["vals"][0], 0.2 * stats["vals"].max())
+        self.assertLess(stats["vals"][-1], 0.2 * stats["vals"].max())
+        # not below the floor
+        floored = plots.violin_stats(np.array([-5.0, -5.0, -4.9, -3.0]), 0.3)
+        self.assertGreaterEqual(floored["coords"][0], np.log10(plots.FLOOR))
+        # one value or equal values
+        single = plots.violin_stats(np.array([-2.0]), 0.3)
+        self.assertTrue(np.all(np.isfinite(single["vals"])))
 
     def test_violins(self):
         bags = self.bags.copy()
         bags.loc[bags.index[:5], "ae"] = 0.0  # floored
         for distribution in binform.E55_DISTRIBUTIONS:
-            figures = {}
-            for role in bsp.INFORMATIVE_ROLES:
-                fig = plots.plot_violins(bags, distribution, role)
-                self.assertEqual(len(fig.axes), 2)
+            for level in plots.LEVELS:
+                fig = plots.plot_violins(bags, distribution, level=level)
+                self.assertEqual(len([ax for ax in fig.axes if ax.get_title()]), 2)
                 self.assertIn("E5.5", fig.get_suptitle())
-                self.assertIn(bsp.ROLE_LABELS[role], fig.get_suptitle())
+                self.assertIn("all pairs", fig.get_suptitle())
                 labels = [t.get_text() for t in fig.axes[0].get_xticklabels()]
-                self.assertEqual(len(labels), 9)
-                self.assertTrue(any("SQS-S" in label for label in labels))
+                self.assertEqual(labels[:4], ["no prior", "no prior", "no prior", "wrong"])
+                self.assertEqual(len(labels), 12)
                 fig.canvas.draw()
-                figures[role] = [
-                    [body.get_paths()[0].vertices.copy() for body in ax.collections if body.get_paths()]
-                    for ax in fig.axes
-                ]
                 plt.close(fig)
-            # the first violin (BayCAP-Hf, uniform) is the same in the two figures
-            np.testing.assert_allclose(figures["right"][1][0], figures["wrong"][1][0])
-        self.assertIsNone(plots.plot_violins(bags, "edge", "right", "macro-K"))
+        self.assertIsNone(plots.plot_violins(bags, "edge", "macro-K"))
         with self.assertRaises(ValueError):
-            plots.plot_violins(bags, "edge", "right", level="datasets")
+            plots.plot_violins(bags, "edge", level="datasets")
+        with self.assertRaises(ValueError):
+            plots.plot_violins(bags, "edge", group="ternary")
+
+    def test_violin_groups(self):
+        binary = plots.pair_group(self.bags, "binary")
+        multiclass = plots.pair_group(self.bags, "multiclass")
+        self.assertTrue((binary["n_classes"] == 2).all())
+        self.assertTrue((multiclass["n_classes"] > 2).all())
+        self.assertEqual(len(binary) + len(multiclass), len(self.bags))
+        for group in plots.PAIR_GROUPS:
+            fig = plots.plot_violins(self.bags, "centre", group=group)
+            if fig is None:
+                self.assertTrue(plots.pair_group(self.bags, group).empty)
+                continue
+            self.assertIn(plots.PAIR_GROUPS[group], fig.get_suptitle())
+            plt.close(fig)
 
     def test_violin_means(self):
         bags = self.bags
-        fig = plots.plot_violins(bags, "edge", "right")
+        fig = plots.plot_violins(bags, "edge", level="bags")
         ax = fig.axes[1]  # Winkler score
-        diamonds = [c for c in ax.collections if c.get_offsets().shape[0] == 9][-1]
-        part = bags.loc[
-            (bags["distribution"] == "edge") & (bags["method"] == "BayesCAP-Hf-real") & (bags["role"] == "uniform")
-        ]
+        diamonds = [c for c in ax.collections if c.get_offsets().shape[0] == 12][-1]
+        part = bags.loc[(bags["distribution"] == "edge") & (bags["method"] == "PQ") & (bags["role"] == "none")]
         expected = np.log10(max(part["winkler"].mean(), plots.FLOOR))
         self.assertAlmostEqual(diamonds.get_offsets()[0][1], expected)
         self.assertEqual([t.get_text() for t in fig.legends[0].get_texts()], ["median", "mean"])
@@ -565,7 +590,7 @@ class TablesTest(unittest.TestCase):
                         (self.table["method"] == method) & (self.table["distribution"] == distribution)
                     ].sort_values(["dataset", "classifier"])
                     np.testing.assert_allclose(mine["winkler"], table[f"{role}_winkler"])
-        fig = plots.plot_violins(self.bags, "centre", "wrong", level="pairs")
+        fig = plots.plot_violins(self.bags, "centre", level="pairs")
         self.assertIn("per-pair means", fig.get_suptitle())
         fig.canvas.draw()
         plt.close(fig)
@@ -590,9 +615,10 @@ class TablesTest(unittest.TestCase):
             with patch.object(plots, "plot_dir", return_value=out_dir), patch("builtins.print"):
                 plots.generate_plots(args)
             names = sorted(f for f in os.listdir(out_dir) if f.endswith(".png"))
-            self.assertEqual(len(names), 2 + 2 + 3)
-            self.assertIn("binform_side_prior_violins_edge_wrong_vanilla_accuracy.png", names)
-            self.assertIn("binform_side_prior_pair_violins_edge_wrong_vanilla_accuracy.png", names)
+            groups = [g for g in plots.PAIR_GROUPS if not plots.pair_group(self.bags, g).empty]
+            self.assertEqual(len(names), 2 * len(groups) + 3)
+            self.assertIn("binform_side_prior_violins_edge_all_vanilla_accuracy.png", names)
+            self.assertIn("binform_side_prior_pair_violins_edge_all_vanilla_accuracy.png", names)
 
 
 if __name__ == "__main__":
