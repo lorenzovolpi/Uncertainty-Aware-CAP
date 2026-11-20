@@ -18,7 +18,10 @@ Work-plan card WP-26 (E7.2 of ``docs/ext7_kdey_bandwidth.md``, §T.7–§T.9) ad
 ``c_prior="fixed"`` only: one bandwidth shared by the classes, selected per pair inside ``fit`` from $V$ alone, on
 calibration bags drawn from half of $V$, by the accuracy error that the quantifier causes
 (:meth:`BayCAPKDEy.select_bandwidth`); the deployed method is then fitted on the full $V$ at the selected bandwidth
-exactly as with a numeric one.
+exactly as with a numeric one. The estimate of $\pi$ on each calibration bag is the maximum-likelihood one, by EM
+(``cal_solver="em"``, the default and the pilot of E7.2a) or by QuaPy's ``KDEyML`` (``cal_solver="slsqp"``, SLSQP);
+:meth:`BayCAPKDEy.solver_check` computes both on the same calibration bags, with their times, for the gate of the
+solver of E7.2a (``experiments/kdey_cal_solver.py``).
 
 ``c_prior="hierarchical-f"`` gives the methods ``BayCAP-KDEy-Hf-<s>-real`` of E3.2 (work-plan card WP-13, §T.10–§T.13):
 each class of $V$ is split into cells by the prediction of $h$, the class density of BayesKDEy becomes the mixture
@@ -29,6 +32,7 @@ Hf prior on $C$ of ``methods/baycap.py`` (centred shares) and the validation cou
 
 from collections.abc import Callable
 from numbers import Number
+from time import perf_counter
 from typing import Literal
 
 import jax
@@ -64,8 +68,10 @@ from uncawe.methods.bayes_kdey import (
     LOO_GRID,
     LOO_SUMMARIES,
     BayesKDEy,
+    bag_log_likelihoods,
     em_prevalences,
     kdey_model,
+    slsqp_prevalences,
 )
 from uncawe.methods.bayesian_quantifier import PREV, _validate_outputs
 
@@ -92,9 +98,12 @@ CAL_BAG_SIZE = 1000
 CAL_REFERENCE = LOO_DEFAULT_BANDWIDTH
 # the streams of the seeds of the calibration, derived from random_state (calibration_seed)
 CAL_SPLIT_STREAM, CAL_BAG_STREAM = 0, 1
+# the solvers of the estimate of pi on a calibration bag: EM (em_prevalences) or QuaPy's KDEyML (slsqp_prevalences)
+CAL_SOLVERS = ("em", "slsqp")
 # per-bag summaries added by bandwidth="cal" (the selection is fixed by the fit, so the same for every bag): the selected
 # bandwidth b_cal, the criterion over bandwidth_grid (a vector), its values at b_cal and at CAL_REFERENCE, and the
-# number of (bandwidth, calibration bag) cells whose EM estimate did not converge, the sizes of V and of V_cal; with
+# number of (bandwidth, calibration bag) cells whose estimate did not converge (EM: the step cap reached; SLSQP: no
+# success; the name keeps that of the pilot), the sizes of V and of V_cal; with
 # cal_nuts_check, also the
 # bandwidth selected and the criterion curve computed with the NUTS posterior mean in place of the EM estimate
 CAL_SUMMARIES = (
@@ -291,6 +300,9 @@ class BayCAPKDEy(QuantifierBayCAP):
     :param cal_nuts_check: with ``"cal"``, also compute the criterion with the NUTS posterior mean in place of the EM
         estimate, for every bandwidth and calibration bag (the pilot check of E7.2, §T.8); it does not change the
         selection.
+    :param cal_solver: with ``"cal"``, the maximum-likelihood estimate on a calibration bag: ``"em"``
+        (:func:`uncawe.methods.bayes_kdey.em_prevalences`) or ``"slsqp"``, QuaPy's ``KDEyML``
+        (:func:`uncawe.methods.bayes_kdey.slsqp_prevalences`).
     """
 
     def __init__(
@@ -311,6 +323,7 @@ class BayCAPKDEy(QuantifierBayCAP):
         cal_bags: int = CAL_BAGS,
         cal_bag_size: int = CAL_BAG_SIZE,
         cal_nuts_check: bool = False,
+        cal_solver: Literal["em", "slsqp"] = "em",
     ) -> None:
         if c_prior not in KDEY_C_PRIORS:
             raise ValueError(f"c_prior must be one of {KDEY_C_PRIORS}; found {c_prior!r}")
@@ -334,6 +347,9 @@ class BayCAPKDEy(QuantifierBayCAP):
         self.cal_bags = int(cal_bags)
         self.cal_bag_size = int(cal_bag_size)
         self.cal_nuts_check = bool(cal_nuts_check)
+        if cal_solver not in CAL_SOLVERS:
+            raise ValueError(f"cal_solver must be one of {CAL_SOLVERS}; found {cal_solver!r}")
+        self.cal_solver = cal_solver
         if self.calibrates_bandwidth:
             if kernel != "gaussian" or shrinkage != 0:
                 raise ValueError('bandwidth="cal" needs the Gaussian kernel and no shrinkage')
@@ -387,18 +403,68 @@ class BayCAPKDEy(QuantifierBayCAP):
            (:func:`calibration_bags`, seed ``calibration_seed(random_state, CAL_BAG_STREAM)``), the same for every
            bandwidth, each with its true prevalence $\pi_s$ and the outputs of the input classifier of $V_{\text{fit}}$.
         4. For each $b$ of the grid: the class densities on $V_{\text{fit}}$ at $b$, their log-densities at the outputs
-           of $V_{\text{cal}}$ (once per $b$), the EM estimate $\hat\pi_s(b)$ of each bag (:func:`em_prevalences`) and
+           of $V_{\text{cal}}$ (once per $b$), the maximum-likelihood estimate $\hat\pi_s(b)$ of each bag and
            the criterion $\frac1S\sum_s\lvert\hat d^{\text{fit}\top}(\hat\pi_s(b)-\pi_s)\rvert$
            (:func:`accuracy_criterion`); the criterion is also computed at ``CAL_REFERENCE`` if it is not in the grid.
         5. $b_{\text{cal}}$ is the bandwidth of smallest criterion, ties broken towards ``CAL_REFERENCE``
            (:func:`select_from_curve`).
 
-        Only the labels of $V$ are used. With ``cal_nuts_check``, step 4 is repeated with the posterior mean of a NUTS
+        The estimate of step 4 is that of ``cal_solver`` (EM or QuaPy's ``KDEyML``). Only the labels of $V$ are used.
+        With ``cal_nuts_check``, step 4 is repeated with the posterior mean of a NUTS
         run of the model of BayesKDEy (prior, temperature and NUTS settings of the method) in place of the EM estimate;
         the selection still uses the EM estimate.
 
         :return: $b_{\text{cal}}$, also stored in ``cal_bandwidth_``.
         """
+        setup = self._calibration_setup(val, posteriors)
+        half, cal_outputs, bag_index, counts = setup["half"], setup["cal_outputs"], setup["bag_index"], setup["counts"]
+        prevalences, recalls, n_classes = setup["prevalences"], setup["recalls"], len(setup["recalls"])
+
+        grid = np.asarray(self._cal_grid(), dtype=float)
+        with_reference = self._with_reference(grid)
+        estimates = np.empty((len(with_reference), len(bag_index), n_classes))
+        nuts_means = np.empty_like(estimates) if self.cal_nuts_check else None
+        unconverged = 0
+        alpha = _resolve_dirichlet_prior(self.prior, n_classes)
+        for g, bandwidth in enumerate(with_reference):
+            log_densities = half.class_log_densities(cal_outputs, float(bandwidth))
+            estimates[g], converged = self._solve(self.cal_solver, log_densities, counts, bag_index)
+            unconverged += int(np.sum(~converged))
+            if nuts_means is not None:
+                for s, index in enumerate(bag_index):
+                    args = {
+                        "test_log_densities": log_densities[:, index],
+                        "alpha": alpha,
+                        "temperature": self.temperature,
+                    }
+                    mcmc = half.run_nuts(kdey_model, args, None)
+                    nuts_means[g, s] = np.asarray(jax.device_get(mcmc.get_samples()[PREV])).mean(axis=0)
+
+        curve = accuracy_criterion(estimates, prevalences, recalls)
+        reference = int(np.flatnonzero(np.isclose(with_reference, CAL_REFERENCE))[0])
+        best = select_from_curve(grid, curve[: len(grid)])
+        self.cal_grid_ = grid
+        self.cal_split_ = (setup["fit_index"], setup["cal_index"])
+        self.cal_bag_index_ = bag_index
+        self.cal_prevalences_ = prevalences
+        self.cal_recalls_ = recalls
+        self.cal_estimates_ = estimates[: len(grid)]
+        self.cal_curve_ = curve[: len(grid)]
+        self.cal_selected_ = float(curve[best])
+        self.cal_default_ = float(curve[reference])
+        self.cal_em_unconverged_ = unconverged
+        self.cal_bandwidth_ = float(grid[best])
+        if nuts_means is not None:
+            curve_nuts = accuracy_criterion(nuts_means, prevalences, recalls)
+            self.cal_nuts_means_ = nuts_means[: len(grid)]
+            self.cal_curve_nuts_ = curve_nuts[: len(grid)]
+            self.cal_bandwidth_nuts_ = float(grid[select_from_curve(grid, self.cal_curve_nuts_)])
+        return self.cal_bandwidth_
+
+    def _calibration_setup(self, val: LabelledCollection, posteriors: np.ndarray) -> dict:
+        r"""Steps 1–3 of :meth:`select_bandwidth`: the split, BayesKDEy and the recalls on $V_{\text{fit}}$, the
+        calibration bags with their outputs and true prevalences, and the multiplicity of each instance of
+        $V_{\text{cal}}$ in each bag."""
         posteriors = np.asarray(posteriors, dtype=float)
         classes = np.asarray(val.classes_)
         _validate_outputs(posteriors, len(val), len(classes))
@@ -419,47 +485,97 @@ class BayCAPKDEy(QuantifierBayCAP):
             calibration_seed(self.random_state, CAL_BAG_STREAM),
         )
         counts = np.stack([np.bincount(index, minlength=len(cal_index)) for index in bag_index])
+        return {
+            "fit_index": fit_index,
+            "cal_index": cal_index,
+            "half": half,
+            "cal_outputs": cal_outputs,
+            "recalls": recalls,
+            "bag_index": bag_index,
+            "prevalences": prevalences,
+            "counts": counts,
+        }
 
+    @staticmethod
+    def _with_reference(grid: np.ndarray) -> np.ndarray:
+        """The grid, with ``CAL_REFERENCE`` appended if it is not in it."""
+        return grid if np.any(np.isclose(grid, CAL_REFERENCE)) else np.append(grid, CAL_REFERENCE)
+
+    @staticmethod
+    def _solve(solver: str, log_densities: np.ndarray, counts: np.ndarray, bag_index: np.ndarray):
+        r"""The estimates of $\pi$ on the calibration bags by ``solver``, and whether each converged."""
+        if solver == "em":
+            return em_prevalences(log_densities, counts)
+        return slsqp_prevalences(log_densities, bag_index)
+
+    def solver_check(self, val: LabelledCollection, posteriors: np.ndarray) -> dict:
+        r"""The gate of the solver of E7.2a: the selection of :meth:`select_bandwidth` with both solvers, on the same
+        calibration bags and class densities, and their times. It does not fit the method nor set ``cal_bandwidth_``.
+
+        For each bandwidth of the grid (and ``CAL_REFERENCE``), the class log-densities at the outputs of
+        $V_{\text{cal}}$ are computed once; then EM (:func:`em_prevalences`) and QuaPy's ``KDEyML``
+        (:func:`slsqp_prevalences`) estimate $\pi$ on every bag, each timed by wall clock (``perf_counter``) without the
+        densities, and the log-likelihood of each bag at both estimates is computed (:func:`bag_log_likelihoods`).
+
+        :return: a dict with ``grid`` (the grid, shape ``(G,)``); ``prevalences`` (true, ``(S, K)``); ``recalls``
+            (``(K,)``); per solver ``<solver>_estimates`` (``(G, S, K)``), ``<solver>_converged`` (``(G, S)``),
+            ``<solver>_loglik`` (``(G, S)``), ``<solver>_seconds`` (``(G,)``), ``<solver>_curve`` (``(G,)``),
+            ``<solver>_bandwidth`` ($b_{\text{cal}}$ of that solver), ``<solver>_default`` (criterion at
+            ``CAL_REFERENCE``); ``densities_seconds`` (``(G,)``, the class densities, shared); ``setup_seconds`` (steps
+            1–3 of :meth:`select_bandwidth`, shared); ``n_val``, ``n_cal``.
+        """
+        if not self.calibrates_bandwidth:
+            raise RuntimeError('solver_check needs bandwidth="cal"')
+        started = perf_counter()
+        setup = self._calibration_setup(val, posteriors)
+        setup_seconds = perf_counter() - started
+        half, cal_outputs, bag_index, counts = setup["half"], setup["cal_outputs"], setup["bag_index"], setup["counts"]
+        prevalences, recalls = setup["prevalences"], setup["recalls"]
         grid = np.asarray(self._cal_grid(), dtype=float)
-        with_reference = grid if np.any(np.isclose(grid, CAL_REFERENCE)) else np.append(grid, CAL_REFERENCE)
-        estimates = np.empty((len(with_reference), len(bag_index), len(classes)))
-        nuts_means = np.empty_like(estimates) if self.cal_nuts_check else None
-        unconverged = 0
-        alpha = _resolve_dirichlet_prior(self.prior, len(classes))
+        with_reference = self._with_reference(grid)
+        shape = (len(with_reference), len(bag_index))
+        out = {"densities_seconds": np.empty(len(with_reference))}
+        for solver in CAL_SOLVERS:
+            out |= {
+                f"{solver}_estimates": np.empty((*shape, len(recalls))),
+                f"{solver}_converged": np.empty(shape, dtype=bool),
+                f"{solver}_loglik": np.empty(shape),
+                f"{solver}_seconds": np.empty(len(with_reference)),
+            }
         for g, bandwidth in enumerate(with_reference):
+            started = perf_counter()
             log_densities = half.class_log_densities(cal_outputs, float(bandwidth))
-            estimates[g], converged = em_prevalences(log_densities, counts)
-            unconverged += int(np.sum(~converged))
-            if nuts_means is not None:
-                for s, index in enumerate(bag_index):
-                    args = {
-                        "test_log_densities": log_densities[:, index],
-                        "alpha": alpha,
-                        "temperature": self.temperature,
-                    }
-                    mcmc = half.run_nuts(kdey_model, args, None)
-                    nuts_means[g, s] = np.asarray(jax.device_get(mcmc.get_samples()[PREV])).mean(axis=0)
+            out["densities_seconds"][g] = perf_counter() - started
+            for solver in CAL_SOLVERS:
+                started = perf_counter()
+                estimates, converged = self._solve(solver, log_densities, counts, bag_index)
+                out[f"{solver}_seconds"][g] = perf_counter() - started
+                out[f"{solver}_estimates"][g], out[f"{solver}_converged"][g] = estimates, converged
+                out[f"{solver}_loglik"][g] = bag_log_likelihoods(log_densities, counts, estimates)
 
-        curve = accuracy_criterion(estimates, prevalences, recalls)
         reference = int(np.flatnonzero(np.isclose(with_reference, CAL_REFERENCE))[0])
-        best = select_from_curve(grid, curve[: len(grid)])
-        self.cal_grid_ = grid
-        self.cal_split_ = (fit_index, cal_index)
-        self.cal_bag_index_ = bag_index
-        self.cal_prevalences_ = prevalences
-        self.cal_recalls_ = recalls
-        self.cal_estimates_ = estimates[: len(grid)]
-        self.cal_curve_ = curve[: len(grid)]
-        self.cal_selected_ = float(curve[best])
-        self.cal_default_ = float(curve[reference])
-        self.cal_em_unconverged_ = unconverged
-        self.cal_bandwidth_ = float(grid[best])
-        if nuts_means is not None:
-            curve_nuts = accuracy_criterion(nuts_means, prevalences, recalls)
-            self.cal_nuts_means_ = nuts_means[: len(grid)]
-            self.cal_curve_nuts_ = curve_nuts[: len(grid)]
-            self.cal_bandwidth_nuts_ = float(grid[select_from_curve(grid, self.cal_curve_nuts_)])
-        return self.cal_bandwidth_
+        n = len(grid)
+        result = {
+            "grid": grid,
+            "prevalences": prevalences,
+            "recalls": recalls,
+            "densities_seconds": out["densities_seconds"][:n],
+            "setup_seconds": setup_seconds,
+            "n_val": int(len(setup["fit_index"]) + len(setup["cal_index"])),
+            "n_cal": len(setup["cal_index"]),
+        }
+        for solver in CAL_SOLVERS:
+            curve = accuracy_criterion(out[f"{solver}_estimates"], prevalences, recalls)
+            result |= {
+                f"{solver}_estimates": out[f"{solver}_estimates"][:n],
+                f"{solver}_converged": out[f"{solver}_converged"][:n],
+                f"{solver}_loglik": out[f"{solver}_loglik"][:n],
+                f"{solver}_seconds": out[f"{solver}_seconds"][:n],
+                f"{solver}_curve": curve[:n],
+                f"{solver}_bandwidth": float(grid[select_from_curve(grid, curve[:n])]),
+                f"{solver}_default": float(curve[reference]),
+            }
+        return result
 
     def calibration_summaries(self) -> dict:
         """The ``CAL_SUMMARIES`` of the selection (and ``CAL_NUTS_SUMMARIES`` with ``cal_nuts_check``)."""

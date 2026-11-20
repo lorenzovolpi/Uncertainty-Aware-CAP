@@ -16,7 +16,9 @@ differ by a factor common to the classes, which cancels in the posterior; with p
 WP-26 (E7.2) adds what the selection of one shared bandwidth on calibration bags needs
 (``methods/baycap_kdey.py:BayCAPKDEy`` with ``bandwidth="cal"``): the class densities at any shared bandwidth
 (:meth:`BayesKDEy.class_log_densities`) and the maximum-likelihood estimate of $\pi$ on many bags by EM
-(:func:`em_prevalences`, §T.8).
+(:func:`em_prevalences`, §T.8). The gate of the solver of E7.2a adds the same estimate by QuaPy's ``KDEyML``, the standard
+KDEy, which maximises the same log-likelihood with SciPy's SLSQP (:func:`slsqp_prevalences`), and the log-likelihood of
+an estimate on each bag (:func:`bag_log_likelihoods`), to tell which of two estimates is the better maximiser.
 """
 
 from collections.abc import Callable
@@ -29,8 +31,11 @@ import numpy as np
 import numpyro
 import numpyro.distributions as dist
 from jax.scipy.special import logsumexp as jax_logsumexp
+from quapy.error import smooth
+from quapy.functional import uniform_prevalence
 from quapy.method._bayesian import _resolve_dirichlet_prior
 from quapy.method._kdey import KDEBase
+from scipy import optimize
 from scipy.special import logsumexp
 from sklearn.neighbors import KernelDensity
 
@@ -54,6 +59,10 @@ LOO_SUMMARIES = ("bandwidths", "class_sizes", "bandwidth_edge", "loo_selected", 
 # most EM_MAX_ITER steps
 EM_TOL = 1e-9
 EM_MAX_ITER = 10_000
+# the constants of QuaPy's KDEyML.aggregate (quapy.method._kdey): the smoothing of the mixture density in the logarithm,
+# and the number of classes from which it works with log-densities (for the Gaussian kernel)
+KDEYML_EPSILON = 1e-12
+KDEYML_LOG_CLASSES = 30
 
 
 def kdey_model(test_log_densities, alpha, temperature: float = 1.0) -> None:
@@ -117,6 +126,75 @@ def em_prevalences(
         if not active.any():
             break
     return prev / prev.sum(axis=1, keepdims=True), ~active
+
+
+def slsqp_prevalences(log_densities: np.ndarray, bag_index: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    r"""The maximum-likelihood estimates of $\pi$ of the BayesKDEy model on several bags by QuaPy's ``KDEyML`` (the gate
+    of the solver of E7.2a).
+
+    The same log-likelihood as :func:`em_prevalences`, $\ell_s(\pi)=\sum_{u\in s}\ln\sum_j\pi_j\hat p_j(z_u)$, is
+    maximised bag by bag as ``KDEyML.aggregate`` does (``quapy.method._kdey``, Gaussian kernel): SciPy's SLSQP through
+    ``quapy.functional.optim_minimize``, from the uniform $\pi$, with bounds $[0,1]$ per component, the constraint
+    $\sum_j\pi_j=1$, SciPy's default tolerances and finite-difference gradients, on
+    $-\sum_u\ln(\sum_j\pi_j\hat p_j(z_u)+10^{-12})$ with $\hat p_j=\exp(\ln\hat p_j)$ (QuaPy's ``pdf``); from
+    ``KDEYML_LOG_CLASSES`` classes on, on $-\sum_u\operatorname{logsumexp}_j(\ln\pi_j+\ln\hat p_j(z_u))$ with $\pi$
+    smoothed by ``quapy.error.smooth`` ($\epsilon=10^{-12}$), as QuaPy. The minimiser is called directly, with the
+    arguments of ``optim_minimize``, so that its convergence flag can be read; the estimate is SciPy's, not
+    normalised, as QuaPy returns it.
+
+    :param log_densities: ``[j, u]``$=\ln\hat p_j(z_u)$ on a pool, shape ``(K, n)``.
+    :param bag_index: the indices into the pool of the instances of each bag, shape ``(S, N)``, repeated as drawn.
+    :return: the estimates, shape ``(S, K)``, and a boolean array of shape ``(S,)``, true where SLSQP reports success.
+    """
+    log_densities = np.asarray(log_densities, dtype=float)
+    n_classes = log_densities.shape[0]
+    use_logs = n_classes >= KDEYML_LOG_CLASSES
+    densities = log_densities if use_logs else np.exp(log_densities)
+    bounds = tuple((0, 1) for _ in range(n_classes))
+    constraints = {"type": "eq", "fun": lambda x: 1 - sum(x)}
+    estimates = np.empty((len(bag_index), n_classes))
+    success = np.empty(len(bag_index), dtype=bool)
+    for s, index in enumerate(np.asarray(bag_index)):
+        bag = densities[:, index]
+        if use_logs:
+
+            def neg_loglikelihood(prev, bag=bag):
+                prev = smooth(prev, eps=KDEYML_EPSILON)
+                return -np.sum(logsumexp(np.log(prev)[:, None] + bag, axis=0))
+        else:
+
+            def neg_loglikelihood(prev, bag=bag):
+                return -np.sum(np.log(prev @ bag + KDEYML_EPSILON))
+
+        result = optimize.minimize(
+            neg_loglikelihood,
+            x0=uniform_prevalence(n_classes=n_classes),
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
+        )
+        estimates[s], success[s] = result.x, bool(result.success)
+    return estimates, success
+
+
+def bag_log_likelihoods(log_densities: np.ndarray, counts: np.ndarray, estimates: np.ndarray) -> np.ndarray:
+    r"""The log-likelihood $\ell_s(\hat\pi_s)=\sum_uc_{su}\ln\sum_j\hat\pi_{sj}\hat p_j(z_u)$ of each bag at its
+    estimate, by log-sum-exp, over the instances that :func:`em_prevalences` uses (those whose log-density is finite
+    under some class); negative components of an estimate (SLSQP may return $-10^{-17}$) count as $0$.
+
+    :param log_densities: ``[j, u]``$=\ln\hat p_j(z_u)$, shape ``(K, n)``.
+    :param counts: the multiplicity of each instance in each bag, shape ``(S, n)``.
+    :param estimates: $\hat\pi_s$, shape ``(S, K)``.
+    :return: shape ``(S,)``.
+    """
+    log_densities = np.asarray(log_densities, dtype=float)
+    counts = np.asarray(counts, dtype=float)
+    used = (counts.sum(axis=0) > 0) & np.isfinite(log_densities.max(axis=0))
+    with np.errstate(divide="ignore"):
+        log_prev = np.log(np.clip(np.asarray(estimates, dtype=float), 0.0, None))
+    # [s, u] = logsumexp_j(ln pi_sj + ln p_j(z_u))
+    mixture = logsumexp(log_prev[:, :, None] + log_densities[None, :, used], axis=1)
+    return np.sum(np.where(counts[:, used] > 0, counts[:, used] * mixture, 0.0), axis=1)
 
 
 def loo_log_likelihood(points: np.ndarray, bandwidths, block_entries: int = LOO_BLOCK_ENTRIES) -> np.ndarray:
@@ -347,13 +425,17 @@ class BayesKDEy(BayesianQuantifier):
 __all__ = [
     "EM_MAX_ITER",
     "EM_TOL",
+    "KDEYML_EPSILON",
+    "KDEYML_LOG_CLASSES",
     "LOO",
     "LOO_DEFAULT_BANDWIDTH",
     "LOO_GRID",
     "LOO_SUMMARIES",
     "BayesKDEy",
+    "bag_log_likelihoods",
     "em_prevalences",
     "kdey_model",
     "loo_log_likelihood",
     "simplex_log_density",
+    "slsqp_prevalences",
 ]

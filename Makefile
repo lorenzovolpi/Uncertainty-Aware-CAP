@@ -66,6 +66,8 @@ EXP_target-size-e44b := python -m uncawe.experiments.target_size --run --e44b
 EXP_target-size-e44b-counts := python -m uncawe.experiments.target_size --counts --e44b
 # the study tau_select (E5.3): --pilot for the pilot datasets, no ARGS for the full run
 EXP_tau-select       := python -m uncawe.experiments.tau_select
+# the gate of the solver of E7.2a (WP-26): EM against QuaPy's KDEyML on the pilot pairs, selection only
+EXP_kdey-cal-solver  := python -m uncawe.experiments.kdey_cal_solver
 EXP_tables-main      := python -m uncawe.tables.main --classic
 EXP_tables-rank      := python -m uncawe.tables.rank --classic
 EXP_tables-coverage-amplitude := python -m uncawe.tables.coverage_amplitude --classic
@@ -94,6 +96,7 @@ EXP_tables-target-size-scores := python -m uncawe.tables.target_size_scores
 EXP_tables-tau-select := python -m uncawe.tables.tau_select
 EXP_tables-kdey-loo  := python -m uncawe.tables.kdey_loo
 EXP_tables-kdey-cal  := python -m uncawe.tables.kdey_cal
+EXP_tables-kdey-cal-solver := python -m uncawe.tables.kdey_cal_solver
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
