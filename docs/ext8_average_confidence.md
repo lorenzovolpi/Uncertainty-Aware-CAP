@@ -9,8 +9,8 @@ Average Confidence (AC) estimates the accuracy of a classifier $h$ on an unlabel
 | Item | Status |
 |---|---|
 | `L-CBPE`: `cap-ml`'s `CBPE(calib_method="lascal")`, AC with LasCal and the highest-density interval of the Poisson-binomial distribution, binary datasets only (`experiments/methods.py`) | [implemented], run and stored in `main` (binary datasets); excluded from the main tables, the rank table and the coverage vs amplitude plot |
-| `AC`: AC with LasCal and the central interval of the Poisson-binomial distribution, any number of classes, vanilla accuracy only | [proposed] |
-| E8.1 (`AC` against `L-CBPE` in a separate table) | [proposed], no card |
+| `AC`: AC with LasCal and the central interval of the Poisson-binomial distribution, any number of classes, vanilla accuracy only (`methods/ac.py`) | [implemented] (card WP-29, branch `wp-29/average-confidence`), not run |
+| E8.1 (`AC` against `L-CBPE` in a separate table, `tables/average_confidence.py`) | [implemented], card WP-29, pilot not run |
 
 # Experiments
 
@@ -149,7 +149,7 @@ So LasCal is a temperature scaling whose temperature is chosen per bag for the t
 
 - **The predictions do not change.** Dividing all the logits of an instance by the same $\theta>0$ keeps their order, so the class with the largest calibrated posterior is the class with the largest original posterior, which is the prediction of $h$ in `main` ($\hat y=\arg\max_kp(\omega_k\mid x)$, `pretrain/data.py`). The confidence of AC, the largest calibrated posterior, is therefore the calibrated posterior of the predicted class, as §T.1 requires.
 - **On binary data AC is `L-CBPE`.** For $K=2$, `cap-ml`'s `CBPE` takes $\max(\tilde s,1-\tilde s)$ of the calibrated posterior $\tilde s$ of the positive class, which is the largest calibrated posterior: the two methods have the same confidences, the same point estimate and the same Poisson-binomial distribution, and differ only in the interval (§T.3).
-- **Silent fallback.** If the `lascal` package raises an error, `cap-ml`'s wrapper returns the uncalibrated posteriors without notice (`cap/calibration/lascal.py`). AC then reduces to AC on raw confidences for that bag. `AC` records it per bag.
+- **Fallback.** If the `lascal` package raises an error, `cap-ml`'s wrapper `cap/calibration/lascal.py` returns the uncalibrated posteriors without notice; the wrapper that `CBPE` uses, `cap/calib.py:LasCal`, would instead raise, because its fallback calls the module's own `softmax(preact, temp, biases)` with an `axis` argument. The package also has a silent failure of its own: if the estimated error is NaN at every temperature of the grid, it keeps its initial value $\theta=-1$ and returns $z/(-1)$, which reverses the order of the classes (for $K=2$ the largest posterior is unchanged, for $K>2$ it is not). `AC` treats both cases as a fallback to the uncalibrated posteriors, so that AC reduces to AC on raw confidences for that bag, and records it per bag.
 
 ## T.6 What the interval leaves out
 

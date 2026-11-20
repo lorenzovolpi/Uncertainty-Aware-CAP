@@ -50,6 +50,8 @@ METHOD_COLORS = {
     "B-CBPE": "#FF0000",
     "BE-CBPE": "#00FF00",
     "L-CBPE": "#0000FF",
+    # E8.1: Average Confidence with LasCal and the central interval (card WP-29)
+    "AC": "#8C564B",
 }
 METHOD_PLOT_LABELS = {
     "QuAcc_NxN": "QuAcc",

@@ -17,6 +17,7 @@ from quapy.method.aggregative import PACC, KDEyML
 from sklearn.neural_network import MLPClassifier as MLP
 
 from uncawe.experiments.metrics import gen_acc_measure
+from uncawe.methods.ac import AC
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import CAL, BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
@@ -54,6 +55,8 @@ METHOD_CLASS = {
     "QuAcc_NxN": QuAccNxN,
     "O-LEAP": O_LEAP,
     "L-CBPE": CBPE,
+    # AC of E8.1 of docs/ext8_average_confidence.md (card WP-29), see AC_METHOD below
+    "AC": AC,
     "SQS-H": RQBS,
     "SQS-Hbs": RQBS,
     # SQS-B of E3.3 (card WP-18), see SQS_B below
@@ -147,6 +150,11 @@ CAL_VARIANTS = {"BayCAP-KDEy-mlp-real-cal": SQS_B_QUANTIFIER, "BayCAP-KDEy-mlp-r
 # the methods of CAL_VARIANTS that also select the temperature (E7.2b)
 CAL_TEMPERATURE_VARIANTS = frozenset({"BayCAP-KDEy-mlp-real-cal-tcal"})
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in CAL_VARIANTS.items()}
+# Average Confidence of E8.1 of docs/ext8_average_confidence.md (card WP-29): the largest posterior recalibrated per bag
+# by LasCal, the Poisson-binomial distribution of the correct predictions and its central interval
+# (methods/ac.py:AC), on every dataset, vanilla accuracy only. Outside the main tables, ranks and default plots
+# (tables/main.py, tables/rank.py), compared with L-CBPE in tables/average_confidence.py
+AC_METHOD = "AC"
 # the methods run by main in the BayCAP pool, with BAYES_N_JOBS workers and BAYES_ENV
 BAYES_POOL_METHODS = (
     frozenset(BAYCAP_VARIANTS)
@@ -303,6 +311,7 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     )
     yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
     yield "L-CBPE", CBPE(acc_name, calib_method="lascal")
+    yield AC_METHOD, AC(acc_name, confidence_level=CONFIDENCE_LEVEL)
     # SQS-H as in the paper (one estimate of the target prevalence) and with a bootstrap of the prevalence (one bag per
     # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
     yield "SQS-H", sqs_h(acc, bootstrap=False)

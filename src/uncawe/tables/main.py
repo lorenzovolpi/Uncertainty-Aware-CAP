@@ -4,13 +4,14 @@ from argparse import ArgumentParser
 
 import numpy as np
 import pandas as pd
-from cap.models.confidence import ConfidenceInterval
+from cap.models.confidence import ConfidenceInterval, PoissonConfidenceInterval
 from matplotlib.colors import Normalize, rgb2hex
 from scipy.stats import wilcoxon
 
 import uncawe.env as env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
 from uncawe.main import EXPERIMENT
+from uncawe.methods.ac import CentralPoissonInterval
 from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
 from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_MACROS
@@ -104,12 +105,24 @@ def table_method_names() -> list[str]:
     return [method for method in MAIN_METHODS if method in get_method_names()]
 
 
+# the methods that store in estim_acc_ranges the probability mass function of the number of correct predictions of the
+# bag (n+1 values) instead of performance samples, and the interval each reads from it: the highest-density interval of
+# cap-ml for L-CBPE and the central interval for AC (E8.1 of docs/ext8_average_confidence.md, card WP-29). Before
+# WP-29 every method was scored with the percentiles of estim_acc_ranges, which is wrong for a probability mass
+# function; L-CBPE was then in no table, so no table changes
+PMF_INTERVALS = {"L-CBPE": PoissonConfidenceInterval, "AC": CentralPoissonInterval}
+
+
 def get_acc_coverage(method: str, true_acc: float, accs_range: np.ndarray) -> float:
-    return _confidence_interval(accs_range).coverage(true_acc)
+    if method in PMF_INTERVALS and _no_estimate(accs_range):
+        return np.nan
+    return _confidence_interval(accs_range, method).coverage(true_acc)
 
 
 def get_acc_amplitude(method: str, accs_range: np.ndarray) -> float:
-    return _confidence_interval(accs_range).amplitude()
+    if method in PMF_INTERVALS and _no_estimate(accs_range):
+        return np.nan
+    return _confidence_interval(accs_range, method).amplitude()
 
 
 def get_acc_winkler(method: str, true_acc: float, accs_range: np.ndarray) -> float:
@@ -118,10 +131,17 @@ def get_acc_winkler(method: str, true_acc: float, accs_range: np.ndarray) -> flo
     if arr.size == 0 or not np.isfinite(true_acc):
         return np.nan
 
-    return _confidence_interval(arr).winkler(true_acc)
+    return _confidence_interval(arr, method).winkler(true_acc)
 
 
-def _confidence_interval(accs_range: np.ndarray) -> ConfidenceInterval:
+def _no_estimate(accs_range) -> bool:
+    """A method of ``PMF_INTERVALS`` stores a scalar NaN where it gives no estimate (e.g. macro-F1)."""
+    return np.ndim(accs_range) == 0 and not np.isfinite(accs_range)
+
+
+def _confidence_interval(accs_range: np.ndarray, method: str | None = None) -> ConfidenceInterval:
+    if method in PMF_INTERVALS:
+        return PMF_INTERVALS[method](np.asarray(accs_range, dtype=float), confidence_level=CONFIDENCE_LEVEL)
     return ConfidenceInterval(accs_range, confidence_level=CONFIDENCE_LEVEL)
 
 
