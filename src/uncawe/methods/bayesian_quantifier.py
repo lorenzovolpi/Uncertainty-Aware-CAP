@@ -148,14 +148,14 @@ class BayesianQuantifier:
             return np.asarray(posteriors, dtype=float)
         return self.mlp_.predict_proba(X)
 
-    def run_nuts(self, model: Callable, model_args: dict, init_params: dict | None) -> MCMC:
-        """Run one chain of NUTS from ``PRNGKey(random_state)``, recording the divergent transitions."""
+    def run_nuts(self, model: Callable, model_args: dict, init_params: dict | None, seed: int | None = None) -> MCMC:
+        """Run one chain of NUTS from ``PRNGKey(seed)`` (``random_state`` if ``seed`` is ``None``), recording the
+        divergent transitions."""
         mcmc = MCMC(
             NUTS(model), num_warmup=self.num_warmup, num_samples=self.num_samples, num_chains=1, progress_bar=False
         )
-        mcmc.run(
-            jax.random.PRNGKey(self.random_state), init_params=init_params, extra_fields=("diverging",), **model_args
-        )
+        key = jax.random.PRNGKey(self.random_state if seed is None else seed)
+        mcmc.run(key, init_params=init_params, extra_fields=("diverging",), **model_args)
         return mcmc
 
     def sample_prevalences(self, outputs: np.ndarray) -> np.ndarray:

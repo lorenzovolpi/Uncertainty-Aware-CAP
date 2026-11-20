@@ -139,9 +139,13 @@ METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in LOO_VARIANTS.items()
 # the method of E7.2 of docs/ext7_kdey_bandwidth.md (card WP-26): BayCAP-KDEy-mlp-real with BayesKDEy at
 # bandwidth="cal" (one bandwidth shared by the classes, selected per pair over methods/bayes_kdey.py:LOO_GRID on 50
 # calibration bags of 1000 instances drawn from half of V, by the accuracy error of the EM estimate, then the method
-# fitted on the full V at the selected bandwidth), everything else, seeds included, as the stored method; name -> stored
-# method. Outside the main tables, ranks and default plots (tables/main.py)
-CAL_VARIANTS = {"BayCAP-KDEy-mlp-real-cal": SQS_B_QUANTIFIER}
+# fitted on the full V at the selected bandwidth), everything else, seeds included, as the stored method (E7.2a); the
+# method -tcal also selects the temperature on the same calibration bags after the bandwidth, over
+# methods/baycap_kdey.py:TAU_GRID by the mean Winkler score on vanilla accuracy (temperature="cal", E7.2b); name ->
+# stored method. Outside the main tables, ranks and default plots (tables/main.py)
+CAL_VARIANTS = {"BayCAP-KDEy-mlp-real-cal": SQS_B_QUANTIFIER, "BayCAP-KDEy-mlp-real-cal-tcal": SQS_B_QUANTIFIER}
+# the methods of CAL_VARIANTS that also select the temperature (E7.2b)
+CAL_TEMPERATURE_VARIANTS = frozenset({"BayCAP-KDEy-mlp-real-cal-tcal"})
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in CAL_VARIANTS.items()}
 # the methods run by main in the BayCAP pool, with BAYES_N_JOBS workers and BAYES_ENV
 BAYES_POOL_METHODS = (
@@ -190,13 +194,14 @@ def fixed_c_method(
     acc,
     name: str,
     prior="uniform",
-    temperature: float = 1.0,
+    temperature: float | str = 1.0,
     bandwidth=KDEY_SETTINGS["bandwidth"],
     **kdey_options,
 ) -> BayCAPKDEy | BayCAPMAPLS:
     """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP; ``prior``
     is the Dirichlet parameter of the prior on $\\pi$ (uniform in ``main``; E5.1, ``experiments/binform.py``, varies
-    it), ``temperature`` the posterior temperature ($1$ in E3.1 and E5.1; the other values are those of E5.2), and
+    it), ``temperature`` the posterior temperature ($1$ in E3.1 and E5.1; the other values are those of E5.2; ``"cal"``
+    in E7.2b), and
     ``bandwidth`` that of BayesKDEy ($0.1$; ``"loo"`` in E7.1, ``"cal"`` in E7.2); ``kdey_options`` are further
     arguments of ``BayCAPKDEy`` (e.g. ``cal_nuts_check``)."""
     quantifier, source, estimand = FIXED_C_VARIANTS[name]
@@ -248,9 +253,18 @@ CAL_SOLVER = "slsqp"
 
 def cal_method(acc, name: str, nuts_check: bool = False) -> BayCAPKDEy:
     """The method ``name`` of E7.2 (``CAL_VARIANTS``): its stored method with ``bandwidth="cal"`` (grid ``LOO_GRID``,
-    $50$ calibration bags of $1000$ instances, the estimate of QuaPy's ``KDEyML``, ``CAL_SOLVER``); ``nuts_check`` adds
-    the pilot check of the estimate against the NUTS posterior mean (``cal_nuts_check``)."""
-    return fixed_c_method(acc, CAL_VARIANTS[name], bandwidth=CAL, cal_nuts_check=nuts_check, cal_solver=CAL_SOLVER)
+    $50$ calibration bags of $1000$ instances, the estimate of QuaPy's ``KDEyML``, ``CAL_SOLVER``), and for the methods
+    of ``CAL_TEMPERATURE_VARIANTS`` with ``temperature="cal"`` (grid ``TAU_GRID``); ``nuts_check`` adds the pilot check
+    of the estimate against the NUTS posterior mean (``cal_nuts_check``)."""
+    temperature = CAL if name in CAL_TEMPERATURE_VARIANTS else 1.0
+    return fixed_c_method(
+        acc,
+        CAL_VARIANTS[name],
+        temperature=temperature,
+        bandwidth=CAL,
+        cal_nuts_check=nuts_check,
+        cal_solver=CAL_SOLVER,
+    )
 
 
 def baycap_method(acc, name: str, temperature: float = 1.0) -> BayCAP:

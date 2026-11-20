@@ -23,6 +23,12 @@ exactly as with a numeric one. The estimate of $\pi$ on each calibration bag is 
 :meth:`BayCAPKDEy.solver_check` computes both on the same calibration bags, with their times, for the gate of the
 solver of E7.2a (``experiments/kdey_cal_solver.py``).
 
+E7.2b adds ``temperature="cal"``, with ``bandwidth="cal"`` only: after $b_{\text{cal}}$, the temperature $\tau$ of the
+likelihood of the bag is selected on the same calibration bags, by the mean Winkler score on vanilla accuracy of the
+interval of the method fitted on $V_{\text{fit}}$ at $b_{\text{cal}}$ (:meth:`BayCAPKDEy.select_temperature`, §T.10);
+the deployed method is then fitted on the full $V$ at $(b_{\text{cal}},\tau_{\text{cal}})$ exactly as with those
+numeric settings.
+
 ``c_prior="hierarchical-f"`` gives the methods ``BayCAP-KDEy-Hf-<s>-real`` of E3.2 (work-plan card WP-13, §T.10–§T.13):
 each class of $V$ is split into cells by the prediction of $h$, the class density of BayesKDEy becomes the mixture
 $f_j=\sum_kC_{kj}\hat\phi_{kj}$ of the kernel densities of its cells, and $(\pi,C)$ are sampled jointly by NUTS, with the
@@ -41,11 +47,13 @@ import numpy as np
 import numpyro
 import numpyro.distributions as dist
 import quapy as qp
-from cap.models.confidence import P_C_COND_Y, P_TEST_Y
+from cap.error import vanilla_acc
+from cap.models.confidence import P_C_COND_Y, P_TEST_Y, ConfidenceInterval
 from jax.scipy.special import logsumexp
 from quapy.data import LabelledCollection
 from quapy.method._bayesian import _resolve_dirichlet_prior
 from quapy.protocol import UPP
+from sklearn.metrics import confusion_matrix
 
 from uncawe.methods.baycap import (
     H_KAPPA,
@@ -59,6 +67,7 @@ from uncawe.methods.baycap import (
     failed_summaries,
     hierarchical_rate_sites,
     hierarchical_summaries,
+    nuts_diagnostics,
     realised_tables,
 )
 from uncawe.methods.baycap_quantifier import QuantifierBayCAP, _validate_prevalence_samples
@@ -116,6 +125,25 @@ CAL_SUMMARIES = (
     "cal_n_cal",
 )
 CAL_NUTS_SUMMARIES = ("cal_bandwidth_nuts", "cal_curve_nuts")
+# the selection of the temperature on the same calibration bags after b_cal (E7.2b): the grid of E5.3, the reference
+# temperature (the stored one, at which the selection of b_cal is made and towards which ties are broken), the stream
+# of the seed of its NUTS runs and realised tables, and the confidence level of its intervals (CONFIDENCE_LEVEL of main)
+TAU_GRID = (0.5, 1.0, 2.0, 4.0, 8.0)
+TAU_REFERENCE = 1.0
+CAL_TAU_STREAM = 2
+CAL_TAU_CONFIDENCE = 0.95
+# per-bag summaries added by temperature="cal" (fixed by the fit, so the same for every bag): the selected temperature
+# tau_cal; over temperature_grid (vectors), the mean Winkler score and the coverage of the calibration intervals on
+# vanilla accuracy, and the NUTS diagnostics of the calibration runs (the number of runs with a divergent transition,
+# the largest split-Rhat and the smallest effective sample size)
+CAL_TAU_SUMMARIES = (
+    "cal_temperature",
+    "cal_tau_winkler",
+    "cal_tau_coverage",
+    "cal_tau_divergent",
+    "cal_tau_max_rhat",
+    "cal_tau_min_ess",
+)
 
 
 def calibration_seed(random_state: int, stream: int) -> int:
@@ -206,6 +234,25 @@ def select_from_curve(grid, curve: np.ndarray, reference: float = CAL_REFERENCE)
     return int(ties[np.argmin(np.abs(np.log10(grid[ties]) - np.log10(reference)))])
 
 
+def interval_scores(accs: np.ndarray, true_acc: float, confidence: float = CAL_TAU_CONFIDENCE) -> tuple[float, float]:
+    r"""The Winkler score and the coverage of the interval of the draws ``accs`` for the value ``true_acc``: the
+    central interval at ``confidence`` (``cap-ml``'s ``ConfidenceInterval``, as ``tables/main.py`` scores ``main``),
+    of amplitude $u-l$, plus $\frac2\alpha$ times the distance of a missed value from the interval."""
+    interval = ConfidenceInterval(np.asarray(accs, dtype=float), confidence_level=confidence)
+    return float(interval.winkler(true_acc)), float(interval.coverage(true_acc))
+
+
+def select_temperature_from_scores(grid, scores: np.ndarray, reference: float = TAU_REFERENCE) -> int:
+    r"""The index of the lowest of ``scores`` over the temperatures ``grid``; among equal values, the temperature closest
+    to ``reference`` on the $\log$ scale, then the smaller one (the rule of E5.3, ``tables/tempering.py:best_tau``)."""
+    grid, scores = np.asarray(grid, dtype=float), np.asarray(scores, dtype=float)
+    finite = np.flatnonzero(np.isfinite(scores))
+    if len(finite) == 0:
+        raise ValueError("the Winkler score is not finite at any temperature")
+    ties = finite[scores[finite] == scores[finite].min()]
+    return int(min(ties, key=lambda t: (abs(np.log(grid[t]) - np.log(reference)), grid[t])))
+
+
 def kdey_hf_loglik(prev, rates, log_cells, pred=None):
     r"""The log-likelihood of the target bag of E3.2 (§T.10), for one $(\pi,C)$.
 
@@ -267,6 +314,11 @@ class BayCAPKDEy(QuantifierBayCAP):
       draws its randomness from its own seeds (:func:`calibration_seed`) and consumes no random state of the deployed
       fit, so a selected $0.1$ gives the draws of ``bandwidth=0.1``. The per-bag summaries add ``CAL_SUMMARIES`` (and
       ``CAL_NUTS_SUMMARIES`` with ``cal_nuts_check``).
+    - ``temperature="cal"`` (E7.2b, with ``bandwidth="cal"`` only): after $b_{\text{cal}}$, ``fit`` selects $\tau$ over
+      ``temperature_grid`` on the same calibration bags (:meth:`select_temperature`, §T.10), then fits the method on the
+      full $V$ at $(b_{\text{cal}},\tau_{\text{cal}})$ exactly as with those numeric settings; the selection of
+      $b_{\text{cal}}$ is made at $\tau=1$ and is the same as without the temperature step. The per-bag summaries add
+      ``CAL_TAU_SUMMARIES``.
     - ``c_prior="hierarchical-f"`` (E3.2, §T.10–§T.13): ``fit`` splits each class $\omega_j$ of $V$ into the cells
       $V_{kj}$ of the instances that $h$ predicts as $\omega_k$ and fits one kernel density $\hat\phi_{kj}$ per cell on
       the validation outputs of the input classifier (cross-fitted for ``mlp``). An empty cell takes the density of all
@@ -291,7 +343,9 @@ class BayCAPKDEy(QuantifierBayCAP):
     :param shrinkage: shrinkage of BayesKDEy, in $[0,1)$, $0$ with the Gaussian kernel.
     :param num_warmup: number of NUTS warm-up iterations.
     :param num_samples: number of posterior draws retained after warm-up.
-    :param temperature: temperature $\tau$ of the likelihood of the bag.
+    :param temperature: temperature $\tau$ of the likelihood of the bag, a positive number or ``"cal"`` (selected on the
+        calibration bags of ``bandwidth="cal"``).
+    :param temperature_grid: the grid of ``temperature="cal"``; ``TAU_GRID`` if ``None``.
     :param prior: Dirichlet parameter of the prior on $\pi$ (``"uniform"``, a positive scalar or a vector).
     :param random_state: seed of NUTS, of the MLP and of the multinomial draws, and the root of the seeds of the
         calibration of ``"cal"``; ``qp.environ["_R_SEED"]`` if ``None``.
@@ -317,7 +371,8 @@ class BayCAPKDEy(QuantifierBayCAP):
         shrinkage: float = 0.0,
         num_warmup: int = 500,
         num_samples: int = 1000,
-        temperature: float = 1.0,
+        temperature: float | Literal["cal"] = 1.0,
+        temperature_grid=None,
         prior: str | Number | np.ndarray = "uniform",
         random_state: int | None = None,
         cal_bags: int = CAL_BAGS,
@@ -327,16 +382,22 @@ class BayCAPKDEy(QuantifierBayCAP):
     ) -> None:
         if c_prior not in KDEY_C_PRIORS:
             raise ValueError(f"c_prior must be one of {KDEY_C_PRIORS}; found {c_prior!r}")
+        calibrates_temperature = isinstance(temperature, str)
+        if calibrates_temperature and temperature != CAL:
+            raise ValueError(f'temperature must be a positive number or "{CAL}"; found {temperature!r}')
         super().__init__(
             acc_fn,
             input_classifier=input_classifier,
             estimand=estimand,
             num_warmup=num_warmup,
             num_samples=num_samples,
-            temperature=temperature,
+            temperature=TAU_REFERENCE if calibrates_temperature else temperature,
             prior=prior,
             random_state=random_state,
         )
+        if calibrates_temperature:
+            self.temperature = CAL
+        self.temperature_grid = temperature_grid
         if c_prior != "fixed" and bandwidth in (LOO, CAL):
             raise ValueError(f'bandwidth="{bandwidth}" is implemented only with c_prior="fixed"')
         self.c_prior = c_prior
@@ -358,6 +419,12 @@ class BayCAPKDEy(QuantifierBayCAP):
                 raise ValueError("bandwidth_grid must be a non-empty increasing sequence of positive numbers")
             if self.cal_bags < 1 or self.cal_bag_size < 1:
                 raise ValueError("cal_bags and cal_bag_size must be positive")
+        if self.calibrates_temperature:
+            if not self.calibrates_bandwidth:
+                raise ValueError(f'temperature="{CAL}" is implemented only with bandwidth="{CAL}"')
+            taus = np.asarray(self._tau_grid(), dtype=float)
+            if taus.ndim != 1 or len(taus) == 0 or np.any(taus <= 0) or np.any(np.diff(taus) <= 0):
+                raise ValueError("temperature_grid must be a non-empty increasing sequence of positive numbers")
         # checks the hyperparameters of the quantifier
         self._make_quantifier()
 
@@ -366,8 +433,29 @@ class BayCAPKDEy(QuantifierBayCAP):
         """Whether the bandwidth is selected on calibration bags (``bandwidth="cal"``)."""
         return isinstance(self.bandwidth, str) and self.bandwidth == CAL
 
+    @property
+    def calibrates_temperature(self) -> bool:
+        """Whether the temperature is selected on the calibration bags (``temperature="cal"``)."""
+        return isinstance(self.temperature, str) and self.temperature == CAL
+
     def _cal_grid(self) -> tuple:
         return LOO_GRID if self.bandwidth_grid is None else tuple(self.bandwidth_grid)
+
+    def _tau_grid(self) -> tuple:
+        return TAU_GRID if self.temperature_grid is None else tuple(self.temperature_grid)
+
+    @property
+    def _selection_temperature(self) -> float:
+        """The temperature of the selection of the bandwidth: that of the method, or $1$ with ``temperature="cal"``."""
+        return TAU_REFERENCE if self.calibrates_temperature else self.temperature
+
+    def _quantifier_settings(self) -> dict:
+        """The settings of every quantifier; with ``temperature="cal"``, the selected temperature (``TAU_REFERENCE``
+        before the selection)."""
+        settings = super()._quantifier_settings()
+        if self.calibrates_temperature:
+            settings["temperature"] = getattr(self, "cal_temperature_", TAU_REFERENCE)
+        return settings
 
     def _make_quantifier(self) -> BayesKDEy:
         if self.calibrates_bandwidth:
@@ -387,12 +475,16 @@ class BayCAPKDEy(QuantifierBayCAP):
 
     def fit(self, val: LabelledCollection, posteriors: np.ndarray):
         """Measure the rates of $h$ on $V$ and fit the quantifier; with ``bandwidth="cal"``, select the bandwidth first
-        (:meth:`select_bandwidth`)."""
+        (:meth:`select_bandwidth`), and with ``temperature="cal"`` then the temperature (:meth:`select_temperature`),
+        on the same split and calibration bags."""
         if self.calibrates_bandwidth:
-            self.select_bandwidth(val, posteriors)
+            setup = self._calibration_setup(val, posteriors)
+            self.select_bandwidth(val, posteriors, setup)
+            if self.calibrates_temperature:
+                self.select_temperature(val, posteriors, setup)
         return super().fit(val, posteriors)
 
-    def select_bandwidth(self, val: LabelledCollection, posteriors: np.ndarray) -> float:
+    def select_bandwidth(self, val: LabelledCollection, posteriors: np.ndarray, setup: dict | None = None) -> float:
         r"""Select one bandwidth shared by the classes on calibration bags drawn from half of $V$ (E7.2, §T.7–§T.9).
 
         1. $V$ is split per class into $V_{\text{fit}}$ and $V_{\text{cal}}$, half each (:func:`split_halves`, seed
@@ -412,11 +504,13 @@ class BayCAPKDEy(QuantifierBayCAP):
         The estimate of step 4 is that of ``cal_solver`` (EM or QuaPy's ``KDEyML``). Only the labels of $V$ are used.
         With ``cal_nuts_check``, step 4 is repeated with the posterior mean of a NUTS
         run of the model of BayesKDEy (prior, temperature and NUTS settings of the method) in place of the EM estimate;
-        the selection still uses the EM estimate.
+        the selection still uses the EM estimate. With ``temperature="cal"``, the NUTS check runs at $\tau=1$.
 
+        :param setup: steps 1–3 (:meth:`_calibration_setup`), computed if ``None``.
         :return: $b_{\text{cal}}$, also stored in ``cal_bandwidth_``.
         """
-        setup = self._calibration_setup(val, posteriors)
+        if setup is None:
+            setup = self._calibration_setup(val, posteriors)
         half, cal_outputs, bag_index, counts = setup["half"], setup["cal_outputs"], setup["bag_index"], setup["counts"]
         prevalences, recalls, n_classes = setup["prevalences"], setup["recalls"], len(setup["recalls"])
 
@@ -435,7 +529,7 @@ class BayCAPKDEy(QuantifierBayCAP):
                     args = {
                         "test_log_densities": log_densities[:, index],
                         "alpha": alpha,
-                        "temperature": self.temperature,
+                        "temperature": self._selection_temperature,
                     }
                     mcmc = half.run_nuts(kdey_model, args, None)
                     nuts_means[g, s] = np.asarray(jax.device_get(mcmc.get_samples()[PREV])).mean(axis=0)
@@ -460,6 +554,80 @@ class BayCAPKDEy(QuantifierBayCAP):
             self.cal_curve_nuts_ = curve_nuts[: len(grid)]
             self.cal_bandwidth_nuts_ = float(grid[select_from_curve(grid, self.cal_curve_nuts_)])
         return self.cal_bandwidth_
+
+    def select_temperature(self, val: LabelledCollection, posteriors: np.ndarray, setup: dict | None = None) -> float:
+        r"""Select the temperature on the calibration bags of :meth:`select_bandwidth`, after it (E7.2b, §T.10).
+
+        The method is built on $V_{\text{fit}}$ at $b_{\text{cal}}$: the rate matrix $\hat C$ of $h$ on
+        $V_{\text{fit}}$, the class densities at $b_{\text{cal}}$ of the outputs of the input classifier of
+        $V_{\text{fit}}$ (the MLP of step 2 of :meth:`select_bandwidth` for ``mlp``). On each calibration bag and at
+        each $\tau$ of ``temperature_grid``, NUTS samples the posterior of $\pi$ of BayesKDEy at $\tau$ (prior and
+        NUTS settings of the method, key ``calibration_seed(random_state, CAL_TAU_STREAM)``); each draw is pushed
+        through $\hat C$ with the estimand of the method (the realised pushforward with the predictions of $h$ on the
+        instances of the bag, from their validation posteriors, and a generator seeded by the same seed); the interval of
+        the vanilla accuracy of the tables at ``CAL_TAU_CONFIDENCE`` is scored by its Winkler score against the vanilla
+        accuracy of the realised table of the bag (labels of $V_{\text{cal}}$, predictions of $h$)
+        (:func:`interval_scores`). $\tau_{\text{cal}}$ has the lowest mean Winkler score over the bags, ties broken
+        towards $1$ on the $\log$ scale, then to the smaller (:func:`select_temperature_from_scores`).
+
+        Only the labels of $V$ are used, and no random state of the deployed fit is consumed.
+
+        :param setup: steps 1–3 of :meth:`select_bandwidth`, computed if ``None``.
+        :return: $\tau_{\text{cal}}$, also stored in ``cal_temperature_``.
+        """
+        if not hasattr(self, "cal_bandwidth_"):
+            raise RuntimeError("select_temperature needs the bandwidth selected first (select_bandwidth)")
+        if setup is None:
+            setup = self._calibration_setup(val, posteriors)
+        posteriors = np.asarray(posteriors, dtype=float)
+        classes = np.asarray(val.classes_)
+        n_classes = len(classes)
+        labels = np.asarray(val.y)
+        predicted = np.argmax(posteriors, axis=1)
+        fit_index, cal_index, bag_index = setup["fit_index"], setup["cal_index"], setup["bag_index"]
+        rates = confusion_matrix(labels[fit_index], classes[predicted[fit_index]], labels=classes, normalize="true")
+        log_densities = setup["half"].class_log_densities(setup["cal_outputs"], self.cal_bandwidth_)
+        alpha = _resolve_dirichlet_prior(self.prior, n_classes)
+        seed = calibration_seed(self.random_state, CAL_TAU_STREAM)
+        cal_labels, cal_predicted = labels[cal_index], predicted[cal_index]
+
+        grid = np.asarray(self._tau_grid(), dtype=float)
+        shape = (len(grid), len(bag_index))
+        winkler, coverage = np.empty(shape), np.empty(shape)
+        divergences, max_rhat, min_ess = np.empty(shape), np.empty(shape), np.empty(shape)
+        true_accs = np.empty(len(bag_index))
+        for s, index in enumerate(bag_index):
+            pred = cal_predicted[index]
+            pred_counts = np.bincount(pred, minlength=n_classes)
+            true_ct = confusion_matrix(cal_labels[index], classes[pred], labels=classes) / len(index)
+            true_accs[s] = vanilla_acc(true_ct)
+            for t, tau in enumerate(grid):
+                args = {"test_log_densities": log_densities[:, index], "alpha": alpha, "temperature": float(tau)}
+                mcmc = setup["half"].run_nuts(kdey_model, args, None, seed=seed)
+                draws = np.asarray(jax.device_get(mcmc.get_samples(group_by_chain=True)[PREV]))
+                diverging = np.asarray(jax.device_get(mcmc.get_extra_fields()["diverging"]))
+                diagnostics = nuts_diagnostics({PREV: draws}, diverging)
+                divergences[t, s] = diagnostics["nuts_divergences"]
+                max_rhat[t, s], min_ess[t, s] = diagnostics["nuts_max_rhat"], diagnostics["nuts_min_ess"]
+                prevalences = draws[0].astype(float)
+                _validate_prevalence_samples(prevalences, n_classes)
+                cts = prevalences[:, :, None] * rates[None, :, :]
+                if self.estimand == "realised":
+                    cts = realised_tables(cts, pred_counts, np.random.default_rng(seed))
+                accs = np.asarray([vanilla_acc(ct) for ct in cts])
+                winkler[t, s], coverage[t, s] = interval_scores(accs, true_accs[s])
+
+        mean_winkler = winkler.mean(axis=1)
+        self.cal_tau_grid_ = grid
+        self.cal_true_accs_ = true_accs
+        self.cal_tau_winkler_bags_ = winkler
+        self.cal_tau_coverage_bags_ = coverage
+        self.cal_tau_divergences_ = divergences
+        self.cal_tau_max_rhat_ = max_rhat
+        self.cal_tau_min_ess_ = min_ess
+        self.cal_tau_winkler_ = mean_winkler
+        self.cal_temperature_ = float(grid[select_temperature_from_scores(grid, mean_winkler)])
+        return self.cal_temperature_
 
     def _calibration_setup(self, val: LabelledCollection, posteriors: np.ndarray) -> dict:
         r"""Steps 1–3 of :meth:`select_bandwidth`: the split, BayesKDEy and the recalls on $V_{\text{fit}}$, the
@@ -578,7 +746,8 @@ class BayCAPKDEy(QuantifierBayCAP):
         return result
 
     def calibration_summaries(self) -> dict:
-        """The ``CAL_SUMMARIES`` of the selection (and ``CAL_NUTS_SUMMARIES`` with ``cal_nuts_check``)."""
+        """The ``CAL_SUMMARIES`` of the selection (and ``CAL_NUTS_SUMMARIES`` with ``cal_nuts_check``,
+        ``CAL_TAU_SUMMARIES`` with ``temperature="cal"``)."""
         if not hasattr(self, "cal_bandwidth_"):
             raise RuntimeError('calibration_summaries exist only after fitting with bandwidth="cal"')
         summaries = {
@@ -592,6 +761,15 @@ class BayCAPKDEy(QuantifierBayCAP):
         }
         if self.cal_nuts_check:
             summaries |= {"cal_bandwidth_nuts": self.cal_bandwidth_nuts_, "cal_curve_nuts": self.cal_curve_nuts_.copy()}
+        if self.calibrates_temperature:
+            summaries |= {
+                "cal_temperature": self.cal_temperature_,
+                "cal_tau_winkler": self.cal_tau_winkler_.copy(),
+                "cal_tau_coverage": self.cal_tau_coverage_bags_.mean(axis=1),
+                "cal_tau_divergent": np.sum(self.cal_tau_divergences_ > 0, axis=1),
+                "cal_tau_max_rhat": self.cal_tau_max_rhat_.max(axis=1),
+                "cal_tau_min_ess": self.cal_tau_min_ess_.min(axis=1),
+            }
         return summaries
 
     @property
@@ -753,6 +931,9 @@ __all__ = [
     "CAL_NUTS_SUMMARIES",
     "CAL_REFERENCE",
     "CAL_SUMMARIES",
+    "CAL_TAU_CONFIDENCE",
+    "CAL_TAU_STREAM",
+    "CAL_TAU_SUMMARIES",
     "CELL_CLASS",
     "CELL_OWN",
     "CELL_PREDICTED",
@@ -760,14 +941,18 @@ __all__ = [
     "KDEY_C_PRIORS",
     "KDEY_HF_SUMMARIES",
     "LOO_SUMMARIES",
+    "TAU_GRID",
+    "TAU_REFERENCE",
     "BayCAPKDEy",
     "accuracy_criterion",
     "calibration_bags",
     "calibration_seed",
     "class_recalls",
+    "interval_scores",
     "kdey_hf_loglik",
     "kdey_hf_model",
     "kdey_model",
     "select_from_curve",
+    "select_temperature_from_scores",
     "split_halves",
 ]
