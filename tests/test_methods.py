@@ -328,7 +328,13 @@ class CalFactoryTest(unittest.TestCase):
         self.methods = dict(gen_methods())
 
     def test_name_class_and_configuration(self):
-        self.assertEqual(CAL_VARIANTS, {"BayCAP-KDEy-mlp-real-cal": "BayCAP-KDEy-mlp-real"})
+        self.assertEqual(
+            CAL_VARIANTS,
+            {
+                "BayCAP-KDEy-mlp-real-cal": "BayCAP-KDEy-mlp-real",
+                "BayCAP-KDEy-mlp-real-cal-tcal": "BayCAP-KDEy-mlp-real",
+            },
+        )
         method, reference = self.methods["BayCAP-KDEy-mlp-real-cal"], self.methods["BayCAP-KDEy-mlp-real"]
         self.assertIs(METHOD_CLASS["BayCAP-KDEy-mlp-real-cal"], BayCAPKDEy)
         self.assertIsInstance(method, BayCAPKDEy)
@@ -352,17 +358,31 @@ class CalFactoryTest(unittest.TestCase):
                 self.assertEqual(getattr(method, attribute), getattr(reference, attribute))
         self.assertTrue(cal_method(None, "BayCAP-KDEy-mlp-real-cal", nuts_check=True).cal_nuts_check)
 
+    def test_tcal_is_the_cal_method_with_the_temperature_selected(self):
+        cal, tcal = self.methods["BayCAP-KDEy-mlp-real-cal"], self.methods["BayCAP-KDEy-mlp-real-cal-tcal"]
+        self.assertIs(METHOD_CLASS["BayCAP-KDEy-mlp-real-cal-tcal"], BayCAPKDEy)
+        self.assertEqual((cal.temperature, tcal.temperature), (1.0, "cal"))
+        self.assertFalse(cal.calibrates_temperature)
+        self.assertTrue(tcal.calibrates_temperature)
+        self.assertIsNone(tcal.temperature_grid)
+        self.assertEqual(tcal._tau_grid(), (0.5, 1.0, 2.0, 4.0, 8.0))
+        for attribute in vars(cal):
+            if attribute not in ("temperature",):
+                with self.subTest(attribute=attribute):
+                    self.assertEqual(getattr(tcal, attribute), getattr(cal, attribute))
+
     def test_excluded_from_main_tables_ranks_and_default_plots_and_run_in_the_bayes_pool(self):
-        name = "BayCAP-KDEy-mlp-real-cal"
-        self.assertNotIn(name, MAIN_SET)
-        self.assertIn(name, main_tables.EXCLUDED_METHODS)
-        self.assertIn(name, rank.EXCLUDED_METHODS)
-        self.assertNotIn(name, DEFAULT_METHODS)
-        self.assertNotIn(name, AVC_METHODS)
-        self.assertIn(name, BAYES_POOL_METHODS)
-        self.assertIn(name, METHOD_COLORS)
-        self.assertIn(name, METHOD_PLOT_LABELS)
-        self.assertIn(name, METHOD_LATEX_LABELS)
+        for name in CAL_VARIANTS:
+            with self.subTest(name=name):
+                self.assertNotIn(name, MAIN_SET)
+                self.assertIn(name, main_tables.EXCLUDED_METHODS)
+                self.assertIn(name, rank.EXCLUDED_METHODS)
+                self.assertNotIn(name, DEFAULT_METHODS)
+                self.assertNotIn(name, AVC_METHODS)
+                self.assertIn(name, BAYES_POOL_METHODS)
+                self.assertIn(name, METHOD_COLORS)
+                self.assertIn(name, METHOD_PLOT_LABELS)
+                self.assertIn(name, METHOD_LATEX_LABELS)
 
 
 if __name__ == "__main__":
