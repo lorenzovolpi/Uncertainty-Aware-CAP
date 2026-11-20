@@ -16,7 +16,7 @@ against it.
   diamond the arithmetic mean of the values (not floored, drawn at $\max(\text{mean},10^{-5})$); the mean of a violin is
   the value of the summary table (mean over the pairs of the per-pair means). The Winkler score is skewed by the
   penalties of the intervals that miss, so the median follows the typical pair and the mean follows the tables.
-- **Bag violins** (``violins``): the same figures with, per violin, the AE and the Winkler score of every bag (pairs
+- **Bag violins** (``bag-violins``, not drawn by default): the same figures with, per violin, the AE and the Winkler score of every bag (pairs
   $\times$ $100$ bags), without the points.
 
 The violins are drawn on $\log_{10}$ of the values, floored at $10^{-5}$ (``FLOOR``; an AE or a Winkler score of $0$, from
@@ -52,9 +52,10 @@ from uncawe.tables.binform_prior import ACC_LABELS
 from uncawe.tables.binform_side_prior import INFORMATIVE_ROLES, NO_PRIOR, ROLE_LABELS, csv_path
 
 PLOT_NAME = "binform_side_prior"
-FIGURES = ("violins", "pair-violins", "winkler")
+FIGURES = ("pair-violins", "bag-violins", "winkler")
+DEFAULT_FIGURES = ("pair-violins", "winkler")
 LEVELS = ("bags", "pairs")
-VIOLIN_FIGURES = {"violins": "bags", "pair-violins": "pairs"}
+VIOLIN_FIGURES = {"pair-violins": "pairs", "bag-violins": "bags"}
 PAIR_KEYS = ["acc_name", "distribution", "method", "role", "dataset", "classifier", "n_classes"]
 PAIR_GROUPS = {"all": "all pairs", "binary": "binary pairs ($K=2$)", "multiclass": "multiclass pairs ($K\\geq 3$)"}
 FLOOR = 1e-5
@@ -285,7 +286,7 @@ def generate_plots(args):
 
 def parse_args(argv: list[str] | None = None):
     parser = ArgumentParser(description="Plots of E5.5, right-side and wrong-side priors under strong shifts.")
-    parser.add_argument("--figures", nargs="+", choices=FIGURES, default=list(FIGURES))
+    parser.add_argument("--figures", nargs="+", choices=FIGURES, default=list(DEFAULT_FIGURES))
     parser.add_argument("--methods", nargs="+", choices=E55_PRIOR_BASES, default=list(E55_PRIOR_BASES))
     parser.add_argument("--distributions", nargs="+", choices=E55_DISTRIBUTIONS, default=list(E55_DISTRIBUTIONS))
     parser.add_argument("--groups", nargs="+", choices=PAIR_GROUPS, default=list(PAIR_GROUPS))

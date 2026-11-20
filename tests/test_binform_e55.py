@@ -616,9 +616,16 @@ class TablesTest(unittest.TestCase):
                 plots.generate_plots(args)
             names = sorted(f for f in os.listdir(out_dir) if f.endswith(".png"))
             groups = [g for g in plots.PAIR_GROUPS if not plots.pair_group(self.bags, g).empty]
-            self.assertEqual(len(names), 2 * len(groups) + 3)
-            self.assertIn("binform_side_prior_violins_edge_all_vanilla_accuracy.png", names)
+            # by default the pair violins and the scatters, not the bag violins
+            self.assertEqual(len(names), len(groups) + 3)
             self.assertIn("binform_side_prior_pair_violins_edge_all_vanilla_accuracy.png", names)
+            self.assertFalse(any("bag_violins" in name for name in names))
+            args = plots.parse_args(
+                ["--bags-csv", bags, "--no-svg", "--distributions", "edge", "--figures", "bag-violins"]
+            )
+            with patch.object(plots, "plot_dir", return_value=out_dir), patch("builtins.print"):
+                plots.generate_plots(args)
+            self.assertIn("binform_side_prior_bag_violins_edge_all_vanilla_accuracy.png", os.listdir(out_dir))
 
 
 if __name__ == "__main__":
