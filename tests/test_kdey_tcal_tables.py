@@ -153,7 +153,9 @@ class TablesTest(unittest.TestCase):
     def test_latex(self):
         part = self.summary.loc[self.summary["acc_name"] == "vanilla_accuracy"].reset_index(drop=True)
         self.assertIn("lower", kt._summary_styler(part).to_latex())
-        self.assertIn("tau", kt._pairs_styler(self.table.loc[self.table["acc_name"] == "vanilla_accuracy"]).to_latex())
+        pairs_latex = kt._pairs_styler(self.table.loc[self.table["acc_name"] == "vanilla_accuracy"]).to_latex()
+        self.assertIn("tau", pairs_latex)
+        self.assertIn("AE", pairs_latex)
         self.assertIn("E5.3", kt._crosstab_styler(self.cross).to_latex())
         self.assertIn("E7.2b", kt.caption("vanilla_accuracy", "summary"))
 

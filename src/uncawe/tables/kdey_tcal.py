@@ -57,6 +57,8 @@ TABLE_NAME = "kdey_tcal"
 KEYS = ["dataset", "classifier"]
 SCORES = ("ae", "coverage", "amplitude", "winkler")
 TESTED = ("ae", "winkler")
+# the score groups of the per-pair LaTeX table
+PAIR_SCORES = ("ae", "winkler", "coverage")
 TEST_LEVEL = pushforward.WINKLER_TEST_LEVEL
 TCAL_METHOD = next(iter(CAL_TEMPERATURE_VARIANTS))
 STORED_METHOD = CAL_VARIANTS[TCAL_METHOD]
@@ -341,19 +343,19 @@ def _summary_styler(summary: pd.DataFrame):
 
 def _pairs_styler(table: pd.DataFrame):
     """One row per pair: $b_{\\text{cal}}$, $\\tau_{\\text{cal}}$ at $b=0.1$ (E5.3) and at $b_{\\text{cal}}$, and the
-    Winkler score and coverage of the four cells, coloured per row from the worst to the best."""
+    AE, Winkler score and coverage of the four cells, each coloured per row from the worst to the best."""
     columns = {
         ("selection", "$b_{\\mathrm{cal}}$"): table["b_cal"].map(_fmt).to_numpy(),
         ("selection", "$\\tau_{\\mathrm{cal}}$ ($b{=}0.1$)"): table["tau_cal_e53"].map(_tau_text).to_numpy(),
         ("selection", "$\\tau_{\\mathrm{cal}}$ ($b_{\\mathrm{cal}}$)"): table["tau_cal"].map(_tau_text).to_numpy(),
     }
-    for score in ("winkler", "coverage"):
+    for score in PAIR_SCORES:
         for cell in CELLS:
             columns[(tempering.SCORE_LABELS[score], CELL_LABELS[cell])] = table[f"{cell}_{score}"].to_numpy(dtype=float)
     out = pd.DataFrame(columns)
     out.columns = pd.MultiIndex.from_tuples(out.columns)
     out.index = baycap_h._index(table)
-    styles = tempering.score_styles(out, {score: tempering.SCORE_LABELS[score] for score in ("winkler", "coverage")})
+    styles = tempering.score_styles(out, {score: tempering.SCORE_LABELS[score] for score in PAIR_SCORES})
     return out.style.format(precision=3, na_rep="--").apply(lambda _: styles, axis=None)
 
 
@@ -383,7 +385,7 @@ def caption(acc_name: str, name: str) -> str:
     if name == "crosstab":
         return common + "Pairs by $\\tau_{\\mathrm{cal}}$ at $b_{\\mathrm{cal}}$ and at $b=0.1$ (--: E5.3 not stored)."
     return common + (
-        "Selected $b$ and $\\tau$ (label-free on the target); Winkler score and coverage against the realised table, "
+        "Selected $b$ and $\\tau$ (label-free on the target); AE, Winkler score and coverage against the realised table, "
         "means over the 100 bags, coloured per row from the worst (red) to the best (green, in bold; coverage: closest "
         "to $0.95$)."
     )
