@@ -1,4 +1,5 @@
 import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ from matplotlib.lines import Line2D
 import uncawe.env as env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names
 from uncawe.results import Results
+from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_MACROS
 
 EXPERIMENT = "main"
 DEFAULT_DOMAIN = "classic"
@@ -123,6 +125,21 @@ def marker_size(size: float) -> float:
 
 def method_plot_label(method: str) -> str:
     return METHOD_PLOT_LABELS.get(str(method), str(method))
+
+
+# the bodies of the LaTeX macros of the tables, by macro name (e.g. "sqshbs" -> "SQS-H\\textsubscript{bs}")
+_LATEX_MACRO_BODIES = dict(
+    re.fullmatch(r"\\newcommand\{\\(\w+)\}\{(.*)\}", macro).groups() for macro in METHOD_LATEX_MACROS
+)
+
+
+def method_table_label(method: str) -> str:
+    """The label of ``method`` in the tables (``tables/common.py:METHOD_LATEX_LABELS``) with its LaTeX macros resolved
+    for matplotlib: ``\\name`` and ``\\name{}`` become the macro body, ``\\textsubscript{x}`` becomes a mathtext
+    subscript (e.g. ``SQS-Hbs`` -> ``SQS-H$_{\\mathrm{bs}}$``, ``BayesCAP-Hf-real`` -> ``BayCAP-Hf``)."""
+    label = METHOD_LATEX_LABELS.get(str(method), str(method))
+    label = re.sub(r"\\(\w+)(\{\})?", lambda m: _LATEX_MACRO_BODIES.get(m.group(1), m.group(0)), label)
+    return re.sub(r"\\textsubscript\{(.*?)\}", r"$_{\\mathrm{\1}}$", label)
 
 
 def as_float_array(value) -> np.ndarray:
