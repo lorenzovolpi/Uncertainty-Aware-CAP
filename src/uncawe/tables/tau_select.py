@@ -45,12 +45,13 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 from uncawe import env
+from uncawe.experiments.methods import TEMPERED_BASES
 from uncawe.experiments.metrics import get_acc_names
 from uncawe.experiments.tau_select import EXPERIMENT
 from uncawe.tables import eb_prior
 from uncawe.tables import tempering as tt
 from uncawe.tables.baycap_hf import DIVERGENT_DRAWS
-from uncawe.tables.estimand_gap import booktabs_clines
+from uncawe.tables.estimand_gap import CLASSIFIER_ORDER, booktabs_clines
 
 TABLE_NAME = "tau_select"
 KEYS = tt.KEYS
@@ -406,8 +407,88 @@ def _pairs_styler(pairs: pd.DataFrame):
     )
 
 
+COMPACT_SCORES = ("ae", "winkler")
+COMPACT_DIGITS = 3
+
+
+def _compact_frame(pairs: pd.DataFrame) -> pd.DataFrame:
+    """One row per classifier (``CLASSIFIER_ORDER``) and dataset (by $K$, then name); per method of
+    ``TEMPERED_BASES``: $\\tau_{\\text{cal}}$, the oracle-best $\\tau$ and the mean test AE and Winkler score at
+    $\\tau=1$ and at $\\tau_{\\text{cal}}$ (NaN for a pair missing for a method)."""
+    rows = pairs.assign(
+        _clf=pairs["classifier"].map(lambda c: CLASSIFIER_ORDER.index(c) if c in CLASSIFIER_ORDER else 99)
+    )
+    keys = rows.sort_values(["_clf", "n_classes", "dataset"])[["classifier", "dataset"]].drop_duplicates()
+    index = pd.MultiIndex.from_frame(keys)
+    by_pair = pairs.set_index(["method", "classifier", "dataset"])
+    columns = {}
+    for base in [b for b in TEMPERED_BASES if b in set(pairs["method"])]:
+        part = by_pair.loc[base].reindex(index)
+        label = tt.METHOD_LABELS[base]
+        columns[(label, "$\\tau$", COLUMN_LABELS["cal"])] = part["tau_cal"].to_numpy(dtype=float)
+        columns[(label, "$\\tau$", "$\\tau^\\star$")] = part["tau_oracle"].to_numpy(dtype=float)
+        for score in COMPACT_SCORES:
+            for column in ("t1", "cal"):
+                head = "$1$" if column == "t1" else COLUMN_LABELS["cal"]
+                columns[(label, tt.SCORE_LABELS[score], head)] = part[f"{column}_{score}"].to_numpy(dtype=float)
+    out = pd.DataFrame(columns, index=index)
+    out.columns = pd.MultiIndex.from_tuples(out.columns)
+    return out
+
+
+def _compact_styler(pairs: pd.DataFrame):
+    """The compact per-pair table (:func:`_compact_frame`, one metric) for the paper. Per method, score and row, the
+    lower of the means at $\\tau=1$ and at $\\tau_{\\text{cal}}$, at the printed precision, is in bold (both on a tie); $\\tau_{\\text{cal}}$ is
+    highlighted (green, bold) where it equals the oracle-best $\\tau^\\star$, which is a reference (grey)."""
+    out = _compact_frame(pairs)
+    styles = pd.DataFrame("", index=out.index, columns=out.columns)
+    methods = list(dict.fromkeys(out.columns.get_level_values(0)))
+    for label in methods:
+        for score in COMPACT_SCORES:
+            head = tt.SCORE_LABELS[score]
+            # compared at the printed precision, so that equal printed values are both in bold
+            at_1 = out[(label, head, "$1$")].to_numpy(dtype=float).round(COMPACT_DIGITS)
+            at_cal = out[(label, head, COLUMN_LABELS["cal"])].to_numpy(dtype=float).round(COMPACT_DIGITS)
+            best = np.fmin(at_1, at_cal)
+            for column, values in (("$1$", at_1), (COLUMN_LABELS["cal"], at_cal)):
+                styles.loc[np.isclose(values, best), (label, head, column)] = "bfseries: ;"
+        tau_cal = out[(label, "$\\tau$", COLUMN_LABELS["cal"])].to_numpy(dtype=float)
+        tau_oracle = out[(label, "$\\tau$", "$\\tau^\\star$")].to_numpy(dtype=float)
+        styles.loc[tau_cal == tau_oracle, (label, "$\\tau$", COLUMN_LABELS["cal"])] = MATCH_STYLE
+    out.index = pd.MultiIndex.from_arrays(
+        [
+            out.index.get_level_values("classifier").map(tt.main_tables._escape_latex_text),
+            out.index.get_level_values("dataset").map(lambda d: f"\\texttt{{{tt.main_tables._escape_latex_text(d)}}}"),
+        ],
+        names=[None, None],
+    )
+    styles.index = out.index
+    tau_columns = [column for column in out.columns if column[1] == "$\\tau$"]
+    return (
+        out.style.format(precision=COMPACT_DIGITS, na_rep="--")
+        .format(tt._tau_text, subset=tau_columns)
+        .apply(lambda _: styles, axis=None)
+        .map(lambda _: "color:{gray};", subset=[(label, "$\\tau$", "$\\tau^\\star$") for label in methods])
+    )
+
+
+def compact_column_format(styler) -> str:
+    """Two index columns, then one group of columns per method, separated by a vertical rule."""
+    groups = pd.Series(styler.data.columns.get_level_values(0)).value_counts(sort=False)
+    return "ll" + "|".join("c" * int(n) for n in groups)
+
+
 def caption(acc_name: str, name: str) -> str:
     metric = tt.ACC_LABELS[acc_name]
+    if name == "compact":
+        return (
+            f"E5.3, $\\tau$ chosen per pair on calibration bags drawn from half of $V$ ({metric}); one row per pair. "
+            "$\\tau_{\\mathrm{cal}}$: the $\\tau$ with the lowest mean Winkler score on the 50 calibration bags "
+            "(green where it equals $\\tau^\\star$); $\\tau^\\star$ (grey, a reference chosen with the target labels): "
+            "the best $\\tau$ on the test bags. AE and Winkler score: means over the 100 test bags of \\texttt{main} "
+            "(methods fitted on the full $V$), scored against the realised table, at $\\tau=1$ and at "
+            "$\\tau_{\\mathrm{cal}}$; the lower of the two is in bold."
+        )
     if name == "pairs":
         return (
             f"E5.3, $\\tau$ chosen per pair on calibration bags drawn from half of $V$ ({metric}); one row per pair. "
@@ -454,7 +535,7 @@ def _stem(acc_name: str, name: str) -> str:
     return f"{TABLE_NAME}_{name}_{acc_name}"
 
 
-TABLES = ("summary", "crosstab", "pairs")
+TABLES = ("summary", "crosstab", "pairs", "compact")
 CSV_NAMES = ("calibration", "pairs", "datasets", "tests", "summary", "crosstab", "taus", "nuts")
 
 
@@ -475,6 +556,22 @@ def compute(metrics: list[str] | None = None, root: str | None = None) -> dict[s
     }
 
 
+def _longtable(styler, caption_text: str, label: str, column_format: str | None = None) -> str:
+    if column_format is None:
+        return eb_prior._latex_longtable(styler, caption_text, label)
+    latex = styler.to_latex(
+        environment="longtable",
+        hrules=True,
+        multicol_align="c",
+        multirow_align="naive",
+        clines="skip-last;data",
+        caption=caption_text,
+        label=label,
+        column_format=column_format,
+    )
+    return booktabs_clines(latex)
+
+
 def write_tables(out: dict[str, pd.DataFrame], out_dir: str) -> None:
     tabular_dir = os.path.join(out_dir, "tabular")
     os.makedirs(tabular_dir, exist_ok=True)
@@ -488,14 +585,22 @@ def write_tables(out: dict[str, pd.DataFrame], out_dir: str) -> None:
             ),
             "crosstab": _crosstab_styler(out["crosstab"].loc[out["crosstab"]["acc_name"] == acc_name]),
             "pairs": _pairs_styler(out["pairs"].loc[out["pairs"]["acc_name"] == acc_name]),
+            "compact": _compact_styler(out["pairs"].loc[out["pairs"]["acc_name"] == acc_name]),
         }
         for name, styler in stylers.items():
             stem = _stem(acc_name, name)
+            column_format = compact_column_format(styler) if name == "compact" else None
             with open(os.path.join(tabular_dir, f"{stem}.tex"), "w") as f:
-                f.write(booktabs_clines(styler.to_latex(hrules=True, multicol_align="c", clines="skip-last;data")))
+                f.write(
+                    booktabs_clines(
+                        styler.to_latex(
+                            hrules=True, multicol_align="c", clines="skip-last;data", column_format=column_format
+                        )
+                    )
+                )
             with open(os.path.join(tabular_dir, f"{stem}_long.tex"), "w") as f:
                 f.write(
-                    eb_prior._latex_longtable(styler, caption(acc_name, name), f"tab:{TABLE_NAME}-{name}-{acc_name}")
+                    _longtable(styler, caption(acc_name, name), f"tab:{TABLE_NAME}-{name}-{acc_name}", column_format)
                 )
             with open(os.path.join(out_dir, f"{stem}_doc.tex"), "w") as f:
                 f.write(tt._latex_document(f"tabular/{stem}_long.tex"))

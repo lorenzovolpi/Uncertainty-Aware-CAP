@@ -429,6 +429,47 @@ class TablesTest(unittest.TestCase):
             highlighted = np.array([("bfseries", "") in ctx.get((i, j), []) for i in range(len(pairs))])
             np.testing.assert_array_equal(highlighted, match)
 
+    def test_compact_table(self):
+        pairs = self.out["pairs"]
+        styler = tables._compact_styler(pairs)
+        data = styler.data
+        n_pairs = len(pairs[["dataset", "classifier"]].drop_duplicates())
+        self.assertEqual(len(data), n_pairs)
+        self.assertEqual(data.shape[1], len(TEMPERED_BASES) * 6)
+        # rows by classifier (CLASSIFIER_ORDER), then dataset
+        classifiers = [c for c in data.index.get_level_values(0)]
+        order = [c for c in tables.CLASSIFIER_ORDER if c in classifiers]
+        self.assertEqual(list(dict.fromkeys(classifiers)), order)
+        self.assertEqual(tables.compact_column_format(styler), "ll" + "|".join(["c" * 6] * len(TEMPERED_BASES)))
+        ctx = styler._compute().ctx
+        winkler, cal = tt.SCORE_LABELS["winkler"], tables.COLUMN_LABELS["cal"]
+        for base in TEMPERED_BASES:
+            label = tt.METHOD_LABELS[base]
+            part = pairs.loc[pairs["method"] == base]
+            for _, row in part.iterrows():
+                i = list(data.index).index((row["classifier"], f"\\texttt{{{row['dataset']}}}"))
+                self.assertAlmostEqual(data.iloc[i][(label, winkler, cal)], row["cal_winkler"])
+                self.assertEqual(data.iloc[i][(label, "$\\tau$", cal)], row["tau_cal"])
+                bold = {
+                    column: ("bfseries", "") in ctx.get((i, data.columns.get_loc((label, winkler, column))), [])
+                    for column in ("$1$", cal)
+                }
+                t1, at_cal = (
+                    round(row["t1_winkler"], tables.COMPACT_DIGITS),
+                    round(row["cal_winkler"], tables.COMPACT_DIGITS),
+                )
+                self.assertEqual(bold["$1$"], t1 <= at_cal)
+                self.assertEqual(bold[cal], at_cal <= t1)
+                j = data.columns.get_loc((label, "$\\tau$", cal))
+                highlighted = any(prop == "cellcolor" for prop, _ in ctx.get((i, j), []))
+                self.assertEqual(highlighted, row["tau_cal"] == row["tau_oracle"])
+        latex = styler.to_latex(column_format=tables.compact_column_format(styler))
+        self.assertIn("\\bcaphf", latex)
+        self.assertIn("\\bcapkdey", latex)
+        self.assertIn("\\tau^\\star", latex)
+        self.assertIn("\\color{gray}", latex)
+        self.assertNotIn("vanilla_accuracy", tables.caption("vanilla_accuracy", "compact"))
+
     def test_tables_are_written_and_build(self):
         with tempfile.TemporaryDirectory() as tmp:
             tables.write_tables(self.out, tmp)
