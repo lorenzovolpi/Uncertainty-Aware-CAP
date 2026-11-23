@@ -5,10 +5,11 @@ The figures read the per-pair CSV of :mod:`uncawe.tables.pq_rho` (run ``tables/p
 per metric (vanilla accuracy, macro-F1, macro-K), one panel per measure (quantification error, absolute error,
 coverage, amplitude, Winkler score, minimum class support), each measure against $\\rho$: each pair as a faint line
 (over the levels it has), and in bold the mean over the pairs that have every level, as in the summary table. The
-coverage panel has a reference line at the nominal level $0.95$. Every score is against the realised table of each
-target bag.
+coverage panel has a reference line at the nominal level $0.95$. A second figure per metric has two panels only,
+the absolute error (AE, left) and the Winkler score (W, right), on a log scale, with the mean and the median over the
+pairs that have every level and no title. Every score is against the realised table of each target bag.
 
-Output: ``<OUT_DIR>/uncawe/plots/pq_rho/pq_rho_<metric>.{png,svg}``.
+Output: ``<OUT_DIR>/uncawe/plots/pq_rho/pq_rho_<metric>.{png,svg}`` and ``pq_rho_ae_w_<metric>.{png,svg}``.
 """
 
 import os
@@ -41,6 +42,9 @@ PANEL_LABELS = {
 PAIR_LINE = {"color": "#4C78A8", "alpha": 0.15, "linewidth": 0.7}
 MEAN_LINE = {"color": "#1f1f1f", "linewidth": 2.2, "marker": "o"}
 REFERENCE_LINE = {"color": "#8c8c8c", "linewidth": 0.8, "linestyle": "--"}
+MEDIAN_LINE = {"color": "#d62728", "linewidth": 1.6, "marker": "s", "linestyle": "--"}
+# the two-panel figure: absolute error on the left, Winkler score on the right, log scale
+AE_W_PANELS = (("acc_err", "AE"), ("winkler", "W"))
 
 
 def plot_dir() -> str:
@@ -90,6 +94,41 @@ def plot_metric(table: pd.DataFrame, acc_name: str):
     return fig
 
 
+def plot_ae_w(table: pd.DataFrame):
+    """AE (left) and W (right) against $\\rho$ on a log scale, without a title; ``table`` has the per-pair rows of
+    one metric. Per-pair values span over two orders of magnitude, so a linear axis hides all but the worst pairs."""
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharex=True)
+    common = table.loc[table["common"].astype(bool)]
+    levels = sorted(table["rho"].unique())
+    for ax, (measure, label) in zip(axes, AE_W_PANELS):
+        for _, pair in table.groupby(KEYS, sort=False):
+            pair = pair.sort_values("rho")
+            ax.plot(pair["rho"], pair[measure], **PAIR_LINE)
+        if not common.empty:
+            by_level = common.groupby("rho")[measure]
+            mean, median = by_level.mean(), by_level.median()
+            ax.plot(mean.index, mean.to_numpy(), label="mean", **MEAN_LINE)
+            ax.plot(median.index, median.to_numpy(), label="median", **MEDIAN_LINE)
+        ax.set_yscale("log")
+        ax.set_title(label, fontsize=font_size(11))
+        ax.set_xticks(levels)
+        ax.set_xlabel("$\\rho=|V_q|/|V|$", fontsize=font_size(11))
+        ax.grid(True, which="both", color="#e5e5e5", linewidth=0.5)
+    if not common.empty:
+        axes[0].legend(frameon=False)
+    fig.tight_layout()
+    return fig
+
+
+def save(fig, stem: str, args):
+    if args.add_stem is not None:
+        stem = f"{stem}_{args.add_stem}"
+    for fmt in args.formats:
+        fig.savefig(f"{stem}.{fmt}", dpi=args.dpi if fmt == "png" else None, bbox_inches="tight")
+    plt.close(fig)
+    print(f"plot generated: {stem}")
+
+
 def generate_plots(args):
     table = load_table(args.csv)
     out_dir = plot_dir()
@@ -98,14 +137,8 @@ def generate_plots(args):
         if sub.empty:
             print(f"{acc_name}: no rows in the per-pair CSV, skipped")
             continue
-        fig = plot_metric(sub, acc_name)
-        stem = os.path.join(out_dir, f"{PLOT_NAME}_{acc_name}")
-        if args.add_stem is not None:
-            stem = f"{stem}_{args.add_stem}"
-        for fmt in args.formats:
-            fig.savefig(f"{stem}.{fmt}", dpi=args.dpi if fmt == "png" else None, bbox_inches="tight")
-        plt.close(fig)
-        print(f"plot generated: {stem}")
+        save(plot_metric(sub, acc_name), os.path.join(out_dir, f"{PLOT_NAME}_{acc_name}"), args)
+        save(plot_ae_w(sub), os.path.join(out_dir, f"{PLOT_NAME}_ae_w_{acc_name}"), args)
 
 
 def parse_args(argv=None):

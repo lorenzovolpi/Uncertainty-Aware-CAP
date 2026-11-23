@@ -147,6 +147,22 @@ class PQRhoPlotTest(unittest.TestCase):
             self.assertEqual(ax.yaxis.get_major_formatter().get_offset(), "")
         plt.close(fig)
 
+    def test_ae_w_figure_has_ae_left_w_right_on_log_scale_without_title(self):
+        pairs, _, _ = tables.compute("vanilla_accuracy", synthetic_results())
+        fig = plots.plot_ae_w(pairs.assign(acc_name="vanilla_accuracy"))
+        self.assertEqual([ax.get_title() for ax in fig.axes], ["AE", "W"])
+        self.assertIsNone(fig._suptitle)
+        common = [i for i in range(N_PAIRS) if i != 11]
+        for ax in fig.axes:
+            self.assertEqual(ax.get_yscale(), "log")
+            # one line per pair, the mean and the median
+            self.assertEqual(len(ax.get_lines()), N_PAIRS + 2)
+        mean_line = fig.axes[0].get_lines()[N_PAIRS]
+        np.testing.assert_allclose(
+            mean_line.get_ydata(), [np.mean([0.01 * i + rho * (1 + 0.01 * i) for i in common]) for rho in LEVELS]
+        )
+        plt.close(fig)
+
 
 if __name__ == "__main__":
     unittest.main()
