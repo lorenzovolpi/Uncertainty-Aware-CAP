@@ -166,6 +166,8 @@ class TestLevels(unittest.TestCase):
                 self.assertEqual(factory().classifier.random_state, 0, level)
         self.assertEqual(ctt.QUANTIFIERS["CTT-KDEy"]().bandwidth, 0.1)
         self.assertEqual(ctt.QUANTIFIERS["CTT-PACC"]().val_split, 5)
+        self.assertEqual(ctt.QUANTIFIERS["CTT-ACC"]().val_split, 5)
+        self.assertEqual((ctt.acc().solver, ctt.acc().norm), ("minimize", "clip"))
 
     def test_failed_bag_is_flagged(self):
         validation, val_post, dataset, true_cts = _data()
@@ -308,18 +310,19 @@ class TestEvaluationAndTables(unittest.TestCase):
 
     def test_ae_styles(self):
         labels = [tables._level_label(level) for level in tables.AE_COLUMNS]
-        frame = pd.DataFrame([[0.1, 0.2, 0.3, 0.4, 0.5, 0.01], [np.nan] * 6], columns=labels)
+        frame = pd.DataFrame([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.01], [np.nan] * 7], columns=labels)
         styles = tables.ae_styles(frame)
         green = "#" + "".join(f"{c:02x}" for c in tables.BEST_RGB)
         self.assertIn(f"background-color: {green}", styles.iloc[0, 0])
         self.assertIn("font-weight: bold", styles.iloc[0, 0])
-        self.assertIn("background-color: #ffffff", styles.iloc[0, 4])
-        self.assertNotIn("bold", styles.iloc[0, 4])
-        # halfway in AE, halfway in colour
+        self.assertIn("background-color: #ffffff", styles.iloc[0, 5])
+        self.assertNotIn("bold", styles.iloc[0, 5])
+        # 0.35 is halfway between 0.1 and 0.6 in AE, so halfway in colour; checked on a frame with that value
+        frame.iloc[0, 2] = 0.35
         middle = "#" + "".join(f"{round((255 + c) / 2):02x}" for c in tables.BEST_RGB)
-        self.assertIn(f"background-color: {middle}", styles.iloc[0, 2])
+        self.assertIn(f"background-color: {middle}", tables.ae_styles(frame).iloc[0, 2])
         # the reference (smallest AE here) is neither coloured nor compared
-        self.assertEqual(styles.iloc[0, 5], "")
+        self.assertEqual(styles.iloc[0, 6], "")
         self.assertTrue((styles.iloc[1] == "").all())
 
     def test_mismatched_bags_raise(self):

@@ -10,9 +10,10 @@ classes on rows). No uncertainty, no interval.
 
 Levels (``LEVELS``):
 
-- ``CTT-KDEy``, ``CTT-EMQ``, ``CTT-PACC``: QuaPy 0.2.4's ``KDEyML``, ``EMQ`` and ``PACC`` at their default arguments on
-  ``MLP(random_state=qp.environ["_R_SEED"])`` trained on $V$ (the classifier and seed of
-  ``experiments/methods.py:kdey``, ``pacc``); they target the population table $C\\operatorname{diag}(\\pi^Q)$;
+- ``CTT-KDEy``, ``CTT-EMQ``, ``CTT-ACC``, ``CTT-PACC``: QuaPy 0.2.4's ``KDEyML``, ``EMQ``, ``ACC`` and ``PACC`` at their
+  default arguments on ``MLP(random_state=qp.environ["_R_SEED"])`` trained on $V$ (the classifier and seed of
+  ``experiments/methods.py:kdey``, ``pacc``; ``CTT-ACC`` added on 2026-11-23 by the user's decision); they target the
+  population table $C\\operatorname{diag}(\\pi^Q)$;
 - ``CTT-oracle`` (**reference**, it uses the target labels, never a method): the table of $V$ rescaled by the true
   prevalence of the bag $\\bar\\pi$, i.e. $\\hat C\\operatorname{diag}(\\bar\\pi)$; it targets the expected realised table
   given the class counts of the bag.
@@ -51,7 +52,7 @@ import quapy as qp
 from cap import env as capenv
 from cap.error import vanilla_acc
 from cap.models.cont_table import ContTableTransferCAP
-from quapy.method.aggregative import EMQ
+from quapy.method.aggregative import ACC, EMQ
 from sklearn.neural_network import MLPClassifier as MLP
 
 from uncawe.experiments.datasets import get_filtered_datasets
@@ -79,7 +80,13 @@ def emq():
     return EMQ(MLP(random_state=qp.environ["_R_SEED"]))
 
 
-QUANTIFIERS = {"CTT-KDEy": kdey, "CTT-EMQ": emq, "CTT-PACC": pacc}
+def acc():
+    """QuaPy's ACC in its base form ($5$-fold cross-fitting of the misclassification rates on $V$, solver ``minimize``,
+    ``norm="clip"``) on the seeded MLP of the quantifiers of ``main``: PACC with crisp instead of soft predictions."""
+    return ACC(MLP(random_state=qp.environ["_R_SEED"]))
+
+
+QUANTIFIERS = {"CTT-KDEy": kdey, "CTT-EMQ": emq, "CTT-ACC": acc, "CTT-PACC": pacc}
 ORACLE = "CTT-oracle"
 METHODS = tuple(QUANTIFIERS)
 LEVELS = (*METHODS, ORACLE)

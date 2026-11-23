@@ -57,6 +57,7 @@ METHOD_COLORS = {
     # E8.2: the rate matrix of V rescaled by a point quantifier, and the oracle reference (card WP-30)
     "CTT-KDEy": "#1F77B4",
     "CTT-EMQ": "#D62728",
+    "CTT-ACC": "#E377C2",
     "CTT-PACC": "#6B3D9A",
     "CTT-oracle": "#7F7F7F",
 }

@@ -1,8 +1,8 @@
 """Tables of E8.2 of ``docs/ext8_average_confidence.md`` (card WP-30): the rate matrix of $V$ rescaled by a point
 quantifier, on the protocol of ``main``.
 
-Reads the results of ``experiments/ctt.py`` (``<OUT_DIR>/uncawe/ctt/``): the three methods ``CTT-KDEy``, ``CTT-EMQ``,
-``CTT-PACC``, which target the population table $C\\operatorname{diag}(\\pi^Q)$, and the reference ``CTT-oracle`` (true
+Reads the results of ``experiments/ctt.py`` (``<OUT_DIR>/uncawe/ctt/``): the four methods ``CTT-KDEy``, ``CTT-EMQ``,
+``CTT-ACC``, ``CTT-PACC``, which target the population table $C\\operatorname{diag}(\\pi^Q)$, and the reference ``CTT-oracle`` (true
 prevalence of the bag), which targets the expected realised table given the class counts of the bag; all are scored
 against the realised table of each bag (``true_cts``).
 
@@ -11,10 +11,10 @@ Outputs, under ``<OUT_DIR>/uncawe/tables/ctt/``:
 - **AE tables**, one per metric (``ctt_ae_<metric>.csv`` for vanilla accuracy, macro-F1 and macro-K; ``ctt_ae.csv``
   with the three): one row per pair (dataset × classifier), in a block of binary and one of multiclass pairs, each
   closed by the mean over its pairs, and a final row of the mean over every pair; the mean AE over the bags of the
-  three methods, of the point estimates of BayCAP-KDEy (``BayCAP-KDEy-mlp-real``) and BayCAP-Hf (``BayesCAP-Hf-real``)
+  four methods, of the point estimates of BayCAP-KDEy (``BayCAP-KDEy-mlp-real``) and BayCAP-Hf (``BayesCAP-Hf-real``)
   stored by ``main`` on the same bags (``MAIN_COMPARED``; their point estimate is the mean of their predictive
   distribution of the realised table, scored against the realised table as here), and of the reference. In LaTeX, in
-  each row, the cells of the five methods are coloured from the green of the rank tables (``tables/rank.py:BEST_RGB``,
+  each row, the cells of the six methods are coloured from the green of the rank tables (``tables/rank.py:BEST_RGB``,
   the smallest AE) to white (the largest), linearly in the AE, and the smallest AE is in bold; the reference is set
   apart, not coloured and not compared;
 - **split table** (``ctt_split.csv``, vanilla accuracy): the same rows; the range $R$ of the recalls of $h$ on $V$;
@@ -267,7 +267,7 @@ def _gradient(value: float, best: float, worst: float) -> str:
 
 
 def ae_styles(frame: pd.DataFrame) -> pd.DataFrame:
-    """The CSS of the cells of an AE table: per row, the five methods coloured from green (smallest AE) to white
+    """The CSS of the cells of an AE table: per row, the six methods coloured from green (smallest AE) to white
     (largest), the smallest in bold; the reference without style."""
     styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
     compared = [_level_label(level) for level in COMPARED]
@@ -340,10 +340,10 @@ def _latex(styler, caption: str | None = None, label: str | None = None) -> str:
 def ae_caption(acc: str) -> str:
     return (
         f"E8.2, {ACC_LABELS[acc]}: mean AE over the bags of the rate matrix of $V$ rescaled by a point quantifier "
-        "(CTT-KDEy, CTT-EMQ, CTT-PACC), of the point estimates of \\bcapkdey{} and \\bcaphf{} stored by "
+        "(CTT-KDEy, CTT-EMQ, CTT-ACC, CTT-PACC), of the point estimates of \\bcapkdey{} and \\bcaphf{} stored by "
         "\\texttt{main} on the same bags, and of the reference with the true prevalence of the bag (CTT-oracle, not "
         "compared), against the realised table of each bag ($|U|=1000$). In each row, green for the smallest AE of the "
-        "five methods to white for the largest; the smallest in bold. Mean rows: means of the per-pair values over the "
+        "six methods to white for the largest; the smallest in bold. Mean rows: means of the per-pair values over the "
         "pairs of the block."
     )
 
