@@ -30,7 +30,7 @@ LOCAL_OUT  ?= ./output
 PULL_DIRS  ?= tables plots
 LOG_LINES  ?= 300
 FOLLOW     ?=
-RESULTS    ?= main binform binform_e51 binform_e54 binform_e55 predist eb_binary main_e52_check target_size tau_select
+RESULTS    ?= main binform binform_e51 binform_e54 binform_e55 predist eb_binary main_e52_check target_size tau_select ctt
 
 # Files and directories of OLD_DIR worth keeping in REMOTE_DIR (never overwritten if already present).
 OLD_FILES  ?= env.json sorted_sets.json output
@@ -68,6 +68,8 @@ EXP_target-size-e44b-counts := python -m uncawe.experiments.target_size --counts
 EXP_tau-select       := python -m uncawe.experiments.tau_select
 # the gate of the solver of E7.2a (WP-26): EM against QuaPy's KDEyML on the pilot pairs, selection only
 EXP_kdey-cal-solver  := python -m uncawe.experiments.kdey_cal_solver
+# E8.2 (WP-30): --pilot in ARGS for the pilot (mammographic, poker_hand, letter with LR), no ARGS for the full run
+EXP_ctt              := python -m uncawe.experiments.ctt
 EXP_tables-main      := python -m uncawe.tables.main --classic
 EXP_tables-rank      := python -m uncawe.tables.rank --classic
 EXP_tables-coverage-amplitude := python -m uncawe.tables.coverage_amplitude --classic
@@ -99,6 +101,7 @@ EXP_tables-kdey-cal  := python -m uncawe.tables.kdey_cal
 EXP_tables-kdey-cal-solver := python -m uncawe.tables.kdey_cal_solver
 EXP_tables-kdey-tcal := python -m uncawe.tables.kdey_tcal
 EXP_tables-average-confidence := python -m uncawe.tables.average_confidence
+EXP_tables-ctt       := python -m uncawe.tables.ctt
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
@@ -127,6 +130,7 @@ EXP_plot-tau-select  := python -m uncawe.plots.tau_select
 EXP_plot-kdey-loo    := python -m uncawe.plots.kdey_loo
 EXP_plot-kdey-cal    := python -m uncawe.plots.kdey_cal
 EXP_plot-kdey-tcal   := python -m uncawe.plots.kdey_tcal
+EXP_plot-ctt         := python -m uncawe.plots.ctt
 EXP_plot-shift-profile := python -m uncawe.plots.shift_profile --domain classic
 EXP_test             := python -m unittest discover -s tests
 EXP_bench-bayes-jobs := python scripts/bench/bayes_n_jobs.py

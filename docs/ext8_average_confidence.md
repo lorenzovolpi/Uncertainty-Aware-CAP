@@ -16,7 +16,7 @@ This extension adds baselines to the project, against which the methods under st
 | `AC`: AC with LasCal and the central interval of the Poisson-binomial distribution, any number of classes, vanilla accuracy only (`methods/ac.py`) | [implemented] (card WP-29, merged `b17b9b0`, [[work_plan]] §II.31), run and stored in `main` (75 pairs, 2026-11-20) |
 | E8.1 (`AC` against `L-CBPE` in a separate table, `tables/average_confidence.py`) | [implemented], card WP-29 (done), run (no pilot, user's decision) and analysed (below) |
 | `cap-ml`'s `ContTableTransferCAP`: the table of $h$ on $V$ rescaled by the prevalences of a quantifier | in `cap-ml`, not used by `uncawe` |
-| E8.2 (`CTT-KDEy`, `CTT-EMQ`, `CTT-PACC` and the reference `CTT-oracle`, point estimates, in an experiment module of their own) | [proposed] (user's decision of 2026-11-23), card WP-30 (Scheduled) |
+| E8.2 (`CTT-KDEy`, `CTT-EMQ`, `CTT-PACC` and the reference `CTT-oracle`, point estimates, in an experiment module of their own) | [proposed] (user's decision of 2026-11-23); code on branch `wp-30/ctt` (`experiments/ctt.py`, `tables/ctt.py`, `plots/ctt.py`), card WP-30 (In progress), not run |
 
 # Experiments
 
@@ -65,7 +65,8 @@ This extension adds baselines to the project, against which the methods under st
   - **Cost:** per pair, three quantifier fits on $V$ (one MLP each; KDEy and PACC with $5$ folds) and $100$ predictions each; the oracle needs no fit. No NUTS. Pilot to be decided with the card.
 - **Representation.**
   - **AE table:** one row per pair (dataset × classifier, grouped by dataset), in a block for binary and one for multiclass datasets, each closed by the row of the means over its pairs, and a final row of the means over the $75$ pairs; one column group per metric (vanilla accuracy, macro-F1, macro-K), with the columns `CTT-KDEy`, `CTT-EMQ`, `CTT-PACC` and, set apart as a reference, `CTT-oracle`. In each group the best of the three methods is in bold; the reference is not compared.
-  - **Split table (vanilla accuracy):** the same rows; per quantifier, the mean quantification error, the RMS of $e_\pi$ and of $e_C$; the RMS of the error of `CTT-oracle`.
+  - **Split table (vanilla accuracy):** the same rows; the range $R$ of the recalls of $V$; per quantifier, the mean quantification error and the RMS of $e_\pi$; the RMS of $e_C$, shown once, since it is the same for every quantifier and equals the RMS of the error of `CTT-oracle` (§T.8).
+  - **Check table:** per pair, the largest $\lvert e_\pi+e_C-(\hat A-A)\rvert$, the largest difference between the $e_C$ of a quantifier and that of `CTT-oracle`, the largest $\lvert e_\pi\rvert$ of `CTT-oracle`, the bags beyond the bound of §T.8, and the bags where a quantifier failed (all expected $0$).
   - **Plot:** per quantifier, the mean AE of vanilla accuracy against the mean quantification error, one point per pair, binary and multiclass pairs with different markers, one panel per quantifier, with the mean AE of `CTT-oracle` on the same pair as a second marker joined to the first, so that the vertical gap shows what quantification adds.
 - **Analysis.** Not run.
 
@@ -275,7 +276,7 @@ E8.2 has point estimates only, while `main` stores intervals and its tables comp
 Components:
 
 - **Methods:** `cap-ml`'s `ContTableTransferCAP(acc, q)`, fitted on $V$ and the posteriors of $h$ on $V$, with `q` QuaPy's `KDEyML`, `EMQ` or `PACC` in their base form, each with `MLP(random_state=qp.environ["_R_SEED"])` as the classifier (the default arguments of QuaPy 0.2.4 listed in E8.2). The reference `CTT-oracle`: the table $\hat T^V$ of the same fit rescaled by $\bar\pi/\pi^V$, with $\bar\pi$ from the column sums of `true_cts` of the bag (in the code, the row sums of the transpose); used only by this module and never as a method.
-- **Experiment module** (e.g. `experiments/ctt.py`): the pairs, the dataset bundle, $V$, the bags and the seeds of `main` (`experiments/main.py:_prepare_evaluation`, `test_prot`, `test_prot_true_cts`); per pair and level, the estimated table of each bag; per bag, the point estimate and the AE of each metric (`experiments/metrics.py:gen_acc_measure`), the estimated prevalence $\hat\pi^Q$ (`ctt_test_prev`), the prevalence of the bag, and for vanilla accuracy $e_\pi$ and $e_C$ (§T.8); the fit and prediction times. Results in `<OUT_DIR>/uncawe/ctt/`, one file per pair and level, skipped if present, as in `main`.
+- **Experiment module** (e.g. `experiments/ctt.py`): the pairs, the dataset bundle, $V$, the bags and the seeds of `main` (`experiments/main.py:_prepare_evaluation`, `test_prot`, `test_prot_true_cts`); per pair and level, the estimated table of each bag; per bag, the point estimate and the AE of each metric (`experiments/metrics.py:gen_acc_measure`), the estimated prevalence $\hat\pi^Q$ (`ctt_test_prev`), the prevalence of the bag, and for vanilla accuracy $e_\pi$ and $e_C$ (§T.8); the fit and prediction times. Results in `<OUT_DIR>/uncawe/ctt/`, one file per pair, level and metric, skipped if present, as in `main`. $\hat\pi^Q$ is read back as the row sums of the estimated table; since `vanilla_acc` divides the trace by the sum of the table and a quantifier's estimate sums to $1$ only up to about $10^{-11}$, $e_\pi$ is computed with $\hat\pi^Q$ normalised to sum to $1$, so that $e_\pi+e_C$ equals the stored $\hat A-A$ to rounding.
 - **Table and plot modules** for the AE table, the split table and the plot of E8.2, following [[work_plan]] Part V.
 - **Make targets** for the pilot and full run, the tables and the plot.
 
