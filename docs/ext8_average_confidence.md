@@ -1,8 +1,12 @@
-# Extension 8: Average Confidence as an uncertainty-aware baseline
+# Extension 8: Baselines: Average Confidence and the rate matrix rescaled by a quantifier
 
 ## Claim
 
-Average Confidence (AC) estimates the accuracy of a classifier $h$ on an unlabelled bag as the mean of its confidences, the largest posterior probability of each instance. Kivimäki et al. ([JAIR 2025](papers/Kivimäki%20et%20al.%20-%202025%20-%20Confidence-based%20Estimators%20for%20Predictive%20Performance%20in%20Model%20Monitoring.pdf)) show that, if the confidences are calibrated on the target distribution, AC is unbiased and consistent, and that the number of correct predictions follows a Poisson-binomial distribution, from which they read a central confidence interval for the accuracy of the bag. AC is therefore the simplest uncertainty-aware CAP method: one mean and one interval, both in closed form. This extension adds it to the project as a baseline (user's decision of 2026-11-20), with the confidences recalibrated per bag by LasCal, a calibration method designed for label shift, as `L-CBPE` already does on the binary datasets. AC works for any number of classes, so it extends that baseline to all the datasets of `main`. It is a baseline, not a method under study: the interval represents only the luck of the bag given the calibrated confidences (§T.6), and this is accepted (user's decision of 2026-11-20).
+This extension adds baselines to the project, against which the methods under study are read. It holds two of them (scope widened by the user's decision of 2026-11-23): Average Confidence with a Poisson-binomial interval (E8.1), the simplest uncertainty-aware CAP method, and the rate matrix of $h$ measured on $V$ rescaled by the prevalences of a point quantifier (E8.2), the simplest CAP method built on quantification, with no uncertainty.
+
+**Average Confidence.** Average Confidence (AC) estimates the accuracy of a classifier $h$ on an unlabelled bag as the mean of its confidences, the largest posterior probability of each instance. Kivimäki et al. ([JAIR 2025](papers/Kivimäki%20et%20al.%20-%202025%20-%20Confidence-based%20Estimators%20for%20Predictive%20Performance%20in%20Model%20Monitoring.pdf)) show that, if the confidences are calibrated on the target distribution, AC is unbiased and consistent, and that the number of correct predictions follows a Poisson-binomial distribution, from which they read a central confidence interval for the accuracy of the bag. AC is therefore the simplest uncertainty-aware CAP method: one mean and one interval, both in closed form. This extension adds it to the project as a baseline (user's decision of 2026-11-20), with the confidences recalibrated per bag by LasCal, a calibration method designed for label shift, as `L-CBPE` already does on the binary datasets. AC works for any number of classes, so it extends that baseline to all the datasets of `main`. It is a baseline, not a method under study: the interval represents only the luck of the bag given the calibrated confidences (§T.6), and this is accepted (user's decision of 2026-11-20).
+
+**The rate matrix rescaled by a quantifier.** Under prior probability shift the rates $C_{ij}=P(\hat Y=\omega_i\mid Y=\omega_j)$ of $h$ do not change, so the contingency table of the target is $T=C\operatorname{diag}(\pi^Q)$ and only $\pi^Q$ is unknown. Measuring $\hat C$ on $V$ and replacing $\pi^Q$ by the estimate $\hat\pi^Q$ of a quantifier gives a point estimate of the table, $\hat C\operatorname{diag}(\hat\pi^Q)$, and from it of every metric (§T.7). This is the core that BayCAP and the fixed-$\hat C$ methods of [[ext3_posterior_propagation|Extension 3]] make uncertainty-aware, so its errors are the starting point of the research: how far a CAP estimate built from quantification goes with three standard quantifiers of QuaPy (KDEy, EMQ, PACC) in their base form, and how its error splits into the error of $\hat\pi^Q$ and the error of $\hat C$ (§T.8). It is a point-estimate baseline, not an uncertainty-aware method (user's decision of 2026-11-23).
 
 ## Status
 
@@ -11,6 +15,8 @@ Average Confidence (AC) estimates the accuracy of a classifier $h$ on an unlabel
 | `L-CBPE`: `cap-ml`'s `CBPE(calib_method="lascal")`, AC with LasCal and the highest-density interval of the Poisson-binomial distribution, binary datasets only (`experiments/methods.py`) | [implemented], run and stored in `main` (binary datasets); excluded from the main tables, the rank table and the coverage vs amplitude plot |
 | `AC`: AC with LasCal and the central interval of the Poisson-binomial distribution, any number of classes, vanilla accuracy only (`methods/ac.py`) | [implemented] (card WP-29, merged `b17b9b0`, [[work_plan]] §II.31), run and stored in `main` (75 pairs, 2026-11-20) |
 | E8.1 (`AC` against `L-CBPE` in a separate table, `tables/average_confidence.py`) | [implemented], card WP-29 (done), run (no pilot, user's decision) and analysed (below) |
+| `cap-ml`'s `ContTableTransferCAP`: the table of $h$ on $V$ rescaled by the prevalences of a quantifier | in `cap-ml`, not used by `uncawe` |
+| E8.2 (`CTT-KDEy`, `CTT-EMQ`, `CTT-PACC` and the reference `CTT-oracle`, point estimates, in an experiment module of their own) | [proposed] (user's decision of 2026-11-23), no card |
 
 # Experiments
 
@@ -36,6 +42,32 @@ Average Confidence (AC) estimates the accuracy of a classifier $h$ on an unlabel
   - **Central against highest-density interval (binary pairs).** The two methods have the same distribution of $K/n$, so they differ only in how the interval is read from it. The central interval of `AC` is wider on every binary pair, by $0.00035$ to $0.00059$ (mean amplitude $0.0319$ against $0.0314$): its lower bound is lower by $0.0003$–$0.0005$ and its upper bound higher by at most $0.0002$, which is the long tail towards low accuracies of §T.3. Coverage is equal on 18 pairs and higher for `AC` on 7 (mean $0.216$ against $0.212$), and the Winkler score is lower for `AC` on all 25 pairs (mean $1.712$ against $1.722$). The choice of interval is therefore a second-order effect: the Winkler score changes by $0.6\%$ on average.
   - **Coverage of `AC`.** The interval covers the realised accuracy far less often than its level: mean coverage $0.216$ on the binary pairs and $0.176$ on the 75 pairs, at most $0.69$ on a pair (`dry-bean` with kNN), and $0$ on 18 pairs (all five classifiers on `mammographic` and `letter`; RF, SVM and MLP on `hand_digits`; LR, SVM, MLP and RF on `isolet`; kNN on `poker_hand`). The mean amplitude ($0.040$ over the 75 pairs) is below the mean AE ($0.108$), and on 57 of the 75 pairs the mean amplitude is below the mean AE. This is the expected behaviour of §T.6: the interval represents only the luck of the bag given the calibrated confidences, whose standard deviation is at most $1/(2\sqrt{1000})\approx0.016$ (§T.3), while the error of AC comes mostly from the calibration under prior shift, which the interval does not represent. As a result the Winkler score is dominated by the misses: its mean over the 75 pairs is $3.61$, against a mean amplitude of $0.040$.
   - **Not examined.** The hypothesis of §T.4, that the residual bias grows with $\lvert\pi^Q-\pi^P\rvert$, needs the AE per bag against the shift of the bag; the tables of E8.1 give only means per pair, so it is left as a candidate. `AC` is not compared with the methods of the main tables (E8.c3).
+
+## E8.2: the rate matrix of $V$ rescaled by a point quantifier
+
+**Why.** Every CAP method of the project that goes through quantification (BayCAP, the fixed-$\hat C$ methods of [[ext3_posterior_propagation|Extension 3]], the SQS methods) rests on the identity $T=C\operatorname{diag}(\pi^Q)$ under PPS (§T.7), and adds uncertainty to one or both factors. Its plainest version, with $C$ measured on $V$ and $\pi^Q$ estimated by one point quantifier, has never been measured on the protocol of `main`. Measuring it gives the starting point of the research (user's decision of 2026-11-23): how large the error of a quantification-based point estimate is with three standard quantifiers, how much of it comes from the quantifier and how much from $\hat C$ (§T.8), and, with the true prevalence of the bag in place of the estimate, the error that remains when quantification is perfect.
+
+- **Design.**
+  - **Inputs:** the protocol of `main`: the $75$ pairs (the $15$ datasets × the five classifiers of `main`, after FIX-8), the posteriors of $h$ stored by `main` and its predictions $\hat y=\arg\max_kp(\omega_k\mid x)$, the validation set $V$ of `main`, $100$ target bags of size $1000$ per pair with the seeds of `main`. No stored result of `main` is used.
+  - **Varied:** the source of the prevalences that rescale $\hat C$, four levels:
+    - `CTT-KDEy`: QuaPy's `KDEyML` in its base form (Gaussian kernel, bandwidth $0.1$, no shrinkage, $5$-fold cross-fitting on $V$, `val_split=5`);
+    - `CTT-EMQ`: QuaPy's `EMQ` in its base form (no recalibration, `calib=None`; the MLP trained on the whole $V$; the training prevalence is that of $V$, `exact_train_prev=True`);
+    - `CTT-PACC`: QuaPy's `PACC` in its base form ($5$-fold cross-fitting of the misclassification rates on $V$, solver `minimize`, `norm="clip"`);
+    - `CTT-oracle` (**reference**, it uses the target labels): the true prevalence of the bag, $\bar\pi_j=n_j/n$, with $n_j$ the number of instances of class $\omega_j$ in the bag.
+
+    *Held fixed:* $\hat C$, the rates of $h$ on $V$ (§T.7), shared by the four levels; the classifier read by the three quantifiers, an MLP trained on $V$ on the features, seeded with the experiment seed (`MLP(random_state=qp.environ["_R_SEED"])`), as the quantifiers of `main` (`experiments/methods.py:kdey`, `pacc`; FIX-3) (user's decision of 2026-11-23).
+  - **Measures:**
+    - for each level, per bag, the point estimate of vanilla accuracy, macro-F1 and macro-K computed from the estimated table, and its absolute error (AE) against the realised value; per pair, the mean AE over the $100$ bags; the mean of the per-pair means over the binary pairs ($25$), the multiclass pairs ($50$) and all $75$ pairs;
+    - for each quantifier, per bag, the quantification error $\lVert\hat\pi^Q-\bar\pi\rVert_1=\sum_j\lvert\hat\pi^Q_j-\bar\pi_j\rvert$, against the true prevalence of the bag; its mean per pair;
+    - for vanilla accuracy, per bag, the two parts of the error of §T.8, the quantification part $e_\pi$ and the rate part $e_C$, with a check that $e_\pi+e_C=\hat A-A(T)$ and that the error of `CTT-oracle` is $e_C$; per pair, the mean and the root mean square (RMS) of each part;
+    - per pair, the number of classes absent from $V$ and of bags where a quantifier failed (expected $0$; §Implementation).
+  - **Estimand:** the three methods and the reference target the population table $C\operatorname{diag}(\pi^Q)$; `CTT-oracle`, with the prevalence of the bag, targets the expected realised table given the class counts of the bag (§T.7). All four are scored against the realised table of each bag (`true_cts`), as every method of `main`. Quantification errors are scored against the prevalence of the bag, the column sums of the realised table.
+  - **Cost:** per pair, three quantifier fits on $V$ (one MLP each; KDEy and PACC with $5$ folds) and $100$ predictions each; the oracle needs no fit. No NUTS. Pilot to be decided with the card.
+- **Representation.**
+  - **AE table:** one row per pair (dataset × classifier, grouped by dataset), in a block for binary and one for multiclass datasets, each closed by the row of the means over its pairs, and a final row of the means over the $75$ pairs; one column group per metric (vanilla accuracy, macro-F1, macro-K), with the columns `CTT-KDEy`, `CTT-EMQ`, `CTT-PACC` and, set apart as a reference, `CTT-oracle`. In each group the best of the three methods is in bold; the reference is not compared.
+  - **Split table (vanilla accuracy):** the same rows; per quantifier, the mean quantification error, the RMS of $e_\pi$ and of $e_C$; the RMS of the error of `CTT-oracle`.
+  - **Plot:** per quantifier, the mean AE of vanilla accuracy against the mean quantification error, one point per pair, binary and multiclass pairs with different markers, one panel per quantifier, with the mean AE of `CTT-oracle` on the same pair as a second marker joined to the first, so that the vertical gap shows what quantification adds.
+- **Analysis.** Not run.
 
 # Candidate experiments
 
@@ -165,7 +197,54 @@ The Poisson-binomial interval describes one source of error: given calibrated co
 
 The AC paper names the first point itself: the confidences are "only point estimates of the empirical probabilities" (§6.2). So under-coverage under PPS is expected; it is accepted, since AC is a baseline (user's decision of 2026-11-20).
 
+## T.7 The table under PPS and its point estimate (E8.2)
+
+**The table factorises.** The contingency table of $h$ on the target distribution $Q$ has entries $T_{ij}=P_Q(\hat Y=\omega_i,\,Y=\omega_j)$, the probability that an instance has true class $\omega_j$ and predicted class $\omega_i$ (predicted classes on rows, true classes on columns). By the definition of conditional probability, $P(A,B)=P(A\mid B)\,P(B)$, so
+
+$$T_{ij}=P_Q(\hat Y=\omega_i\mid Y=\omega_j)\;P_Q(Y=\omega_j).$$
+
+Under prior probability shift the class-conditional distributions do not change, $p_Q(x\mid\omega_j)=p_P(x\mid\omega_j)$, and the prediction $\hat y=h(x)$ is a function of $x$ alone, so the first factor is the same on $P$ and on $Q$: it is the rate $C_{ij}$ of $h$. The second factor is the prevalence $\pi^Q_j$. In matrix form, $T=C\operatorname{diag}(\pi^Q)$: column $j$ of $C$ is multiplied by $\pi^Q_j$.
+
+**The point estimate.** $C$ is estimated on $V$, where the labels are known: with $N^V_{ij}$ the number of instances of $V$ of true class $\omega_j$ predicted as $\omega_i$ and $n^V_j=\sum_iN^V_{ij}$ the number of instances of class $\omega_j$ in $V$,
+
+$$\hat C_{ij}=\frac{N^V_{ij}}{n^V_j},$$
+
+the fraction of the instances of class $\omega_j$ that $h$ predicts as $\omega_i$. A quantifier gives $\hat\pi^Q$ from the unlabelled bag. The estimated table is $\hat T=\hat C\operatorname{diag}(\hat\pi^Q)$, and every metric is computed from it as from a true table; for vanilla accuracy, the sum of the diagonal,
+
+$$\hat A=\sum_j\hat T_{jj}=\sum_j\hat\pi^Q_j\,\hat C_{jj},$$
+
+the recalls of $h$ on $V$ averaged with the estimated prevalences as weights. `cap-ml`'s `ContTableTransferCAP` computes the same table in another way: it normalises the table of $V$ to sum to $1$, $\hat T^V=\hat C\operatorname{diag}(\pi^V)$ with $\pi^V_j=n^V_j/\lvert V\rvert$, and multiplies column $j$ by $\hat\pi^Q_j/\pi^V_j$, which gives $\hat C\operatorname{diag}(\pi^V)\operatorname{diag}(\hat\pi^Q/\pi^V)=\hat C\operatorname{diag}(\hat\pi^Q)$. (The code stores the transpose, with true classes on rows, and rescales rows.)
+
+**Population or realised table.** $\hat C\operatorname{diag}(\hat\pi^Q)$ estimates the population table $C\operatorname{diag}(\pi^Q)$ and carries no uncertainty. `main` scores against the realised table of the bag, $T^{\text{bag}}_{ij}=N_{ij}/n$, with $N_{ij}$ the counts of the bag. Given the class counts $n_j$ of the bag, each instance of class $\omega_j$ is predicted as $\omega_i$ with probability $C_{ij}$, independently, so $N_{ij}$ counts successes in $n_j$ trials and, by linearity of the expectation, $\mathbb E[N_{ij}\mid n_j]=n_jC_{ij}$. Dividing by $n$,
+
+$$\mathbb E\big[T^{\text{bag}}_{ij}\,\big|\,n_1,\dots,n_K\big]=C_{ij}\,\bar\pi_j,\qquad\bar\pi_j=\frac{n_j}n.$$
+
+So the reference `CTT-oracle`, $\hat C\operatorname{diag}(\bar\pi)$, estimates the expected realised table given the class counts of the bag: what remains of its error is the error of $\hat C$ and the luck of which instances of each class fall in the bag.
+
+## T.8 The error splits into a quantification part and a rate part (E8.2)
+
+Write the realised accuracy of the bag with the same two factors. With $\bar C_{jj}=N_{jj}/n_j$ the recall of $h$ in the bag (for $n_j>0$; a class absent from the bag has $\bar\pi_j=0$ and contributes nothing),
+
+$$A(T^{\text{bag}})=\sum_j\frac{N_{jj}}n=\sum_j\frac{n_j}n\cdot\frac{N_{jj}}{n_j}=\sum_j\bar\pi_j\,\bar C_{jj}.$$
+
+Subtract it from $\hat A=\sum_j\hat\pi^Q_j\hat C_{jj}$, and add and subtract $\sum_j\bar\pi_j\hat C_{jj}$:
+
+$$\hat A-A(T^{\text{bag}})=\underbrace{\sum_j(\hat\pi^Q_j-\bar\pi_j)\,\hat C_{jj}}_{e_\pi}+\underbrace{\sum_j\bar\pi_j\,(\hat C_{jj}-\bar C_{jj})}_{e_C}.$$
+
+- $e_\pi$, the **quantification part**, is the error of the prevalences weighted by the recalls of $V$; it is zero for `CTT-oracle`, whose error is therefore exactly $e_C$.
+- $e_C$, the **rate part**, is the error of the recalls of $V$ against the recalls of the bag, weighted by the true prevalences; it is the same for the three quantifiers on the same bag, since it does not involve $\hat\pi^Q$.
+
+So the difference between two quantifiers on a bag lies entirely in $e_\pi$.
+
+**A bound on the quantification part.** Write $d_j=\hat\pi^Q_j-\bar\pi_j$. Both prevalence vectors sum to $1$, so $\sum_jd_j=0$, and for any constant $m$, $\sum_jd_j\hat C_{jj}=\sum_jd_j(\hat C_{jj}-m)$, since the added term is $m\sum_jd_j=0$. Choose $m$ halfway between the largest and the smallest recall, so that $\lvert\hat C_{jj}-m\rvert\le R/2$ for every $j$, with $R=\max_j\hat C_{jj}-\min_j\hat C_{jj}$ the range of the recalls. The absolute value of a sum is at most the sum of the absolute values (triangle inequality), so
+
+$$\lvert e_\pi\rvert\le\sum_j\lvert d_j\rvert\,\lvert\hat C_{jj}-m\rvert\le\frac R2\,\lVert\hat\pi^Q-\bar\pi\rVert_1.$$
+
+*Intuition:* moving prevalence from one class to another changes the accuracy only as much as the recalls of the two classes differ. If $h$ has the same recall on every class ($R=0$), the accuracy does not depend on the prevalences and a wrong $\hat\pi^Q$ costs nothing; the more the recalls differ, the more the quantifier matters. *Hypothesis (new, for the analysis of E8.2):* the ranking of the three quantifiers on the AE of vanilla accuracy follows their ranking on the quantification error mostly on the pairs with a large $R$, and on pairs with a small $R$ the AE of the three methods is close to that of `CTT-oracle`. Macro-F1 and macro-K are not linear in the table, so the split applies to vanilla accuracy only.
+
 # Implementation
+
+## E8.1
 
 Components:
 
@@ -189,6 +268,30 @@ Reproducibility and comparability:
 - `AC` adds a method to `main`; the stored results, including those of `L-CBPE`, are unchanged, and the bags are those of `main`.
 - On the binary pairs, the point estimates of `AC` and of the stored `L-CBPE` should coincide bag by bag; the check table of E8.1 verifies it.
 
+## E8.2
+
+E8.2 has point estimates only, while `main` stores intervals and its tables compute coverage, amplitude and Winkler score from them (`experiments/main.py:_evaluate_contingency_method` calls `predict_ct_range` and `ci_from_cts`). So E8.2 has an experiment module of its own (user's suggestion of 2026-11-23), which reuses the protocol of `main` instead of adding methods to it.
+
+Components:
+
+- **Methods:** `cap-ml`'s `ContTableTransferCAP(acc, q)`, fitted on $V$ and the posteriors of $h$ on $V$, with `q` QuaPy's `KDEyML`, `EMQ` or `PACC` in their base form, each with `MLP(random_state=qp.environ["_R_SEED"])` as the classifier (the default arguments of QuaPy 0.2.4 listed in E8.2). The reference `CTT-oracle`: the table $\hat T^V$ of the same fit rescaled by $\bar\pi/\pi^V$, with $\bar\pi$ from the column sums of `true_cts` of the bag (in the code, the row sums of the transpose); used only by this module and never as a method.
+- **Experiment module** (e.g. `experiments/ctt.py`): the pairs, the dataset bundle, $V$, the bags and the seeds of `main` (`experiments/main.py:_prepare_evaluation`, `test_prot`, `test_prot_true_cts`); per pair and level, the estimated table of each bag; per bag, the point estimate and the AE of each metric (`experiments/metrics.py:gen_acc_measure`), the estimated prevalence $\hat\pi^Q$ (`ctt_test_prev`), the prevalence of the bag, and for vanilla accuracy $e_\pi$ and $e_C$ (§T.8); the fit and prediction times. Results in `<OUT_DIR>/uncawe/ctt/`, one file per pair and level, skipped if present, as in `main`.
+- **Table and plot modules** for the AE table, the split table and the plot of E8.2, following [[work_plan]] Part V.
+- **Make targets** for the pilot and full run, the tables and the plot.
+
+Tests:
+
+- `ContTableTransferCAP` with a fixed prevalence equals $\hat C\operatorname{diag}(\hat\pi^Q)$ computed from the counts of $V$ (transpose handled), and with $\hat\pi^Q=\pi^V$ equals the table of $V$;
+- `CTT-oracle` on a bag equals $\hat C\operatorname{diag}(\bar\pi)$, with $\bar\pi$ from the true table of the bag;
+- $e_\pi+e_C=\hat A-A(T^{\text{bag}})$ to rounding, $e_\pi=0$ for the oracle, and $\lvert e_\pi\rvert\le\frac R2\lVert\hat\pi^Q-\bar\pi\rVert_1$, on synthetic tables;
+- two fits with the same seed give the same estimates (determinism);
+- a class absent from $V$ ($\pi^V_j=0$, a division by zero in `ContTableTransferCAP`) is detected and reported, not silently turned into NaN.
+
+Reproducibility and comparability:
+
+- E8.2 adds an experiment; `main` and its stored results are unchanged. The bags, $V$ and the posteriors of $h$ are those of `main`, so the AE of E8.2 is comparable bag by bag with the stored methods of `main`.
+- The quantifiers are those of `main` in their classifier and seed (`kdey()`, `pacc()`), so `CTT-KDEy` uses the same KDEy as `O-LEAP` and `QuAcc_NxN`, and `CTT-PACC` the same PACC as the SQS methods; EMQ with an MLP is not used elsewhere in `main` (the EMQ of E3.1, `BayCAP-EMQ-*`, is QuaPy's Bayesian version).
+
 # Appendix
 
 ## A. Toy simulations
@@ -199,9 +302,12 @@ None.
 
 - **[[ext4_uncertainty_budget|Extension 4]]**: the interval of AC represents only an instance-level luck of the bag; the prevalence and recall parts of the error split are left out (§T.6). AC estimates accuracy without a contingency table, so it does not enter the error split, as `DoC`.
 - **[[ext1_metrics|Extension 1]]**: AC estimates vanilla accuracy only; the other metrics would need the table of CBPE, which is out of scope.
+- **[[ext3_posterior_propagation|Extension 3]]**: the fixed-$\hat C$ methods of E3.1 push each posterior draw $\pi^{(r)}$ of a Bayesian quantifier through the same $\hat C$ of $V$; the methods of E8.2 are their counterpart with one point estimate of $\pi^Q$ and no uncertainty.
+- **[[ext4_uncertainty_budget|Extension 4]]**: $e_\pi$ and $e_C$ of §T.8 are a two-part version of the error split of E4.1, with the true prevalence of the bag as weights of the rate part; $e_C$ joins the recall part and the luck of the bag of E4.1.
 
 ## C. Out of scope
 
 - extensions of CBPE: a multiclass CBPE, and precision, recall and $F_1$ from its random confusion matrix (user's decision of 2026-11-20);
 - the highest-density interval for AC (the central interval of the AC paper is used, user's decision of 2026-11-20);
-- the other confidence-based estimators compared in the AC paper (DoC-Feat, ATC).
+- the other confidence-based estimators compared in the AC paper (DoC-Feat, ATC);
+- for now, in E8.2: other quantifiers, the posteriors of $h$ as the input of the quantifiers, the no-adaptation reference $\hat\pi^Q=\pi^V$ and comparisons with the methods of `main` or of E3.1 (user's decision of 2026-11-23).
