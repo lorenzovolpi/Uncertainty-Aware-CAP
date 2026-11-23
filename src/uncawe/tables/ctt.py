@@ -212,7 +212,9 @@ def _index(table: pd.DataFrame) -> pd.MultiIndex:
 
 
 def _level_label(level: str) -> str:
-    return f"{level} (ref.)" if level == ORACLE else level
+    """The column label of a level in the AE table, without the prefix ``CTT-`` (the caption names it), so that the
+    twelve columns fit the page; the reference is labelled ``oracle``."""
+    return "oracle" if level == ORACLE else level.removeprefix("CTT-")
 
 
 def ae_frame(table: pd.DataFrame) -> pd.DataFrame:
@@ -259,7 +261,7 @@ def _bold_best(frame: pd.DataFrame):
     compared)."""
     styler = frame.style.format(precision=3, na_rep="-")
     for acc in ACC_NAMES:
-        subset = [(ACC_LABELS[acc], level) for level in METHODS]
+        subset = [(ACC_LABELS[acc], _level_label(level)) for level in METHODS]
         styler = styler.highlight_min(subset=subset, axis=1, props="textbf:--rwrap;")
     return styler
 
@@ -280,8 +282,9 @@ def _latex(styler, caption: str | None = None, label: str | None = None) -> str:
 
 
 AE_CAPTION = (
-    "E8.2: mean AE over the bags of the rate matrix of $V$ rescaled by a point quantifier (KDEy, EMQ, PACC) and of the "
-    "reference with the true prevalence of the bag, against the realised table of each bag ($|U|=1000$); best of the "
+    "E8.2: mean AE over the bags of the rate matrix of $V$ rescaled by a point quantifier (columns KDEy, EMQ, PACC: "
+    "CTT-KDEy, CTT-EMQ, CTT-PACC) and of the reference with the true prevalence of the bag (column oracle: "
+    "CTT-oracle, not compared), against the realised table of each bag ($|U|=1000$); best of the "
     "three methods in bold. Mean rows: means of the per-pair values over the pairs of the block."
 )
 SPLIT_CAPTION = (
