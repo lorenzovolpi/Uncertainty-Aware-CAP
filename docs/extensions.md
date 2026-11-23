@@ -60,7 +60,7 @@ Added by the user on 2026-11-20 as a baseline, not a method under study, and wid
 
 Candidates: isotonic calibration on $V$ as in the paper's experiments (E8.c1), confidences corrected by the true or estimated prevalences (E8.c2), `AC` against the methods of the main tables (E8.c3).
 
-The full description is in [ext8_average_confidence.md](ext8_average_confidence.md). `L-CBPE` is implemented and stored for the binary datasets; `AC` and E8.1 are implemented, run and analysed (card WP-29, done); E8.2 is a proposal, with no card. Extensions of CBPE (multiclass, precision, recall, $F_1$) are out of scope by the user's decision of 2026-11-20.
+The full description is in [ext8_average_confidence.md](ext8_average_confidence.md). `L-CBPE` is implemented and stored for the binary datasets; `AC` and E8.1 are implemented, run and analysed (card WP-29, done); E8.2 is a proposal, card WP-30 (Scheduled). Extensions of CBPE (multiclass, precision, recall, $F_1$) are out of scope by the user's decision of 2026-11-20.
 
 ## Extensions under evaluation
 
