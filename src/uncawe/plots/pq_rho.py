@@ -84,7 +84,7 @@ def plot_metric(table: pd.DataFrame, acc_name: str):
         ax.set_xticks(levels)
         ax.grid(True, color="#d9d9d9", linewidth=0.5)
     for ax in axes[-1]:
-        ax.set_xlabel("$\\rho=|V_q|/|V|$", fontsize=font_size(11))
+        ax.set_xlabel("$\\rho=|V_1|/|V|$", fontsize=font_size(11))
     fig.suptitle(
         f"SQS-S against the allocation $\\rho$ (E6.2), {METRIC_LABELS.get(acc_name, acc_name)}; "
         f"bold: mean over the {n_pairs} pairs with every level",
@@ -112,7 +112,7 @@ def plot_ae_w(table: pd.DataFrame):
         ax.set_yscale("log")
         ax.set_title(label, fontsize=font_size(11))
         ax.set_xticks(levels)
-        ax.set_xlabel("$\\rho=|V_q|/|V|$", fontsize=font_size(11))
+        ax.set_xlabel("$\\rho=|V_1|/|V|$", fontsize=font_size(11))
         ax.grid(True, which="both", color="#e5e5e5", linewidth=0.5)
     if not common.empty:
         axes[0].legend(frameon=False)
