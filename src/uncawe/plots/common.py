@@ -54,6 +54,11 @@ METHOD_COLORS = {
     "L-CBPE": "#0000FF",
     # E8.1: Average Confidence with LasCal and the central interval (card WP-29)
     "AC": "#8C564B",
+    # E8.2: the rate matrix of V rescaled by a point quantifier, and the oracle reference (card WP-30)
+    "CTT-KDEy": "#1F77B4",
+    "CTT-EMQ": "#D62728",
+    "CTT-PACC": "#6B3D9A",
+    "CTT-oracle": "#7F7F7F",
 }
 METHOD_PLOT_LABELS = {
     "QuAcc_NxN": "QuAcc",
