@@ -8,10 +8,15 @@ against the realised table of each bag (``true_cts``).
 
 Outputs, under ``<OUT_DIR>/uncawe/tables/ctt/``:
 
-- **AE table** (``ctt_ae.csv``): one row per pair (dataset × classifier), in a block of binary and one of multiclass
-  pairs, each closed by the mean over its pairs, and a final row of the mean over every pair; per metric (vanilla
-  accuracy, macro-F1, macro-K) the mean AE over the bags of the three methods and of the reference. In LaTeX the best
-  of the three methods of each metric is in bold; the reference is set apart and not compared;
+- **AE tables**, one per metric (``ctt_ae_<metric>.csv`` for vanilla accuracy, macro-F1 and macro-K; ``ctt_ae.csv``
+  with the three): one row per pair (dataset × classifier), in a block of binary and one of multiclass pairs, each
+  closed by the mean over its pairs, and a final row of the mean over every pair; the mean AE over the bags of the
+  three methods, of the point estimates of BayCAP-KDEy (``BayCAP-KDEy-mlp-real``) and BayCAP-Hf (``BayesCAP-Hf-real``)
+  stored by ``main`` on the same bags (``MAIN_COMPARED``; their point estimate is the mean of their predictive
+  distribution of the realised table, scored against the realised table as here), and of the reference. In LaTeX, in
+  each row, the cells of the five methods are coloured from the green of the rank tables (``tables/rank.py:BEST_RGB``,
+  the smallest AE) to white (the largest), linearly in the AE, and the smallest AE is in bold; the reference is set
+  apart, not coloured and not compared;
 - **split table** (``ctt_split.csv``, vanilla accuracy): the same rows; the range $R$ of the recalls of $h$ on $V$;
   per quantifier the mean quantification error $\\lVert\\hat\\pi^Q-\\bar\\pi\\rVert_1$ and the root mean square (RMS)
   over the bags of the quantification part $e_\\pi$; the RMS of the rate part $e_C$, which is the same for every level
@@ -21,10 +26,11 @@ Outputs, under ``<OUT_DIR>/uncawe/tables/ctt/``:
   oracle (expected $0$), the largest $\\lvert e_\\pi\\rvert$ of the oracle (expected $0$), the number of bags where
   $\\lvert e_\\pi\\rvert>\\frac R2\\lVert\\hat\\pi^Q-\\bar\\pi\\rVert_1$ (expected $0$), and the number of bags where
   each quantifier failed (expected $0$);
-- each table as a LaTeX ``tabular`` fragment and a ``longtable``, and a standalone document with the three.
+- each table as a LaTeX ``tabular`` fragment and a ``longtable``, and a standalone document with the five.
 
-The pairs are those with stored results, so the module also works on the pilot. The bags of the levels are paired by
-their stored order and checked to have the same true tables.
+The pairs are those with stored results of E8.2, so the module also works on the pilot; a method of ``main`` without
+results on a pair has NaN there. The bags of the levels and of the methods of ``main`` are paired by their stored order
+and checked to have the same true tables.
 """
 
 import os
@@ -36,10 +42,13 @@ import pandas as pd
 
 from uncawe import env
 from uncawe.experiments.ctt import ACC_SPLIT, DOMAIN, EXPERIMENT, LEVELS, METHODS, ORACLE
+from uncawe.experiments.main import EXPERIMENT as MAIN_EXPERIMENT
 from uncawe.experiments.metrics import get_acc_names
 from uncawe.results import Results
 from uncawe.tables import main as main_tables
+from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_PREAMBLE
 from uncawe.tables.estimand_gap import booktabs_clines
+from uncawe.tables.rank import BEST_RGB, WHITE_RGB
 from uncawe.util import decorate_dataset
 
 TABLE_NAME = "ctt"
@@ -53,6 +62,11 @@ SUMMARY_ALL = "mean, all pairs"
 SUMMARIES = (SUMMARY_BINARY, SUMMARY_MULTICLASS, SUMMARY_ALL)
 # tolerance of the bound on e_pi in the check table, for rounding
 BOUND_TOL = 1e-12
+# the methods of main compared in the AE tables (user's decision of 2026-11-23): the point estimates of BayCAP-KDEy and
+# BayCAP-Hf, both with the realised-table predictive, as in the main tables
+MAIN_COMPARED = ("BayCAP-KDEy-mlp-real", "BayesCAP-Hf-real")
+COMPARED = (*METHODS, *MAIN_COMPARED)
+AE_COLUMNS = (*COMPARED, ORACLE)
 
 
 def load_results(base_dir: str | None = None) -> dict[tuple[str, str], pd.DataFrame]:
@@ -68,6 +82,21 @@ def load_results(base_dir: str | None = None) -> dict[tuple[str, str], pd.DataFr
             except ValueError:
                 # pd.concat raises ValueError when no file is found
                 out[level, acc_name] = pd.DataFrame()
+    return out
+
+
+def load_main_results(base_dir: str | None = None) -> dict[tuple[str, str], pd.DataFrame]:
+    """The stored results of ``main`` of ``MAIN_COMPARED``, (method, metric) -> frame (empty if none)."""
+    base_dir = base_dir if base_dir is not None else os.path.join(env.root_dir, MAIN_EXPERIMENT)
+    out = {}
+    for method in MAIN_COMPARED:
+        for acc_name in ACC_NAMES:
+            try:
+                out[method, acc_name] = Results.load(
+                    base_dir=base_dir, domain=DOMAIN, acc_name=acc_name, filter_methods=[method]
+                ).df.reset_index(drop=True)
+            except ValueError:
+                out[method, acc_name] = pd.DataFrame()
     return out
 
 
@@ -109,14 +138,19 @@ def _nanmean(values) -> float:
     return float(np.nanmean(values)) if np.isfinite(values).any() else np.nan
 
 
-def pair_tables(results: dict[tuple[str, str], pd.DataFrame]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """The AE, split and check tables, one row per pair with stored results, without the summary rows."""
+def pair_tables(
+    results: dict[tuple[str, str], pd.DataFrame], main_results: dict[tuple[str, str], pd.DataFrame] | None = None
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """The AE, split and check tables, one row per pair with stored results of E8.2, without the summary rows; the AE
+    table also has the methods of ``main_results`` (``MAIN_COMPARED``) on the same pairs."""
     groups = _groups(results)
+    main_groups = _groups(main_results or {})
     ae_rows, split_rows, check_rows = [], [], []
     for key in _pairs(groups):
         frames = {
             (level, acc): groups[level, acc][key] for level in LEVELS for acc in ACC_NAMES if key in groups[level, acc]
         }
+        frames |= {(method, acc): per_pair[key] for (method, acc), per_pair in main_groups.items() if key in per_pair}
         _check_paired({f"{level} ({acc})": df for (level, acc), df in frames.items()}, key)
         any_df = next(iter(frames.values()))
         base = {"dataset": key[0], "classifier": key[1], "n_classes": int(any_df["n_classes"].iloc[0])}
@@ -124,7 +158,7 @@ def pair_tables(results: dict[tuple[str, str], pd.DataFrame]) -> tuple[pd.DataFr
 
         ae = dict(base)
         for acc in ACC_NAMES:
-            for level in LEVELS:
+            for level in AE_COLUMNS:
                 df = frames.get((level, acc))
                 ae[f"{acc}|{level}"] = _nanmean(df["acc_err"]) if df is not None else np.nan
         ae_rows.append(ae)
@@ -212,22 +246,45 @@ def _index(table: pd.DataFrame) -> pd.MultiIndex:
 
 
 def _level_label(level: str) -> str:
-    """The column label of a level in the AE table, without the prefix ``CTT-`` (the caption names it), so that the
-    twelve columns fit the page; the reference is labelled ``oracle``."""
-    return "oracle" if level == ORACLE else level.removeprefix("CTT-")
+    """The column label of a level or method in the AE tables (the LaTeX label of the methods of ``main``)."""
+    return f"{level} (ref.)" if level == ORACLE else METHOD_LATEX_LABELS.get(level, level)
 
 
-def ae_frame(table: pd.DataFrame) -> pd.DataFrame:
-    """The AE table for LaTeX: index (dataset, $K$, classifier), columns (metric, level)."""
-    out = pd.DataFrame(
-        {
-            (ACC_LABELS[acc], _level_label(level)): table[f"{acc}|{level}"].to_numpy()
-            for acc in ACC_NAMES
-            for level in LEVELS
-        }
-    )
+def ae_frame(table: pd.DataFrame, acc: str) -> pd.DataFrame:
+    """The AE table of metric ``acc`` for LaTeX: index (dataset, $K$, classifier), one column per level or method."""
+    out = pd.DataFrame({_level_label(level): table[f"{acc}|{level}"].to_numpy() for level in AE_COLUMNS})
     out.index = _index(table)
     return out
+
+
+def _gradient(value: float, best: float, worst: float) -> str:
+    """The colour of an AE between the green of the rank tables (``best``) and white (``worst``), linear in the AE."""
+    if not np.isfinite(value):
+        return ""
+    alpha = 1.0 if np.isclose(best, worst) else float(np.clip((worst - value) / (worst - best), 0.0, 1.0))
+    rgb = np.array(WHITE_RGB) * (1.0 - alpha) + np.array(BEST_RGB) * alpha
+    return "#" + "".join(f"{round(float(c)):02x}" for c in rgb)
+
+
+def ae_styles(frame: pd.DataFrame) -> pd.DataFrame:
+    """The CSS of the cells of an AE table: per row, the five methods coloured from green (smallest AE) to white
+    (largest), the smallest in bold; the reference without style."""
+    styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
+    compared = [_level_label(level) for level in COMPARED]
+    for i, (_, row) in enumerate(frame[compared].iterrows()):
+        values = pd.to_numeric(row, errors="coerce").to_numpy(dtype=float)
+        if not np.isfinite(values).any():
+            continue
+        best, worst = np.nanmin(values), np.nanmax(values)
+        for column, value in zip(compared, values):
+            color = _gradient(value, best, worst)
+            if not color:
+                continue
+            css = f"background-color: {color}; color: {main_tables._text_color(color)};"
+            if np.isclose(value, best):
+                css += " font-weight: bold;"
+            styles.iloc[i, frame.columns.get_loc(column)] = css
+    return styles
 
 
 def split_frame(table: pd.DataFrame) -> pd.DataFrame:
@@ -256,19 +313,17 @@ def check_frame(table: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _bold_best(frame: pd.DataFrame):
-    """The styler of the AE table: in each metric, the smallest AE of the three methods in bold (the reference not
-    compared)."""
-    styler = frame.style.format(precision=3, na_rep="-")
-    for acc in ACC_NAMES:
-        subset = [(ACC_LABELS[acc], _level_label(level)) for level in METHODS]
-        styler = styler.highlight_min(subset=subset, axis=1, props="textbf:--rwrap;")
-    return styler
+def _ae_styler(frame: pd.DataFrame):
+    styles = ae_styles(frame)
+    return frame.style.format(precision=3, na_rep="-").apply(lambda _: styles, axis=None)
 
 
 def _latex(styler, caption: str | None = None, label: str | None = None) -> str:
+    # convert_css turns the background colours and the bold of the AE tables into \cellcolor and \bfseries
     if caption is None:
-        return booktabs_clines(styler.to_latex(hrules=True, multicol_align="c", clines="skip-last;data"))
+        return booktabs_clines(
+            styler.to_latex(hrules=True, multicol_align="c", clines="skip-last;data", convert_css=True)
+        )
     latex = styler.to_latex(
         environment="longtable",
         hrules=True,
@@ -277,16 +332,22 @@ def _latex(styler, caption: str | None = None, label: str | None = None) -> str:
         clines="skip-last;data",
         caption=caption,
         label=label,
+        convert_css=True,
     )
     return booktabs_clines(latex)
 
 
-AE_CAPTION = (
-    "E8.2: mean AE over the bags of the rate matrix of $V$ rescaled by a point quantifier (columns KDEy, EMQ, PACC: "
-    "CTT-KDEy, CTT-EMQ, CTT-PACC) and of the reference with the true prevalence of the bag (column oracle: "
-    "CTT-oracle, not compared), against the realised table of each bag ($|U|=1000$); best of the "
-    "three methods in bold. Mean rows: means of the per-pair values over the pairs of the block."
-)
+def ae_caption(acc: str) -> str:
+    return (
+        f"E8.2, {ACC_LABELS[acc]}: mean AE over the bags of the rate matrix of $V$ rescaled by a point quantifier "
+        "(CTT-KDEy, CTT-EMQ, CTT-PACC), of the point estimates of \\bcapkdey{} and \\bcaphf{} stored by "
+        "\\texttt{main} on the same bags, and of the reference with the true prevalence of the bag (CTT-oracle, not "
+        "compared), against the realised table of each bag ($|U|=1000$). In each row, green for the smallest AE of the "
+        "five methods to white for the largest; the smallest in bold. Mean rows: means of the per-pair values over the "
+        "pairs of the block."
+    )
+
+
 SPLIT_CAPTION = (
     "E8.2, vanilla accuracy: range $R$ of the recalls of $h$ on $V$; per quantifier, mean quantification error and RMS "
     "over the bags of the quantification part $e_\\pi$; RMS of the rate part $e_C$, shared by every level and equal "
@@ -312,6 +373,8 @@ def _latex_document(longtables: list[str]) -> str:
             "\\documentclass{article}",
             "\\usepackage[a4paper,landscape,hmargin=1.5cm,vmargin=0.8cm]{geometry}",
             "\\usepackage{amsmath,amssymb,booktabs,longtable,multirow}",
+            "\\usepackage[table]{xcolor}",
+            METHOD_LATEX_PREAMBLE,
             "\\begin{document}",
             "\\pagestyle{empty}",
             "\\scriptsize",
@@ -329,26 +392,38 @@ def table_dir(pargs=None) -> str:
     return os.path.join(env.root_dir, "tables", TABLE_NAME)
 
 
-def compute(results: dict | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """The AE, split and check tables with the summary rows (AE and split) from the stored results."""
+def compute(
+    results: dict | None = None, main_results: dict | None = None
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """The AE, split and check tables with the summary rows (AE and split) from the stored results of E8.2 and of the
+    methods of ``main`` in ``MAIN_COMPARED``."""
     results = load_results() if results is None else results
+    main_results = load_main_results() if main_results is None else main_results
     if all(df.empty for df in results.values()):
         raise RuntimeError(f"No results found for {EXPERIMENT}. Check that experiment results exist.")
-    ae, split, check = pair_tables(results)
+    ae, split, check = pair_tables(results, main_results)
     return with_summaries(ae), with_summaries(split), check
 
 
-def write_tables(results: dict, out_dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Write the CSVs, the LaTeX fragments and the document of the three tables to ``out_dir``."""
-    ae, split, check = compute(results)
+def write_tables(
+    results: dict, out_dir: str, main_results: dict | None = None
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Write the CSVs, the LaTeX fragments and the document of the five tables to ``out_dir``."""
+    ae, split, check = compute(results, main_results)
     tabular_dir = os.path.join(out_dir, "tabular")
     os.makedirs(tabular_dir, exist_ok=True)
     ae.to_csv(os.path.join(out_dir, f"{TABLE_NAME}_ae.csv"), index=False)
+    keys = ["dataset", "classifier", "n_classes", "n_bags", "n_pairs"]
+    for acc in ACC_NAMES:
+        columns = {f"{acc}|{level}": level for level in AE_COLUMNS}
+        ae[keys + list(columns)].rename(columns=columns).to_csv(
+            os.path.join(out_dir, f"{TABLE_NAME}_ae_{acc}.csv"), index=False
+        )
     split.to_csv(os.path.join(out_dir, f"{TABLE_NAME}_split.csv"), index=False)
     check.to_csv(os.path.join(out_dir, f"{TABLE_NAME}_check.csv"), index=False)
 
     stylers = {
-        f"{TABLE_NAME}_ae": (_bold_best(ae_frame(ae)), AE_CAPTION),
+        **{f"{TABLE_NAME}_ae_{acc}": (_ae_styler(ae_frame(ae, acc)), ae_caption(acc)) for acc in ACC_NAMES},
         f"{TABLE_NAME}_split": (split_frame(split).style.format(precision=3, na_rep="-"), SPLIT_CAPTION),
         f"{TABLE_NAME}_check": (
             check_frame(check).style.format(precision=3, na_rep="-", formatter=CHECK_FORMATS),
@@ -369,7 +444,7 @@ def write_tables(results: dict, out_dir: str) -> tuple[pd.DataFrame, pd.DataFram
 
 def gen_tables(pargs):
     out_dir = table_dir(pargs)
-    ae, split, check = write_tables(load_results(), out_dir)
+    ae, split, check = write_tables(load_results(), out_dir, load_main_results())
     with pd.option_context("display.width", 250, "display.max_rows", 200, "display.precision", 4):
         for table in (ae, split, check):
             print(table.to_string(index=False))

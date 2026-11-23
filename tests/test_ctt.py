@@ -222,6 +222,18 @@ def _run_levels(base_dir: str, n_classes: int, dataset: str, seed: int):
     return outcomes
 
 
+def _main_results(results: dict) -> dict:
+    """Synthetic results of the methods of main on the same bags: the oracle's frames, renamed, with the AE shifted."""
+    out = {}
+    for method, offset in zip(tables.MAIN_COMPARED, (0.5, 0.25)):
+        for acc in get_acc_names():
+            df = results[ctt.ORACLE, acc].copy()
+            df["method"] = method
+            df["acc_err"] = df["acc_err"] + offset
+            out[method, acc] = df
+    return out
+
+
 class TestEvaluationAndTables(unittest.TestCase):
     def test_columns_and_tables(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -238,7 +250,12 @@ class TestEvaluationAndTables(unittest.TestCase):
             np.testing.assert_allclose(oracle["q_l1"], 0.0, atol=1e-12)
 
             results = tables.load_results(base)
-            ae, split, check = tables.write_tables(results, os.path.join(tmp, "tables"))
+            main_results = _main_results(results)
+            ae, split, check = tables.write_tables(results, os.path.join(tmp, "tables"), main_results)
+            # the methods of main are read on the same pairs
+            for method, offset in zip(tables.MAIN_COMPARED, (0.5, 0.25)):
+                column = f"vanilla_accuracy|{method}"
+                self.assertAlmostEqual(ae.iloc[-1][column], ae.iloc[-1]["vanilla_accuracy|CTT-oracle"] + offset)
             self.assertEqual(
                 ae["dataset"].tolist(),
                 ["toy2", tables.SUMMARY_BINARY, "toy3", tables.SUMMARY_MULTICLASS, tables.SUMMARY_ALL],
@@ -256,15 +273,54 @@ class TestEvaluationAndTables(unittest.TestCase):
             pairs = ae[~ae["dataset"].isin(tables.SUMMARIES)]
             column = "vanilla_accuracy|CTT-PACC"
             self.assertAlmostEqual(ae.iloc[-1][column], pairs[column].mean(), places=12)
-            for name in ("ctt_ae.csv", "ctt_split.csv", "ctt_check.csv", "ctt_doc.tex", "tabular/ctt_ae_long.tex"):
+            names = ["ctt_ae.csv", "ctt_split.csv", "ctt_check.csv", "ctt_doc.tex"]
+            names += [f"ctt_ae_{acc}.csv" for acc in get_acc_names()]
+            names += [f"tabular/ctt_ae_{acc}_long.tex" for acc in get_acc_names()]
+            for name in names:
                 self.assertTrue(os.path.exists(os.path.join(tmp, "tables", name)), name)
-            with open(os.path.join(tmp, "tables", "tabular", "ctt_ae.tex")) as f:
-                self.assertIn("\\textbf{", f.read())
+            per_metric = pd.read_csv(os.path.join(tmp, "tables", "ctt_ae_macro-K.csv"))
+            self.assertEqual(list(per_metric.columns[-len(tables.AE_COLUMNS) :]), list(tables.AE_COLUMNS))
+            with open(os.path.join(tmp, "tables", "tabular", "ctt_ae_vanilla_accuracy.tex")) as f:
+                latex = f.read()
+            self.assertIn("\\cellcolor[HTML]", latex)
+            self.assertIn("\\bfseries", latex)
+            self.assertIn("\\bcapkdey", latex)
+            with open(os.path.join(tmp, "tables", "ctt_doc.tex")) as f:
+                document = f.read()
+            self.assertIn("\\usepackage[table]{xcolor}", document)
+            self.assertIn("\\newcommand{\\bcapkdey}", document)
 
             from uncawe.plots import ctt as plots
 
             fig = plots.plot_ae_vs_qerr(ae, split)
             self.assertEqual(len(fig.axes), len(ctt.METHODS))
+
+    def test_mismatched_bags_of_main_raise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = os.path.join(tmp, "ctt")
+            _run_levels(base, 3, "toy3", 0)
+            results = tables.load_results(base)
+            main_results = _main_results(results)
+            df = main_results[tables.MAIN_COMPARED[0], "vanilla_accuracy"]
+            df["true_cts"] = [ct[::-1] for ct in df["true_cts"]]
+            with self.assertRaisesRegex(ValueError, "are not the same"):
+                tables.compute(results, main_results)
+
+    def test_ae_styles(self):
+        labels = [tables._level_label(level) for level in tables.AE_COLUMNS]
+        frame = pd.DataFrame([[0.1, 0.2, 0.3, 0.4, 0.5, 0.01], [np.nan] * 6], columns=labels)
+        styles = tables.ae_styles(frame)
+        green = "#" + "".join(f"{c:02x}" for c in tables.BEST_RGB)
+        self.assertIn(f"background-color: {green}", styles.iloc[0, 0])
+        self.assertIn("font-weight: bold", styles.iloc[0, 0])
+        self.assertIn("background-color: #ffffff", styles.iloc[0, 4])
+        self.assertNotIn("bold", styles.iloc[0, 4])
+        # halfway in AE, halfway in colour
+        middle = "#" + "".join(f"{round((255 + c) / 2):02x}" for c in tables.BEST_RGB)
+        self.assertIn(f"background-color: {middle}", styles.iloc[0, 2])
+        # the reference (smallest AE here) is neither coloured nor compared
+        self.assertEqual(styles.iloc[0, 5], "")
+        self.assertTrue((styles.iloc[1] == "").all())
 
     def test_mismatched_bags_raise(self):
         a = pd.DataFrame({"true_cts": [np.eye(2) / 2]})
