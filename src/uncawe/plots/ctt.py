@@ -2,7 +2,7 @@
 error, per quantifier.
 
 Reads the AE and split tables of :mod:`uncawe.tables.ctt` (results of ``experiments/ctt.py``; every level scored
-against the realised table of each bag). One panel per quantifier (``CTT-KDEy``, ``CTT-EMQ``, ``CTT-PACC``); one point
+against the realised table of each bag). One panel per quantifier (``CTT-KDEy``, ``CTT-EMQ``, ``CTT-ACC``, ``CTT-PACC``); one point
 per pair at the mean quantification error $\\lVert\\hat\\pi^Q-\\bar\\pi\\rVert_1$ (x) and the mean AE of vanilla accuracy
 of the method (y), with circles for the binary and triangles for the multiclass pairs. On the same pair a hollow grey
 marker shows the mean AE of the reference ``CTT-oracle`` (true prevalence of the bag), joined to the first by a
