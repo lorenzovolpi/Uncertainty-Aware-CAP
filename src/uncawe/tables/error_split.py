@@ -59,8 +59,9 @@ from uncawe.util import decorate_dataset
 
 TABLE_NAME = "error_split"
 KEYS = ["dataset", "classifier"]
-# since card WP-18 (user's decision of 2026-11-13) also SQS-B (E3.3), which MAIN_METHODS includes
-METHODS = tuple(m for m in main_tables.MAIN_METHODS if m != "DoC")
+# since card WP-18 (user's decision of 2026-11-13) also SQS-B (E3.3), which MAIN_METHODS includes; BayesCAP, shown in
+# the main tables since 2026-11-23, is left out (user's decision of 2026-11-23)
+METHODS = tuple(m for m in main_tables.MAIN_METHODS_BEFORE_BAYESCAP if m != "DoC")
 IDENTITY_TOL = 1e-9
 TABLE_SETS = {"e4.1": ("rms", "signed"), "e4.3": ("oracle_realised", "oracle_pool")}
 SHORT_LABELS = {

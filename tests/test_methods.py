@@ -52,6 +52,7 @@ MAIN_SET = [
     "SQS-Hbs",
     "SQS-B",
     "PQ",
+    "BayesCAP",
     "BayesCAP-real",
     "BayesCAP-Hf-real",
     "BayCAP-KDEy-mlp-real",

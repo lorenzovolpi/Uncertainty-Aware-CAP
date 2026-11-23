@@ -83,7 +83,11 @@ metrics_map = {
 # left out. Since FIX-2 (2026-11-10) the SQS-H of the paper is SQS-H and the variant with a bootstrap of the
 # prevalence, called RQBS before, is SQS-Hbs; both are shown. Before, the tables showed the methods of the paper (L-CBPE and BayesCAP with the population pushforward
 # included) plus BayesCAP-EB-real, BayesCAP-Hf-real, BayCAP-KDEy-h-real and BayCAP-KDEy-mlp-real. SQS-B (E3.3, card
-# WP-18) is shown since 2026-11-13 (user's decision of 2026-11-10).
+# WP-18) is shown since 2026-11-13 (user's decision of 2026-11-10). BayCAP with the population pushforward
+# (BayesCAP: its interval targets the population table C diag(pi), and main scores it against the realised table of
+# the bag, true_cts) is shown again since 2026-11-23, for the moment, in the main and rank tables and the
+# amplitude-vs-coverage plot (user's decision of 2026-11-23); MAIN_METHODS_BEFORE_BAYESCAP keeps the list without it
+# for the error-split and coverage/amplitude tables.
 MAIN_METHODS = (
     "DoC",
     "QuAcc_NxN",
@@ -92,10 +96,12 @@ MAIN_METHODS = (
     "SQS-Hbs",
     "SQS-B",
     "PQ",
+    "BayesCAP",
     "BayesCAP-real",
     "BayesCAP-Hf-real",
     "BayCAP-KDEy-mlp-real",
 )
+MAIN_METHODS_BEFORE_BAYESCAP = tuple(m for m in MAIN_METHODS if m != "BayesCAP")
 EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
 # the baselines of the main tables, under "Baseline methods" and separated from the other methods by a vertical line
 BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP")
