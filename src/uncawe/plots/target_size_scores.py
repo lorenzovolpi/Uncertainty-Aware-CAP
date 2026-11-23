@@ -5,15 +5,17 @@ Reads ``summary`` of :mod:`uncawe.tables.target_size_scores` (LR, vanilla accura
 realised accuracy of each bag).
 
 Figures (``--figures``), one per part, each with two panels: on the left the absolute error (AE) of the point
-estimate, on the right the Winkler score $W$ at $1-\alpha=0.95$ (logarithmic axis); one line per method, the median
-over the pairs of the per-pair means (over the bags, and over the $V$ seeds in E4.4b), with the band from the 25th to
-the 75th percentile over the pairs.
+estimate, on the right the Winkler score $W$ at $1-\alpha=0.95$ (logarithmic axis); one line per method, the mean over
+the pairs of the per-pair means (over the bags, and over the $V$ seeds in E4.4b), with bars of $\pm1$ standard error
+of that mean (standard deviation over the pairs divided by the square root of their number). The methods are shifted
+sideways around each size by ``DODGE`` times the spacing (in decades) between consecutive sizes, so that their bars do
+not overlap.
 
 - ``u-scores`` (E4.4a): against $|U|$ (logarithmic), full $V$.
 - ``v-scores`` (E4.4b): against the fraction of $V$ (logarithmic), $|U|=1000$; a level where a pair has a class with
-  fewer than ``MIN_CLASS_COUNT`` validation instances is marked by an open marker and a grey tick label with $^*$.
+  fewer than ``MIN_CLASS_COUNT`` validation instances has a grey tick label with $^*$.
 
-``--without poker_hand`` draws the medians over the pairs without ``poker_hand`` (the check of the Analysis of E4.4b).
+``--without poker_hand`` draws the means over the pairs without ``poker_hand`` (the check of the Analysis of E4.4b).
 
 Output: ``<OUT_DIR>/uncawe/plots/target_size/<figure>/`` (``u_scores``, ``v_scores``).
 """
@@ -25,11 +27,13 @@ from argparse import ArgumentParser, BooleanOptionalAction
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matplotlib"))
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
 from uncawe import env
-from uncawe.experiments.target_size import E44_LEVELS, E44_METHODS, EXPERIMENT, MIN_CLASS_COUNT
+from uncawe.experiments.target_size import E44_LEVELS, E44_METHODS, EXPERIMENT
 from uncawe.plots.common import font_size
 from uncawe.tables.target_size_scores import CHECK_DATASET, SHORT_LABELS, compute, load_results
 
@@ -50,6 +54,9 @@ LEVEL_TICKS = {
     "1/4": "$1/4$",
 }
 PANELS = (("ae", "AE", "linear"), ("winkler", "Winkler score $W$", "log"))
+# sideways shift between consecutive methods, as a fraction of the spacing (in decades) between consecutive sizes
+DODGE = 0.05
+U_TICKS = (100, 300, 1000, 3000, 10000)
 
 
 def subset_name(without: str | None) -> str:
@@ -58,35 +65,44 @@ def subset_name(without: str | None) -> str:
 
 def plot_scores(summary: pd.DataFrame, part: str, without: str | None = None):
     """One figure of a part of E4.4: AE on the left and $W$ on the right, against $|U|$ (part ``a``) or the fraction of
-    $V$ (part ``b``), one line per method (median over the pairs) with the interquartile band."""
+    $V$ (part ``b``), one line per method (mean over the pairs) with bars of ±1 standard error."""
     rows = summary.loc[(summary["part"] == part) & (summary["subset"] == subset_name(without))]
     if rows.empty or rows["x"].nunique() < 2:
         raise RuntimeError(f"No results of E4.4{part} at two or more sizes.")
     methods = [m for m in E44_METHODS if m in set(rows["method"])]
-    fig, axes = plt.subplots(1, len(PANELS), figsize=(4.6 * len(PANELS), 3.6), squeeze=False)
+    sizes = np.sort(rows["x"].unique())
+    step = float(np.median(np.diff(np.log10(sizes))))
     flagged = set(rows.loc[rows["n_flagged"] > 0, "x"])
+    fig, axes = plt.subplots(1, len(PANELS), figsize=(4.6 * len(PANELS), 3.8), squeeze=False)
     for ax, (name, label, scale) in zip(axes[0], PANELS):
-        for method in methods:
-            color = METHOD_COLORS.get(method, "black")
+        for i, method in enumerate(methods):
             line = rows.loc[rows["method"] == method].sort_values("x")
-            ax.plot(line["x"], line[f"{name}_median"], color=color, linewidth=1.4, marker="o", markersize=3.5)
-            ax.fill_between(line["x"], line[f"{name}_q25"], line[f"{name}_q75"], color=color, alpha=0.12, linewidth=0)
-            marked = line.loc[line["x"].isin(flagged)]
-            ax.plot(
-                marked["x"],
-                marked[f"{name}_median"],
-                linestyle="none",
+            shift = 10 ** (DODGE * step * (i - (len(methods) - 1) / 2))
+            ax.errorbar(
+                line["x"] * shift,
+                line[f"{name}_mean"],
+                yerr=line[f"{name}_se"].fillna(0.0),
+                color=METHOD_COLORS.get(method, "black"),
+                linewidth=1.4,
                 marker="o",
-                markersize=6,
-                markerfacecolor="white",
-                color=color,
+                markersize=3.5,
+                elinewidth=0.9,
+                capsize=2.5,
+                capthick=0.9,
             )
         ax.set_xscale("log")
         ax.set_yscale(scale)
-        ax.grid(which="both", color="#e5e5e5", linewidth=0.5)
+        if scale == "log":
+            ax.yaxis.set_major_locator(LogLocator(base=10, subs=(0.2, 0.3, 0.5, 0.7, 1.0)))
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
+            ax.yaxis.set_minor_formatter(NullFormatter())
+        ax.grid(which="major", color="#e5e5e5", linewidth=0.5)
         ax.tick_params(labelsize=font_size(7))
         ax.set_ylabel(label, fontsize=font_size(8))
         if part == "a":
+            ticks = [size for size in U_TICKS if size in set(sizes)]
+            ax.set_xticks(ticks, [str(size) for size in ticks])
+            ax.xaxis.set_minor_locator(plt.NullLocator())
             ax.set_xlabel("$|U|$", fontsize=font_size(8))
         else:
             ticks = {
@@ -103,28 +119,15 @@ def plot_scores(summary: pd.DataFrame, part: str, without: str | None = None):
         Line2D([], [], color=METHOD_COLORS.get(m, "black"), marker="o", markersize=3.5, label=SHORT_LABELS.get(m, m))
         for m in methods
     ]
-    if flagged:
-        handles.append(
-            Line2D(
-                [],
-                [],
-                linestyle="none",
-                marker="o",
-                markersize=6,
-                markerfacecolor="white",
-                color="black",
-                label=f"$^*$ a pair with a class below {MIN_CLASS_COUNT} in $V$",
-            )
-        )
-    fig.legend(handles=handles, loc="lower center", ncol=min(len(handles), 4), fontsize=font_size(8), frameon=False)
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=font_size(8), frameon=False)
     n_pairs = int(rows["n_pairs"].max())
     where = "full $V$" if part == "a" else "$|U|=1000$"
     extra = "" if without is None else f", without {without}"
     fig.suptitle(
-        f"E4.4{part}: LR, {where}, {n_pairs} pairs{extra}; median over the pairs, band 25th–75th percentile",
+        f"E4.4{part}: LR, {where}, {n_pairs} pairs{extra}; mean over the pairs, bars $\\pm1$ standard error",
         fontsize=font_size(9),
     )
-    fig.tight_layout(rect=(0, 0.12 if len(handles) > 4 else 0.08, 1, 1))
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
     return fig
 
 
@@ -163,7 +166,7 @@ def parse_args(argv: list[str] | None = None):
         const=CHECK_DATASET,
         default=None,
         choices=(CHECK_DATASET,),
-        help=f"Medians over the pairs without {CHECK_DATASET} (the check of E4.4b)",
+        help=f"Means over the pairs without {CHECK_DATASET} (the check of E4.4b)",
     )
     parser.add_argument("--datasets", nargs="+", default=None, help="Restrict the datasets (default: every one found)")
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)

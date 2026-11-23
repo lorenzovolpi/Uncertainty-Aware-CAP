@@ -309,6 +309,9 @@ class TestScores(unittest.TestCase):
         row = a.loc[(a["method"] == "SQS-H") & (a["x"] == 100)].iloc[0]
         self.assertAlmostEqual(row["ae_median"], sub["ae"].median())
         self.assertAlmostEqual(row["winkler_q75"], sub["winkler"].quantile(0.75))
+        self.assertAlmostEqual(row["ae_mean"], sub["ae"].mean())
+        self.assertAlmostEqual(row["winkler_se"], sub["winkler"].std(ddof=1) / np.sqrt(len(sub)))
+        self.assertTrue(check["ae_se"].isna().all())  # one pair: no standard error
         for name in tables.SCORES:
             self.assertTrue((summary[f"{name}_q25"] <= summary[f"{name}_median"] + 1e-12).all())
             self.assertTrue((summary[f"{name}_median"] <= summary[f"{name}_q75"] + 1e-12).all())
@@ -373,6 +376,16 @@ class TestScores(unittest.TestCase):
             left, right = fig.axes[:2]
             self.assertEqual(right.get_yscale(), "log")
             self.assertEqual(left.get_xscale(), "log")
+            # one error-bar line per method, no band and no open marker
+            self.assertEqual(len(left.containers), 3)
+            self.assertEqual(len(left.collections), 3)  # the vertical bars of the three methods
+            self.assertFalse(any(line.get_markerfacecolor() == "white" for line in left.get_lines()))
+            # the methods are shifted sideways around each size, symmetrically
+            xs = [np.asarray(container.lines[0].get_xdata(), dtype=float) for container in left.containers]
+            sizes = np.sort(self.out["summary"].query("part == @part")["x"].unique())
+            self.assertTrue(np.allclose(np.sqrt(xs[0] * xs[-1]), sizes))
+            self.assertTrue(np.allclose(xs[1], sizes))
+            self.assertTrue((xs[0] < xs[1]).all() and (xs[1] < xs[2]).all())
             plt.close(fig)
         with self.assertRaises(RuntimeError):
             plots.plot_scores(self.out["summary"].iloc[:0], "a")

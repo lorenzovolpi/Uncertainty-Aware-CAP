@@ -25,9 +25,10 @@ Outputs, under ``<OUT_DIR>/uncawe/tables/target_size/``:
   $V$ seeds of the per-seed means (one seed at the full $V$, standard deviation NaN), ``below_threshold`` if any seed
   is flagged;
 - ``target_size_scores_summary.csv``: per part (``a``, ``b``), subset (``all``; ``without poker_hand``, the check of
-  E4.4b), method and size (``x``: $|U|$ in part a, the fraction of $V$ in part b), the median and the 25th and 75th
-  percentiles over the pairs of the per-pair means of AE, $W$, coverage and amplitude, the number of pairs and of the
-  flagged ones;
+  E4.4b), method and size (``x``: $|U|$ in part a, the fraction of $V$ in part b), the mean, its standard error
+  (standard deviation over the pairs, ``ddof=1``, divided by the square root of the number of pairs; NaN with one
+  pair), the median and the 25th and 75th percentiles over the pairs of the per-pair means of AE, $W$, coverage and
+  amplitude, the number of pairs and of the flagged ones;
 - ``target_size_scores_slopes.csv``: per part, method and dataset with two or more sizes, the least-squares slopes of
   $\log$ mean AE and of $\log$ mean amplitude against $\log|U|$ (part a) or $\log$ of the fraction of $V$ (part b),
   descriptive;
@@ -221,8 +222,9 @@ def part_rows(pairs: pd.DataFrame, part: str, size: int = SAMPLE_SIZE) -> pd.Dat
 
 
 def summary_table(pairs: pd.DataFrame) -> pd.DataFrame:
-    """Per part, subset, method and ``x``: the median and the 25th and 75th percentiles over the pairs of the per-pair
-    means of the scores, the number of pairs and of the flagged ones."""
+    """Per part, subset, method and ``x``: the mean, its standard error (``ddof=1``; NaN with one pair), the median and
+    the 25th and 75th percentiles over the pairs of the per-pair means of the scores, the number of pairs and of the
+    flagged ones."""
     rows = []
     for part in EXPERIMENT_PARTS:
         frame = part_rows(pairs, part)
@@ -240,6 +242,8 @@ def summary_table(pairs: pd.DataFrame) -> pd.DataFrame:
                 for name in SCORES:
                     values = group[name].astype(float)
                     row |= {
+                        f"{name}_mean": float(values.mean()),
+                        f"{name}_se": float(values.std(ddof=1) / np.sqrt(len(values))) if len(values) > 1 else np.nan,
                         f"{name}_median": float(values.median()),
                         f"{name}_q25": float(values.quantile(0.25)),
                         f"{name}_q75": float(values.quantile(0.75)),
