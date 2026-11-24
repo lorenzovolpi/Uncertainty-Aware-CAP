@@ -120,8 +120,48 @@ class TestMethods(unittest.TestCase):
     def test_pools(self):
         tasks = [ts.Task("i", name, 1000, "full", 0, 30) for name in ts.E44_METHODS]
         bayes, regular = ts.split_pools(tasks)
-        self.assertEqual({t.method_name for t in bayes}, {"BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real", "SQS-B"})
+        self.assertEqual(
+            {t.method_name for t in bayes},
+            {"BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb", "SQS-B"},
+        )
         self.assertEqual({t.method_name for t in regular}, {"SQS-H", "SQS-Hbs", "PQ"})
+
+    def test_kdey_methods_of_e44_since_wp33(self):
+        # the per-instance methods in place of BayCAP-KDEy-mlp-real, which stays a method of E4.2 only
+        self.assertEqual(
+            ts.E44_METHODS,
+            ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb", "SQS-H", "SQS-Hbs", "PQ", "SQS-B"),
+        )
+        self.assertNotIn("BayCAP-KDEy-mlp-real", ts.E44_METHODS)
+        self.assertEqual(ts.METHODS, ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real"))
+        self.assertEqual(set(ts.STUDY_METHODS), set(ts.METHODS) | set(ts.E44_METHODS))
+        self.assertTrue(ts._samples_with_nuts(ts.make_method("BayCAP-KDEy-mlp-real")))
+
+    def test_kdey_methods_are_those_of_main(self):
+        from uncawe.experiments.methods import gen_methods
+
+        stored = dict(gen_methods())
+        attributes = (
+            "input_classifier",
+            "estimand",
+            "c_prior",
+            "kernel",
+            "bandwidth",
+            "shrinkage",
+            "temperature",
+            "prior",
+            "num_samples",
+            "num_warmup",
+            "random_state",
+        )
+        for name in ts.E44_KDEY_METHODS:
+            ours, theirs = ts.make_method(name, 300), stored[name]
+            self.assertIs(type(ours), type(theirs))
+            self.assertTrue(ts._samples_with_nuts(ours))
+            for attribute in attributes:
+                self.assertEqual(getattr(ours, attribute), getattr(theirs, attribute), (name, attribute))
+        self.assertEqual(ts.make_method("BayCAP-KDEy-h-inst-cb").bandwidth, "logloss")
+        self.assertEqual(ts.make_method("BayCAP-KDEy-h-inst").estimand, "realised-instance")
 
 
 class TestHashAndArgs(unittest.TestCase):
@@ -139,6 +179,9 @@ class TestHashAndArgs(unittest.TestCase):
         self.assertEqual((a.datasets, a.classifiers, a.methods), (main15, ["LR"], list(ts.E44_METHODS)))
         self.assertEqual((b.sizes, b.levels, b.min_class_count), ([1000], list(ts.E44_LEVELS), None))
         self.assertEqual((pilot.datasets, pilot.methods, pilot.classifiers), (["letter"], ["PQ"], ["LR"]))
+        # E4.2 keeps its methods, the former BayCAP-KDEy included
+        e42 = ts.parse_args(["--run", "--methods", "BayCAP-KDEy-mlp-real"])
+        self.assertEqual(e42.methods, ["BayCAP-KDEy-mlp-real"])
         default = ts.parse_args(["--run"])
         self.assertEqual((default.datasets, default.methods), (list(ts.DATASETS), list(ts.METHODS)))
         self.assertEqual((default.levels, default.min_class_count, default.preset), (list(ts.LEVELS), 10, None))

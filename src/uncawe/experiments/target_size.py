@@ -9,9 +9,12 @@ input and a fixed $\hat C$), both with the realised pushforward, built as in ``m
 (``experiments/methods.py``). Both target the realised table of the target bag and are scored against it
 (``true_cts``). $h$ is never retrained and the split $L/V$ of the pretrain files is unchanged.
 
-**E4.4 (WP-28).** The methods ``E44_METHODS``: the two above and ``SQS-H``, ``SQS-Hbs``, ``PQ`` (SQS-S) and ``SQS-B``,
-built as in ``main`` except that the SQS methods draw bags of ``sample_size`` $=|U|$ instances from $V$
-(``make_method``); on the $15$ datasets of ``main`` (``main_datasets``) with LR only. E4.4a (``--e44a``): the sizes
+**E4.4 (WP-28).** The methods ``E44_METHODS``: ``BayesCAP-Hf-real``, the BayCAP-KDEy methods and ``SQS-H``,
+``SQS-Hbs``, ``PQ`` (SQS-S) and ``SQS-B``, built as in ``main`` except that the SQS methods draw bags of ``sample_size``
+$=|U|$ instances from $V$ (``make_method``). The BayCAP-KDEy methods are ``BayCAP-KDEy-h-inst`` and
+``BayCAP-KDEy-h-inst-cb`` (the per-instance pushforward with the input classifier $h$, E3.4 and E3.5) since card WP-33
+(user's decision of 2026-11-24), in place of ``BayCAP-KDEy-mlp-real``, whose results are invalidated; its stored cells
+of E4.4 stay on disk, and it is still a method of E4.2 (``METHODS``); on the $15$ datasets of ``main`` (``main_datasets``) with LR only. E4.4a (``--e44a``): the sizes
 ``U_SIZES`` with the full $V$. E4.4b (``--e44b``): $|U|=1000$ and the levels ``E44_LEVELS`` (full, $1/\sqrt2$, $1/2$,
 $1/(2\sqrt2)$, $1/4$), with no threshold on the instances per class (``--no-class-threshold``, user's decision of
 2026-11-19); the cells below ``MIN_CLASS_COUNT`` are flagged afterwards from ``v_class_counts``
@@ -92,7 +95,7 @@ from uncawe.experiments.methods import (
     SAMPLE_SIZE,
     THREAD_LIMITS,
     baycap_method,
-    fixed_c_method,
+    kdey_method,
     sqs_b,
     sqs_h,
     sqs_s,
@@ -111,8 +114,13 @@ DOMAIN = "classic"
 DATASETS = ("mammographic", "german", "spambase", "wine-quality", "dry-bean", "letter")
 CLASSIFIERS = ("LR", "RF")
 METHODS = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
-# E4.4 (WP-28, user's decision of 2026-11-19): the two methods of E4.2 and the SQS methods of main; O-LEAP left out
-E44_METHODS = METHODS + ("SQS-H", "SQS-Hbs", "PQ", "SQS-B")
+# E4.4 (WP-28, user's decision of 2026-11-19): BayCAP-Hf, BayCAP-KDEy and the SQS methods of main; O-LEAP left out.
+# Since WP-33 (user's decision of 2026-11-24) BayCAP-KDEy is the pair of per-instance methods of E3.4 and E3.5, in
+# place of BayCAP-KDEy-mlp-real (invalidated), whose stored cells of E4.4 stay on disk but are no longer run or shown
+E44_KDEY_METHODS = ("BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+E44_METHODS = ("BayesCAP-Hf-real", *E44_KDEY_METHODS, "SQS-H", "SQS-Hbs", "PQ", "SQS-B")
+# every method the study can run: those of E4.2 and of E4.4
+STUDY_METHODS = tuple(dict.fromkeys((*METHODS, *E44_METHODS)))
 E44_CLASSIFIERS = ("LR",)
 # the SQS methods, whose bags of V get the size of the target bag in this study (make_method)
 SQS_METHODS = ("SQS-H", "SQS-Hbs", "PQ", "SQS-B")
@@ -336,14 +344,14 @@ def _all_results_exist(p: PretrainInfo, task: Task) -> bool:
 
 
 def make_method(method_name: str, size: int = SAMPLE_SIZE):
-    """The method ``method_name`` of ``E44_METHODS``, built as in ``main`` (same settings and seed), except that the
+    """The method ``method_name`` of ``STUDY_METHODS``, built as in ``main`` (same settings and seed), except that the
     SQS methods draw bags of ``sample_size`` $=$ ``size`` instances from $V$, the size of the target bags of the task
     (E4.4; at ``size`` $=1000$ they are the methods of ``main``)."""
     _, acc = next(gen_acc_measure(True))
     if method_name == "BayesCAP-Hf-real":
         return baycap_method(acc, method_name)
-    if method_name == "BayCAP-KDEy-mlp-real":
-        return fixed_c_method(acc, method_name)
+    if method_name in ("BayCAP-KDEy-mlp-real", *E44_KDEY_METHODS):
+        return kdey_method(acc, method_name)
     if method_name == "SQS-H":
         return sqs_h(acc, bootstrap=False, sample_size=size)
     if method_name == "SQS-Hbs":
@@ -352,7 +360,7 @@ def make_method(method_name: str, size: int = SAMPLE_SIZE):
         return sqs_s(acc, sample_size=size)
     if method_name == "SQS-B":
         return sqs_b(acc, sample_size=size)
-    raise ValueError(f"Unknown method {method_name}; the study runs {list(E44_METHODS)}")
+    raise ValueError(f"Unknown method {method_name}; the study runs {list(STUDY_METHODS)}")
 
 
 def _samples_with_nuts(method) -> bool:
@@ -517,7 +525,7 @@ def tasks(
     """The tasks still to run: every (pair, method, size, available level, $V$ seed), the full $V$ with seed $0$ only;
     a subsampled level is left out on the datasets where a class would keep fewer than ``min_class_count`` (never
     with ``min_class_count=None``)."""
-    unknown = sorted(set(methods) - set(E44_METHODS)) + sorted(set(levels) - set(ALL_LEVELS))
+    unknown = sorted(set(methods) - set(STUDY_METHODS)) + sorted(set(levels) - set(ALL_LEVELS))
     if unknown:
         raise ValueError(f"Unknown methods or levels: {unknown}")
     datasets, classifiers = list(datasets), list(classifiers)
@@ -658,7 +666,7 @@ def parse_args(argv: list[str] | None = None):
     )
     parser.add_argument("--datasets", nargs="+", default=None, help=f"Datasets (default: {list(DATASETS)})")
     parser.add_argument("--classifiers", nargs="+", default=None, choices=CLASSIFIERS)
-    parser.add_argument("--methods", nargs="+", default=None, choices=E44_METHODS)
+    parser.add_argument("--methods", nargs="+", default=None, choices=STUDY_METHODS)
     parser.add_argument("--sizes", nargs="+", type=int, default=None, help="Bag sizes |U| (default: 1000)")
     parser.add_argument(
         "--levels", nargs="+", default=None, choices=tuple(ALL_LEVELS), help="|V| levels (default: those of E4.2)"
