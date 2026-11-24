@@ -25,8 +25,10 @@ METHOD_LATEX_LABELS = {
     "BayesCAP-Hfn-real": "\\bcap{}-Hfn-real",
     "BayCAP-KDEy-h": "\\bcap{}-KDEy-h",
     "BayCAP-KDEy-h-real": "\\bcap{}-KDEy-h-real",
+    # E3.4 (card WP-31): the BayCAP-KDEy of the project since 2026-11-24; before, \bcapkdey was BayCAP-KDEy-mlp-real
+    "BayCAP-KDEy-h-inst": "\\bcapkdey",
     "BayCAP-KDEy-mlp": "\\bcap{}-KDEy-mlp",
-    "BayCAP-KDEy-mlp-real": "\\bcapkdey",
+    "BayCAP-KDEy-mlp-real": "\\bcap{}-KDEy-mlp-real",
     "BayCAP-EMQ-h": "\\bcap{}-EMQ-h",
     "BayCAP-EMQ-h-real": "\\bcap{}-EMQ-h-real",
     "BayCAP-EMQ-mlp": "\\bcap{}-EMQ-mlp",

@@ -88,7 +88,9 @@ metrics_map = {
 # the bag, true_cts) is shown again since 2026-11-23, for the moment, in the main and rank tables and the
 # amplitude-vs-coverage plot (user's decision of 2026-11-23); MAIN_METHODS_BEFORE_BAYESCAP keeps the list without it
 # for the error-split and coverage/amplitude tables. SQS-B is left out since 2026-11-24 (user's decision of 2026-11-24),
-# also from the error-split and coverage/amplitude tables.
+# also from the error-split and coverage/amplitude tables. Since E3.4 (card WP-31, user's decision of 2026-11-24) the
+# BayCAP-KDEy of the tables is BayCAP-KDEy-h-inst (input classifier h, per-instance pushforward) in place of
+# BayCAP-KDEy-mlp-real, whose results are invalidated.
 MAIN_METHODS = (
     "DoC",
     "QuAcc_NxN",
@@ -99,7 +101,7 @@ MAIN_METHODS = (
     "BayesCAP",
     "BayesCAP-real",
     "BayesCAP-Hf-real",
-    "BayCAP-KDEy-mlp-real",
+    "BayCAP-KDEy-h-inst",
 )
 MAIN_METHODS_BEFORE_BAYESCAP = tuple(m for m in MAIN_METHODS if m != "BayesCAP")
 EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
@@ -119,9 +121,9 @@ def table_method_names(include: tuple[str, ...] = ()) -> list[str]:
 
 # output subfolder of the main tables with included methods (--include), so that the main tables are not overwritten
 EXTENDED_DIR = "extended"
-# when both BayCAP-KDEy variants are shown (the realised predictive, with the input classifier h or an MLP), their
-# labels name the input (user's decision of 2026-11-24); alone, BayCAP-KDEy-mlp-real is BayCAP-KDEy
-KDEY_PAIR_LABELS = {"BayCAP-KDEy-h-real": "\\bcapkdey{}-h", "BayCAP-KDEy-mlp-real": "\\bcapkdey{}-mlp"}
+# the labels of BayCAP-KDEy-h-real and BayCAP-KDEy-mlp-real when both were shown, \bcapkdey{}-h and \bcapkdey{}-mlp
+# (user's decision of 2026-11-24), were dropped by WP-31: \bcapkdey is now BayCAP-KDEy-h-inst, and the two cell
+# pushforwards keep their own labels (tables/common.py:METHOD_LATEX_LABELS)
 
 
 # the methods that store in estim_acc_ranges the probability mass function of the number of correct predictions of the
@@ -842,14 +844,10 @@ def _escape_latex_text(text: str) -> str:
 
 def _latex_display_columns(columns: pd.Index) -> pd.Index:
     if isinstance(columns, pd.MultiIndex):
-        methods = set(columns.get_level_values("method")) if "method" in columns.names else set()
-        overrides = KDEY_PAIR_LABELS if set(KDEY_PAIR_LABELS) <= methods else {}
         return pd.MultiIndex.from_tuples(
             (
                 tuple(
-                    _latex_display_column_value(value, columns.names[level], overrides)
-                    if isinstance(value, str)
-                    else value
+                    _latex_display_column_value(value, columns.names[level]) if isinstance(value, str) else value
                     for level, value in enumerate(col)
                 )
                 for col in columns
@@ -860,11 +858,11 @@ def _latex_display_columns(columns: pd.Index) -> pd.Index:
     return _escape_latex_columns(columns)
 
 
-def _latex_display_column_value(value: str, level_name: str | None, overrides: dict[str, str] | None = None) -> str:
+def _latex_display_column_value(value: str, level_name: str | None) -> str:
     if level_name == "metric":
         return metrics_map.get(value, _escape_latex_text(value))
     if level_name == "method":
-        return _escape_latex_text((overrides or {}).get(value, METHOD_LATEX_LABELS.get(value, value)))
+        return _escape_latex_text(METHOD_LATEX_LABELS.get(value, value))
     return _escape_latex_text(value)
 
 

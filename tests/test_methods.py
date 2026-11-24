@@ -54,7 +54,7 @@ MAIN_SET = [
     "BayesCAP",
     "BayesCAP-real",
     "BayesCAP-Hf-real",
-    "BayCAP-KDEy-mlp-real",
+    "BayCAP-KDEy-h-inst",
 ]
 # the eight methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md)
 E31_METHODS = [f"BayCAP-{q}-{s}{x}" for q in ("KDEy", "EMQ") for s in ("h", "mlp") for x in ("", "-real")]
@@ -136,6 +136,7 @@ class BayCAPFactoryTest(unittest.TestCase):
             set(BAYCAP_METHODS)
             | set(E31_METHODS)
             | set(E32_METHODS)
+            | {"BayCAP-KDEy-h-inst"}
             | {"SQS-B"}
             | set(TEMPERED_VARIANTS)
             | set(LOO_VARIANTS)

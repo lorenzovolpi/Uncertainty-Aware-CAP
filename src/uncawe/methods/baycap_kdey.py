@@ -29,6 +29,13 @@ interval of the method fitted on $V_{\text{fit}}$ at $b_{\text{cal}}$ (:meth:`Ba
 the deployed method is then fitted on the full $V$ at $(b_{\text{cal}},\tau_{\text{cal}})$ exactly as with those
 numeric settings.
 
+Work-plan card WP-31 (E3.4, §T.15) adds ``estimand="realised-instance"``, with ``c_prior="fixed"`` and
+``input_classifier="h"`` only: the per-instance pushforward. For each draw $\pi^{(r)}$, the true class of each instance
+$n$ of the bag is drawn from $w^{(r)}_{nj}=\pi^{(r)}_j\hat f_j(z_n)/\sum_\ell\pi^{(r)}_\ell\hat f_\ell(z_n)$, with
+$z_n$ the outputs of $h$ and $\hat f_j$ the class densities of BayesKDEy, and the table counts the pairs (prediction of
+$h$, drawn class) (:func:`instance_tables`); the weights are untempered whatever ``temperature``. The prevalence draws
+are those of ``"population"`` and ``"realised"`` for the same seeds.
+
 ``c_prior="hierarchical-f"`` gives the methods ``BayCAP-KDEy-Hf-<s>-real`` of E3.2 (work-plan card WP-13, §T.10–§T.13):
 each class of $V$ is split into cells by the prediction of $h$, the class density of BayesKDEy becomes the mixture
 $f_j=\sum_kC_{kj}\hat\phi_{kj}$ of the kernel densities of its cells, and $(\pi,C)$ are sampled jointly by NUTS, with the
@@ -56,6 +63,7 @@ from quapy.protocol import UPP
 from sklearn.metrics import confusion_matrix
 
 from uncawe.methods.baycap import (
+    ESTIMANDS,
     H_KAPPA,
     H_M,
     H_NU,
@@ -70,7 +78,7 @@ from uncawe.methods.baycap import (
     nuts_diagnostics,
     realised_tables,
 )
-from uncawe.methods.baycap_quantifier import QuantifierBayCAP, _validate_prevalence_samples
+from uncawe.methods.baycap_quantifier import QuantifierBayCAP, _validate_prevalence_samples, class_precisions
 from uncawe.methods.bayes_kdey import (
     LOO,
     LOO_DEFAULT_BANDWIDTH,
@@ -87,6 +95,21 @@ from uncawe.methods.bayesian_quantifier import PREV, _validate_outputs
 # the prior on the columns of C: "fixed" holds C at the rates of h on V (E3.1), "hierarchical-f" samples C with the Hf
 # prior of BayCAP (E3.2)
 KDEY_C_PRIORS = ("fixed", "hierarchical-f")
+# the per-instance pushforward of E3.4 (§T.15), an estimand of BayCAPKDEy only, with c_prior="fixed" and
+# input_classifier="h": the true class of each instance of the bag drawn from its own posterior class probabilities
+INSTANCE = "realised-instance"
+KDEY_ESTIMANDS = (*ESTIMANDS, INSTANCE)
+# per-bag summaries added by "realised-instance" (§T.15), vanilla accuracy, label-free, from the draws: sigma_w, the
+# root mean over the draws of the bag term sigma_w^2(pi) = sum_n p_n (1 - p_n) / N^2, with p_n = w_{n, yhat_n} the
+# recalibrated confidence of h on instance n; sigma_g_tilde, the same for the cell term with the precisions replaced
+# by the mean confidences of each predicted class; within_class, the mean over the draws of the within-class term
+# sum_i sum_{n: yhat_n = i} (p_n - pbar_i)^2 / N^2 (a variance, sigma_w^2 = sigma_g_tilde^2 - within_class on each
+# draw); m_w_sd and m_sd, the standard deviations over the draws of the centres m_w(pi) = mean_n p_n and
+# m(pi) = sum_i n^t_i / N rho_ii(pi) (§T.8); centre_shift, the difference of their means
+INSTANCE_SUMMARIES = ("sigma_w", "sigma_g_tilde", "within_class", "m_w_sd", "m_sd", "centre_shift")
+# the largest number of entries of the array of weights (draws x instances x classes) held at once by
+# instance_tables, about 32 MB in double precision; the tables do not depend on it
+INSTANCE_CHUNK_ENTRIES = 2**22
 # source of the density of a cell (§T.12): its own validation outputs; those of all the validation instances that h
 # predicts as the class of the cell (the cell is empty); those of the true class of the cell (h never predicts the
 # class of the cell on V)
@@ -253,6 +276,106 @@ def select_temperature_from_scores(grid, scores: np.ndarray, reference: float = 
     return int(min(ties, key=lambda t: (abs(np.log(grid[t]) - np.log(reference)), grid[t])))
 
 
+def instance_weights(prevalences: np.ndarray, log_densities: np.ndarray) -> np.ndarray:
+    r"""The posterior class probabilities of each instance of the bag given each draw (§T.15), by Bayes' rule:
+    $w^{(r)}_{nj}=\pi^{(r)}_j\hat f_j(z_n)/\sum_\ell\pi^{(r)}_\ell\hat f_\ell(z_n)$, computed by log-sum-exp
+    from $\ln\pi^{(r)}_j+\ln\hat f_j(z_n)$. An instance whose terms are all $-\infty$ (all classes impossible) gets
+    $1/K$, as an impossible predicted class in :func:`uncawe.methods.baycap.realised_tables`.
+
+    :param prevalences: the draws of $\pi$, shape ``(R, K)``.
+    :param log_densities: ``[j, n]``$=\ln\hat f_j(z_n)$, shape ``(K, N)``.
+    :return: ``[r, n, j]``$=w^{(r)}_{nj}$, shape ``(R, N, K)``.
+    """
+    prevalences = np.asarray(prevalences, dtype=float)
+    log_densities = np.asarray(log_densities, dtype=float)
+    with np.errstate(divide="ignore"):
+        log_terms = np.log(prevalences)[:, None, :] + log_densities.T[None, :, :]
+    log_norm = np.max(log_terms, axis=2, keepdims=True)
+    finite = np.isfinite(log_norm)
+    shifted = np.exp(log_terms - np.where(finite, log_norm, 0.0))
+    total = shifted.sum(axis=2, keepdims=True)
+    n_classes = prevalences.shape[1]
+    return np.divide(shifted, total, out=np.full_like(shifted, 1.0 / n_classes), where=finite & (total > 0))
+
+
+def instance_tables(
+    prevalences: np.ndarray,
+    log_densities: np.ndarray,
+    pred: np.ndarray,
+    rng: np.random.Generator,
+    chunk_entries: int = INSTANCE_CHUNK_ENTRIES,
+) -> tuple[np.ndarray, np.ndarray]:
+    r"""The per-instance pushforward of §T.15: one realised table per draw of $\pi$.
+
+    For each draw $r$ and each instance $n$ of the bag, the true class $Y^{(r)}_n$ is drawn from
+    $\operatorname{Categorical}(w^{(r)}_{n\cdot})$ (:func:`instance_weights`), by inverse transform of one uniform
+    number per instance and draw, taken from ``rng`` draw after draw; the table counts the pairs (drawn class,
+    prediction $\hat y_n$ of $h$) and is divided by $N^Q$. The draws are processed in chunks of at most
+    ``chunk_entries`` weights, which does not change the tables.
+
+    :param prevalences: the draws of $\pi$, shape ``(R, K)``.
+    :param log_densities: ``[j, n]``$=\ln\hat f_j(z_n)$, shape ``(K, N)``.
+    :param pred: the indices of the predictions of $h$ on the bag, shape ``(N,)``.
+    :param rng: the NumPy generator of the categorical draws.
+    :param chunk_entries: the largest number of weights held at once.
+    :return: the tables, shape ``(R, K, K)``, in the ``cap-ml`` layout (``[r, j, i]``: true class $j$, predicted
+        class $i$), and the confidences $p^{(r)}_n=w^{(r)}_{n\hat y_n}$, shape ``(R, N)``.
+    """
+    prevalences = np.asarray(prevalences, dtype=float)
+    pred = np.asarray(pred, dtype=np.int64)
+    n_draws, n_classes = prevalences.shape
+    n_instances = len(pred)
+    if np.shape(log_densities) != (n_classes, n_instances):
+        raise ValueError(f"log_densities must have shape ({n_classes}, {n_instances}); found {np.shape(log_densities)}")
+    if n_instances == 0:
+        raise ValueError("the bag must have at least one instance")
+    step = max(1, int(chunk_entries) // (n_instances * n_classes))
+    tables = np.empty((n_draws, n_classes, n_classes))
+    confidences = np.empty((n_draws, n_instances))
+    instances = np.arange(n_instances)
+    for start in range(0, n_draws, step):
+        stop = min(start + step, n_draws)
+        weights = instance_weights(prevalences[start:stop], log_densities)
+        confidences[start:stop] = weights[:, instances, pred]
+        cumulative = np.cumsum(weights, axis=2)
+        uniforms = rng.random((stop - start, n_instances))
+        drawn = np.minimum((uniforms[:, :, None] >= cumulative).sum(axis=2), n_classes - 1)
+        # flat index of the cell (draw, true class, predicted class) of each instance
+        cells = (np.arange(stop - start)[:, None] * n_classes + drawn) * n_classes + pred[None, :]
+        counts = np.bincount(cells.ravel(), minlength=(stop - start) * n_classes * n_classes)
+        tables[start:stop] = counts.reshape(stop - start, n_classes, n_classes)
+    return tables / n_instances, confidences
+
+
+def instance_moments(confidences: np.ndarray, pred: np.ndarray, n_classes: int) -> dict[str, np.ndarray]:
+    r"""The per-draw terms of the width of the per-instance pushforward for vanilla accuracy (§T.15).
+
+    With $p^{(r)}_n$ the confidences, $\bar p^{(r)}_i$ their mean over the $n^t_i$ instances predicted as $\omega_i$
+    and $N=N^Q$: ``sigma_w2``$=\frac1{N^2}\sum_np_n(1-p_n)$; ``sigma_g_tilde2``$=\frac1{N^2}\sum_in^t_i\bar
+    p_i(1-\bar p_i)$; ``within``$=\frac1{N^2}\sum_i\sum_{n:\hat y_n=\omega_i}(p_n-\bar p_i)^2$; ``m_w``$=\frac1N
+    \sum_np_n$. On each draw, ``sigma_w2`` equals ``sigma_g_tilde2`` minus ``within``.
+
+    :param confidences: $p^{(r)}_n$, shape ``(R, N)``.
+    :param pred: the indices of the predictions of $h$ on the bag, shape ``(N,)``.
+    :return: the four arrays, each of shape ``(R,)``.
+    """
+    confidences = np.asarray(confidences, dtype=float)
+    pred = np.asarray(pred, dtype=np.int64)
+    n_instances = len(pred)
+    pred_counts = np.bincount(pred, minlength=n_classes)
+    # sums[r, i] = sum of p_n over the instances predicted as class i
+    one_hot = np.eye(n_classes)[pred]
+    sums = confidences @ one_hot
+    means = np.divide(sums, pred_counts, out=np.zeros_like(sums), where=pred_counts > 0)
+    deviations = confidences - means[:, pred]
+    return {
+        "sigma_w2": np.sum(confidences * (1 - confidences), axis=1) / n_instances**2,
+        "sigma_g_tilde2": (means * (1 - means)) @ pred_counts / n_instances**2,
+        "within": np.sum(deviations**2, axis=1) / n_instances**2,
+        "m_w": confidences.mean(axis=1),
+    }
+
+
 def kdey_hf_loglik(prev, rates, log_cells, pred=None):
     r"""The log-likelihood of the target bag of E3.2 (§T.10), for one $(\pi,C)$.
 
@@ -319,6 +442,12 @@ class BayCAPKDEy(QuantifierBayCAP):
       full $V$ at $(b_{\text{cal}},\tau_{\text{cal}})$ exactly as with those numeric settings; the selection of
       $b_{\text{cal}}$ is made at $\tau=1$ and is the same as without the temperature step. The per-bag summaries add
       ``CAL_TAU_SUMMARIES``.
+    - ``estimand="realised-instance"`` (E3.4, §T.15, ``c_prior="fixed"`` and ``input_classifier="h"`` only, not with
+      ``temperature="cal"``): the draws of $\pi$ are those of the other estimands; each becomes a realised table by
+      drawing the true class of each instance of the bag from its posterior class probabilities under the draw
+      (:func:`instance_tables`, generator seeded by ``random_state``), from the log-densities of the bag that the
+      likelihood of BayesKDEy reads; the weights are untempered whatever ``temperature``. The per-bag summaries add
+      ``INSTANCE_SUMMARIES``.
     - ``c_prior="hierarchical-f"`` (E3.2, §T.10–§T.13): ``fit`` splits each class $\omega_j$ of $V$ into the cells
       $V_{kj}$ of the instances that $h$ predicts as $\omega_k$ and fits one kernel density $\hat\phi_{kj}$ per cell on
       the validation outputs of the input classifier (cross-fitted for ``mlp``). An empty cell takes the density of all
@@ -333,7 +462,7 @@ class BayCAPKDEy(QuantifierBayCAP):
 
     :param acc_fn: a ``cap-ml`` contingency-table performance function.
     :param input_classifier: ``"h"`` or ``"mlp"``.
-    :param estimand: ``"population"`` or ``"realised"``.
+    :param estimand: ``"population"``, ``"realised"`` or ``"realised-instance"``.
     :param c_prior: ``"fixed"`` or ``"hierarchical-f"``.
     :param kernel: kernel of BayesKDEy (``"gaussian"``, ``"aitchison"`` or ``"ilr"``).
     :param bandwidth: bandwidth of BayesKDEy, a positive number, ``"scott"``, ``"silverman"``, ``"loo"`` (per-class
@@ -359,11 +488,13 @@ class BayCAPKDEy(QuantifierBayCAP):
         (:func:`uncawe.methods.bayes_kdey.slsqp_prevalences`).
     """
 
+    estimands = KDEY_ESTIMANDS
+
     def __init__(
         self,
         acc_fn: Callable,
         input_classifier: Literal["h", "mlp"] = "mlp",
-        estimand: Literal["population", "realised"] = "population",
+        estimand: Literal["population", "realised", "realised-instance"] = "population",
         c_prior: Literal["fixed", "hierarchical-f"] = "fixed",
         kernel: Literal["gaussian", "aitchison", "ilr"] = "gaussian",
         bandwidth: float | Literal["scott", "silverman", "loo", "cal"] = 0.1,
@@ -400,6 +531,11 @@ class BayCAPKDEy(QuantifierBayCAP):
         self.temperature_grid = temperature_grid
         if c_prior != "fixed" and bandwidth in (LOO, CAL):
             raise ValueError(f'bandwidth="{bandwidth}" is implemented only with c_prior="fixed"')
+        if estimand == INSTANCE:
+            if c_prior != "fixed" or input_classifier != "h":
+                raise ValueError(f'estimand="{INSTANCE}" needs c_prior="fixed" and input_classifier="h" (§T.15)')
+            if calibrates_temperature:
+                raise ValueError(f'estimand="{INSTANCE}" is not implemented with temperature="{CAL}"')
         self.c_prior = c_prior
         self.kernel = kernel
         self.bandwidth = bandwidth
@@ -782,6 +918,28 @@ class BayCAPKDEy(QuantifierBayCAP):
         """The bandwidth of each class, in the order of ``classes_``."""
         return self.quantifier_.bandwidths_
 
+    def _pushforward(self, prevalences: np.ndarray, posteriors: np.ndarray, pred_counts: np.ndarray) -> np.ndarray:
+        r"""The pushforward of the estimand; with ``"realised-instance"``, the per-instance tables of §T.15 from the
+        log-densities of the bag of the last NUTS run, and the ``INSTANCE_SUMMARIES``."""
+        if self.estimand != INSTANCE:
+            return super()._pushforward(prevalences, posteriors, pred_counts)
+        prevalences = np.asarray(prevalences, dtype=float)
+        pred = np.argmax(posteriors, axis=1)
+        rng = np.random.default_rng(self.random_state)
+        cts, confidences = instance_tables(prevalences, self.quantifier_.last_bag_log_densities(), pred, rng)
+        moments = instance_moments(confidences, pred, len(self.classes_))
+        shares = pred_counts / pred_counts.sum()
+        centres = class_precisions(prevalences, self.rate_matrix_) @ shares
+        self._last_summaries |= {
+            "sigma_w": float(np.sqrt(moments["sigma_w2"].mean())),
+            "sigma_g_tilde": float(np.sqrt(moments["sigma_g_tilde2"].mean())),
+            "within_class": float(moments["within"].mean()),
+            "m_w_sd": float(moments["m_w"].std()),
+            "m_sd": float(centres.std()),
+            "centre_shift": float(moments["m_w"].mean() - centres.mean()),
+        }
+        return cts
+
     def _after_fit(self, labels: np.ndarray, predicted: np.ndarray) -> None:
         if self.c_prior == "hierarchical-f":
             self._fit_cells(self.val_outputs_, labels, predicted)
@@ -938,7 +1096,11 @@ __all__ = [
     "CELL_OWN",
     "CELL_PREDICTED",
     "CELL_SUMMARIES",
+    "INSTANCE",
+    "INSTANCE_CHUNK_ENTRIES",
+    "INSTANCE_SUMMARIES",
     "KDEY_C_PRIORS",
+    "KDEY_ESTIMANDS",
     "KDEY_HF_SUMMARIES",
     "LOO_SUMMARIES",
     "TAU_GRID",
@@ -948,6 +1110,9 @@ __all__ = [
     "calibration_bags",
     "calibration_seed",
     "class_recalls",
+    "instance_moments",
+    "instance_tables",
+    "instance_weights",
     "interval_scores",
     "kdey_hf_loglik",
     "kdey_hf_model",

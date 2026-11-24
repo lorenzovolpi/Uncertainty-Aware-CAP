@@ -286,7 +286,8 @@ class TestEvaluationAndTables(unittest.TestCase):
                 latex = f.read()
             self.assertIn("\\cellcolor[HTML]", latex)
             self.assertIn("\\bfseries", latex)
-            self.assertIn("\\bcapkdey", latex)
+            # since WP-31 the label of BayCAP-KDEy-mlp-real names its input and pushforward
+            self.assertIn("\\bcap{}-KDEy-mlp-real", latex)
             with open(os.path.join(tmp, "tables", "ctt_doc.tex")) as f:
                 document = f.read()
             self.assertIn("\\usepackage[table]{xcolor}", document)

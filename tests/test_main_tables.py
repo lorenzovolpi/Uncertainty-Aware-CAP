@@ -136,17 +136,17 @@ class TestIncludedMethods(unittest.TestCase):
         methods = main_tables.table_method_names(("BayCAP-KDEy-h-real",))
         self.assertEqual(len(methods), N + 1)
         i = methods.index("BayCAP-KDEy-h-real")
-        self.assertEqual(methods[i + 1], "BayCAP-KDEy-mlp-real")
+        self.assertEqual(methods[i + 1], "BayCAP-KDEy-h-inst")
         self.assertEqual(main_tables.table_method_names(), METHODS)
 
-    def test_kdey_labels_name_the_input_when_both_are_shown(self):
+    def test_kdey_labels(self):
+        # since WP-31, BayCAP-KDEy is BayCAP-KDEy-h-inst and the cell pushforwards keep their own labels, also together
         both = pd.MultiIndex.from_product(
-            [["acc_err"], ["BayCAP-KDEy-h-real", "BayCAP-KDEy-mlp-real"]], names=["metric", "method"]
+            [["acc_err"], ["BayCAP-KDEy-h-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-mlp-real"]],
+            names=["metric", "method"],
         )
         labels = list(main_tables._latex_display_columns(both).get_level_values("method"))
-        self.assertEqual(labels, ["\\bcapkdey{}-h", "\\bcapkdey{}-mlp"])
-        alone = pd.MultiIndex.from_product([["acc_err"], ["BayCAP-KDEy-mlp-real"]], names=["metric", "method"])
-        self.assertEqual(list(main_tables._latex_display_columns(alone).get_level_values("method")), ["\\bcapkdey"])
+        self.assertEqual(labels, ["\\bcap{}-KDEy-h-real", "\\bcapkdey", "\\bcap{}-KDEy-mlp-real"])
 
     def test_table_with_an_included_method(self):
         methods = main_tables.table_method_names(("BayCAP-KDEy-h-real",))
@@ -154,8 +154,8 @@ class TestIncludedMethods(unittest.TestCase):
         df = pd.concat([_bags({m: list(rng.random(10)) for m in methods}, d) for d in ("d1", "d2")])
         latex = main_tables._results_latex_table(df, METRICS, False, ["d1", "d2"], ("BayCAP-KDEy-h-real",))
         self.assertIn(f"\\multicolumn{{{N + 1 - 3}}}{{c|}}{{Our methods}}", latex)
-        self.assertEqual(latex.count("\\rotatebox{90}{\\bcapkdey{}-h}"), 2)
-        self.assertEqual(latex.count("\\rotatebox{90}{\\bcapkdey{}-mlp}"), 2)
+        self.assertEqual(latex.count("\\rotatebox{90}{\\bcap{}-KDEy-h-real}"), 2)
+        self.assertEqual(latex.count("\\rotatebox{90}{\\bcapkdey}"), 2)
         # without --include the extra method is not shown even if stored
         latex = main_tables._results_latex_table(df, METRICS, False, ["d1", "d2"])
         self.assertNotIn("-h}", latex)
