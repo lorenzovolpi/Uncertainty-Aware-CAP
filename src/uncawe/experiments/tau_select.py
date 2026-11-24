@@ -2,9 +2,11 @@ r"""The study ``tau_select``: the temperature $\tau$ of BayCAP-Hf and BayCAP-KDE
 drawn from a held-out half of $V$ (E5.3 of ``docs/ext5_baycap_priors_tempering.md``; work-plan card WP-23).
 
 Scope: the $15$ datasets of ``main`` (``get_filtered_datasets``) and their five pretrained classifiers, in the classic
-domain; the methods ``BayesCAP-Hf-real`` (BayCAP with the Hf prior on $C$, both likelihood terms divided by $\tau$) and
-``BayCAP-KDEy-mlp-real`` (BayesKDEy with an MLP input and a fixed $\hat C$, the likelihood of the bag divided by
-$\tau$), both with the realised pushforward, built as in ``main`` and E5.2 (``experiments/methods.py``), at
+domain; the methods ``BayesCAP-Hf-real`` (BayCAP with the Hf prior on $C$, both likelihood terms divided by $\tau$) and,
+since WP-33, ``BayCAP-KDEy-h-inst`` and ``BayCAP-KDEy-h-inst-cb`` (BayesKDEy with the input classifier $h$, a fixed
+$\hat C$ and the per-instance pushforward, the likelihood of the bag divided by $\tau$ and the weights untempered; with
+``-cb`` the bandwidth selected in the fit on $V_{\text{fit}}$) (``experiments/methods.py:TEMPERED_BASES``; until WP-33
+``BayCAP-KDEy-mlp-real``, with the cell pushforward, whose results are invalidated), all with a realised pushforward, built as in ``main`` and E5.2 (``experiments/methods.py``), at
 $\tau\in\{0.5,1,2,4,8\}$ (``TAUS``). Both target the realised table of each calibration bag and are scored against it
 (``true_cts``, computed from the labels of $V_{\text{cal}}$). $h$ is never retrained and the split $L/V$ of the pretrain
 files is unchanged.
@@ -74,7 +76,7 @@ from uncawe.experiments.methods import (
     TEMPERATURE_LEVELS,
     TEMPERED_BASES,
     baycap_method,
-    fixed_c_method,
+    kdey_method,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
@@ -116,7 +118,7 @@ def make_method(base: str, tau: float):
     _, acc = next(gen_acc_measure(True))
     if base == "BayesCAP-Hf-real":
         return baycap_method(acc, base, temperature=tau)
-    return fixed_c_method(acc, base, temperature=tau)
+    return kdey_method(acc, base, temperature=tau)
 
 
 # --------------------------------------------------------------------------------------------------- seeds
