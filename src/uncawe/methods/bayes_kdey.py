@@ -416,7 +416,19 @@ class BayesKDEy(BayesianQuantifier):
         """The NUTS model of BayesKDEy, its arguments and the initial parameters, as QuaPy's ``sample_from_posterior``."""
         alpha = _resolve_dirichlet_prior(self.prior, outputs.shape[1])
         args = {"test_log_densities": self.kde_.log_densities(outputs), "alpha": alpha}
+        # kept for the per-instance pushforward of BayCAPKDEy (E3.4), which reuses the log-densities of the bag
+        self._last_log_densities = args["test_log_densities"]
         return kdey_model, args | {"temperature": self.temperature}, None
+
+    def last_bag_log_densities(self) -> np.ndarray:
+        r"""The log-densities of the classes at the outputs of the last bag sampled (:meth:`sample_prevalences`), the
+        array that the likelihood of the bag reads.
+
+        :return: ``[j, n]``$=\ln\hat p_j(z_n)$, shape ``(K, N)``, rows in the order of ``val.classes_``.
+        """
+        if getattr(self, "_last_log_densities", None) is None:
+            raise RuntimeError("No bag sampled yet: call sample_prevalences first")
+        return np.asarray(self._last_log_densities, dtype=float)[self.class_order_]
 
     def _prevalence_draws(self, grouped: dict) -> np.ndarray:
         return np.asarray(jax.device_get(grouped[PREV]))

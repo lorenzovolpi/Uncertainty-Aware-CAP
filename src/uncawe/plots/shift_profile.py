@@ -47,7 +47,9 @@ from uncawe.tables.main import CLASSIFIER_FILTER, get_acc_winkler
 PLOT_NAME = "shift_profile"
 FIGURES = ("by_k", "pooled")
 METRICS = (("acc_err", "AE"), ("winkler", "W"))
-DEFAULT_METHODS = ("O-LEAP", "SQS-Hbs", "SQS-B", "BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
+# BayCAP-KDEy-h-inst in place of BayCAP-KDEy-mlp-real since E3.4 (card WP-31, user's decision of 2026-11-24), with its
+# colour
+DEFAULT_METHODS = ("O-LEAP", "SQS-Hbs", "SQS-B", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst")
 # colours of this figure only (user's decision of 2026-11-21): the shared METHOD_COLORS of BayesCAP-Hf-real and
 # BayCAP-KDEy-mlp-real are too faint next to the other three; methods not listed fall back to grey
 SHIFT_PROFILE_COLORS = {
@@ -55,7 +57,7 @@ SHIFT_PROFILE_COLORS = {
     "SQS-Hbs": "#B279A2",
     "SQS-B": "#F58518",
     "BayesCAP-Hf-real": "#E45756",
-    "BayCAP-KDEy-mlp-real": "#54A24B",
+    "BayCAP-KDEy-h-inst": "#54A24B",
 }
 # groups of the number of classes K, as (lower, upper) bounds, upper None for no bound
 K_GROUPS = ((2, 2), (3, 9), (10, None))

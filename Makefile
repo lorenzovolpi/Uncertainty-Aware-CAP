@@ -92,6 +92,7 @@ EXP_tables-error-split := python -m uncawe.tables.error_split
 EXP_tables-predist   := python -m uncawe.tables.predist
 EXP_tables-pq-rho    := python -m uncawe.tables.pq_rho
 EXP_tables-sqs-b     := python -m uncawe.tables.sqs_b
+EXP_tables-baycap-kdey-inst := python -m uncawe.tables.baycap_kdey_inst
 EXP_tables-tempering := python -m uncawe.tables.tempering
 EXP_tables-target-size := python -m uncawe.tables.target_size
 EXP_tables-target-size-scores := python -m uncawe.tables.target_size_scores
@@ -122,6 +123,7 @@ EXP_plot-baycap-kdey-hf := python -m uncawe.plots.baycap_kdey_hf
 EXP_plot-error-split := python -m uncawe.plots.error_split
 EXP_plot-pq-rho      := python -m uncawe.plots.pq_rho
 EXP_plot-sqs-b       := python -m uncawe.plots.sqs_b
+EXP_plot-baycap-kdey-inst := python -m uncawe.plots.baycap_kdey_inst
 EXP_plot-tempering   := python -m uncawe.plots.tempering
 EXP_plot-target-size := python -m uncawe.plots.target_size
 # E4.4: --without poker_hand in ARGS for the check of E4.4b

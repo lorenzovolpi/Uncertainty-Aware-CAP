@@ -17,7 +17,7 @@ A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, no
 | The predictions of §T.9 and the moving centre of §T.8 | checked by E3.1: P1–P3, P5, P6 hold, P8 only for BayesKDEy, P7 does not; the centre barely moves |
 | The predictions P9–P14 of §T.13 | checked by E3.2: P9 in part, P11 only for `mlp`, P14 hold; P10 and P12 do not; P13 shows the opposite pattern |
 | The predictions P15–P18 of §T.14 | checked by E3.3: P15 holds; P16 holds in the main, the formula overstating the widening where $V$ is small; P17 in part (the same failures and some more); P18 as stated, the source of the gain on the macro metrics not separable |
-| E3.4, BayCAP-KDEy with the per-instance pushforward and $s=h$ (`BayCAP-KDEy-h-inst`, §T.15) | [proposal], decided by the user on 2026-11-24 and promoted directly to the main section; card WP-31 of [[work_plan]] (Scheduled); not implemented, not run |
+| E3.4, BayCAP-KDEy with the per-instance pushforward and $s=h$ (`BayCAP-KDEy-h-inst`, §T.15) | [implemented] (card WP-31 of [[work_plan]], In progress, branch `wp-31/baycap-kdey-h-inst`), decided by the user on 2026-11-24 and promoted directly to the main section; not run |
 | The results of the realised BayCAP-KDEy with the cell pushforward (`BayCAP-KDEy-h-real`, `BayCAP-KDEy-mlp-real` and the methods and experiments built on them) | invalidated (user's decision of 2026-11-24), see below |
 | Candidate experiments E3.c2–E3.c4, E3.c6–E3.c9 (E3.c5 became E3.2, E3.c1 became E3.3) | [proposal], not scheduled |
 
@@ -891,12 +891,12 @@ Reproducibility and comparability (for E3.3):
 - `SQS-B` is comparable with the stored CPU results of E3.1 and of `BayesCAP-Hf-real`, and with `SQS-H` and `SQS-Hbs` after the re-run of FIX-2 + FIX-3, all after FIX-8 (same bags, same platform);
 - no pilot: the full run is started directly (user's decision of 2026-11-13).
 
-Components (for E3.4), [proposal] (card WP-31, Scheduled):
+Components (for E3.4), all [implemented] (card WP-31, In progress), not run:
 
-- **The per-instance pushforward in `BayCAPKDEy`.** A new value of `estimand` (e.g. `"realised-instance"`), accepted only with `c_prior="fixed"` and `input_classifier="h"` (a `ValueError` otherwise). `predict_ct_range` takes the log-densities $\log\hat f_j(z_n)$ of the bag that BayesKDEy computes for its likelihood and the draws of $\pi$, computes $\log w$ by a log-sum-exp over the classes, and draws one class per instance and draw with a NumPy `Generator` seeded by `random_state`, as the realised pushforward; the draws are processed in chunks, so that the $R\times N^Q\times K$ array of weights fits in memory ($K=26$ for `letter`: about $200$ MB at once in double precision). The counts form tables in the `cap-ml` layout (true classes on rows), divided by $N^Q$. The weights are untempered, whatever `temperature`.
-- **Summaries:** per bag, `FIXED_SUMMARIES` plus $\bar\sigma_w$, $\bar{\tilde\sigma}_g$, the mean over the draws of the within-class term of §T.15, the standard deviations of $m_w(\pi)$ and $m(\pi)$ over the draws, and $\bar m_w-\bar m$.
-- **Method in `main`:** a factory entry `BayCAP-KDEy-h-inst` in `experiments/methods.py`, with the configuration and seed of `BayCAP-KDEy-h-real`, in the BayCAP pool; `tables/main.py:MAIN_METHODS` and `plots/shift_profile.py:DEFAULT_METHODS` with `BayCAP-KDEy-h-inst` in place of `BayCAP-KDEy-mlp-real`, and the label `\bcapkdey` moved to it (`tables/common.py`); §II.12 of [[work_plan]] updated.
-- **Tables and plots of E3.4:** a table module and a plot module with the Representation above, reusing the paired bootstrap of `tables/pushforward.py`.
+- **The per-instance pushforward in `BayCAPKDEy`.** The value `estimand="realised-instance"`, accepted only with `c_prior="fixed"` and `input_classifier="h"`, and not with `temperature="cal"` (a `ValueError` otherwise). `predict_ct_range` takes the log-densities $\log\hat f_j(z_n)$ of the bag that BayesKDEy computed for its likelihood (`BayesKDEy.last_bag_log_densities`) and the draws of $\pi$, computes $w$ by a log-sum-exp over the classes (`instance_weights`), and draws one class per instance and draw by inverse transform of one uniform number from a NumPy `Generator` seeded by `random_state` (`instance_tables`), draw after draw, so that the result does not depend on the chunks; the draws are processed in chunks of at most $2^{22}$ weights, so that the $R\times N^Q\times K$ array of weights is never held at once (about $200$ MB for `letter`, $K=26$). The counts form tables in the `cap-ml` layout (true classes on rows), divided by $N^Q$. The weights are untempered, whatever `temperature`.
+- **Summaries:** per bag, `FIXED_SUMMARIES` plus `INSTANCE_SUMMARIES`: $\bar\sigma_w$ (`sigma_w`), $\bar{\tilde\sigma}_g$ (`sigma_g_tilde`), the mean over the draws of the within-class term of §T.15 (`within_class`), the standard deviations of $m_w(\pi)$ and $m(\pi)$ over the draws (`m_w_sd`, `m_sd`), and $\bar m_w-\bar m$ (`centre_shift`), from `instance_moments`.
+- **Method in `main`:** a factory entry `BayCAP-KDEy-h-inst` in `experiments/methods.py` (`INSTANCE_VARIANTS`, `instance_method`), with the configuration and seed of `BayCAP-KDEy-h-real`, in the BayCAP pool; `tables/main.py:MAIN_METHODS` and `plots/shift_profile.py:DEFAULT_METHODS` with `BayCAP-KDEy-h-inst` in place of `BayCAP-KDEy-mlp-real`, and the label `\bcapkdey` moved to it (`tables/common.py`); §II.12 of [[work_plan]] updated.
+- **Tables and plots of E3.4:** `tables/baycap_kdey_inst.py` (per-pair CSV; three LaTeX tables, comparison, widths and tests, since the comparison table of the Representation does not fit one page, as in E3.2 and E3.3), reusing the paired bootstrap of `tables/pushforward.py` and the bag scores of `tables/baycap_kdey_hf.py`; the observed and predicted amplitude ratios are medians over the bags, as in E3.1 and E3.3, with the share of bags where they agree within $10\%$; the CSV also records the largest difference of the stored $\bar\pi$ of `BayCAP-KDEy-h-inst` and `BayCAP-KDEy-h-real` (a check of P19). `plots/baycap_kdey_inst.py`: `coverage` and `width`.
 
 Tests (for E3.4):
 
@@ -906,7 +906,10 @@ Tests (for E3.4):
 - $w$ equals Bayes' rule computed directly on a small kernel mixture, and does not change with `temperature`;
 - the identity $\sigma^2_w=\tilde\sigma^2_g-\text{(within-class term)}$ on synthetic confidences;
 - a `ValueError` with `input_classifier="mlp"` or `c_prior="hierarchical-f"`;
-- two runs with the same seed give the same tables; the factory builds the new method with the configuration of E3.4, and the main tables and the shift profile show it in place of `BayCAP-KDEy-mlp-real`.
+- two runs with the same seed give the same tables, whatever the size of the chunks; the factory builds the new method with the configuration of E3.4, and the main tables and the shift profile show it in place of `BayCAP-KDEy-mlp-real`;
+- the table and plot scripts of E3.4 on synthetic results.
+
+All in `tests/test_baycap_kdey_inst.py`, `tests/test_baycap_kdey_inst_tables.py` and `tests/test_main_tables.py`.
 
 Reproducibility and comparability (for E3.4):
 

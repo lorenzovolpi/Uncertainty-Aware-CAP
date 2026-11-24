@@ -19,7 +19,7 @@ from sklearn.neural_network import MLPClassifier as MLP
 from uncawe.experiments.metrics import gen_acc_measure
 from uncawe.methods.ac import AC
 from uncawe.methods.baycap import BayCAP
-from uncawe.methods.baycap_kdey import CAL, BayCAPKDEy
+from uncawe.methods.baycap_kdey import CAL, INSTANCE, BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
 from uncawe.methods.bayes_kdey import LOO
 from uncawe.methods.sqs_b import SQSB
@@ -71,6 +71,8 @@ METHOD_CLASS = {
     "BayesCAP-Hfn-real": BayCAP,
     "BayCAP-KDEy-h": BayCAPKDEy,
     "BayCAP-KDEy-h-real": BayCAPKDEy,
+    # E3.4 (card WP-31), see INSTANCE_VARIANTS below
+    "BayCAP-KDEy-h-inst": BayCAPKDEy,
     "BayCAP-KDEy-mlp": BayCAPKDEy,
     "BayCAP-KDEy-mlp-real": BayCAPKDEy,
     "BayCAP-EMQ-h": BayCAPMAPLS,
@@ -112,6 +114,11 @@ FIXED_C_VARIANTS = {
     for source in ("h", "mlp")
     for suffix, estimand in (("", "population"), ("-real", "realised"))
 }
+# the method of E3.4 of docs/ext3_posterior_propagation.md (card WP-31, §T.15): BayCAP-KDEy-h-real with the per-instance
+# pushforward (methods/baycap_kdey.py:BayCAPKDEy, estimand="realised-instance"), everything else, seeds included, as
+# the stored method, so that the two have the same prevalence draws; name -> stored method. The BayCAP-KDEy method of
+# the project since 2026-11-24 (user's decision), in the main tables in place of BayCAP-KDEy-mlp-real
+INSTANCE_VARIANTS = {"BayCAP-KDEy-h-inst": "BayCAP-KDEy-h-real"}
 # input classifier of the methods of E3.2 (methods/baycap_kdey.py:BayCAPKDEy with c_prior="hierarchical-f"): BayesKDEy
 # with a random C, the Hf prior with centred shares and the kernel of E3.1; realised pushforward only; NUTS settings and
 # default seed of the BayCAP methods
@@ -159,6 +166,7 @@ AC_METHOD = "AC"
 BAYES_POOL_METHODS = (
     frozenset(BAYCAP_VARIANTS)
     | frozenset(FIXED_C_VARIANTS)
+    | frozenset(INSTANCE_VARIANTS)
     | frozenset(KDEY_HF_VARIANTS)
     | frozenset({SQS_B})
     | frozenset(TEMPERED_VARIANTS)
@@ -204,6 +212,7 @@ def fixed_c_method(
     prior="uniform",
     temperature: float | str = 1.0,
     bandwidth=KDEY_SETTINGS["bandwidth"],
+    estimand: str | None = None,
     **kdey_options,
 ) -> BayCAPKDEy | BayCAPMAPLS:
     """The method ``name`` of E3.1 (``FIXED_C_VARIANTS``), with the NUTS settings and default seed of BayCAP; ``prior``
@@ -211,8 +220,10 @@ def fixed_c_method(
     it), ``temperature`` the posterior temperature ($1$ in E3.1 and E5.1; the other values are those of E5.2; ``"cal"``
     in E7.2b), and
     ``bandwidth`` that of BayesKDEy ($0.1$; ``"loo"`` in E7.1, ``"cal"`` in E7.2); ``kdey_options`` are further
-    arguments of ``BayCAPKDEy`` (e.g. ``cal_nuts_check``)."""
-    quantifier, source, estimand = FIXED_C_VARIANTS[name]
+    arguments of ``BayCAPKDEy`` (e.g. ``cal_nuts_check``); ``estimand``, if given, replaces that of ``name``
+    (``"realised-instance"`` in E3.4)."""
+    quantifier, source, stored_estimand = FIXED_C_VARIANTS[name]
+    estimand = stored_estimand if estimand is None else estimand
     common = {
         "input_classifier": source,
         "estimand": estimand,
@@ -226,6 +237,12 @@ def fixed_c_method(
     if kdey_options:
         raise ValueError(f"{name} takes no option of BayCAPKDEy; found {sorted(kdey_options)}")
     return BayCAPMAPLS(acc, **common)
+
+
+def instance_method(acc, name: str) -> BayCAPKDEy:
+    """The method ``name`` of E3.4 (``INSTANCE_VARIANTS``): its stored method of E3.1 with the per-instance
+    pushforward (``estimand="realised-instance"``), everything else as the stored method."""
+    return fixed_c_method(acc, INSTANCE_VARIANTS[name], estimand=INSTANCE)
 
 
 def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"], prior="uniform", sample_size: int = SAMPLE_SIZE) -> SQSB:
@@ -323,6 +340,9 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
         yield name, baycap_method(acc, name)
     for name in FIXED_C_VARIANTS:
         yield name, fixed_c_method(acc, name)
+        # the method of E3.4 right after its stored method, in the order of METHOD_CLASS
+        for variant in (v for v, base in INSTANCE_VARIANTS.items() if base == name):
+            yield variant, instance_method(acc, variant)
     for name, source in KDEY_HF_VARIANTS.items():
         yield (
             name,

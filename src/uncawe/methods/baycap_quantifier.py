@@ -56,14 +56,27 @@ def accuracy_moments(prevalences: np.ndarray, rates: np.ndarray, pred_counts: np
     prevalences = np.asarray(prevalences, dtype=float)
     rates = np.asarray(rates, dtype=float)
     pred_counts = np.asarray(pred_counts, dtype=float)
-    n_classes = rates.shape[0]
     accuracies = prevalences @ np.diag(rates)
+    precision = class_precisions(prevalences, rates)
+    sigma_g2 = (precision * (1 - precision)) @ pred_counts / pred_counts.sum() ** 2
+    return float(np.std(accuracies)), float(np.sqrt(np.mean(sigma_g2)))
+
+
+def class_precisions(prevalences: np.ndarray, rates: np.ndarray) -> np.ndarray:
+    r"""The precisions $\rho_{ii}(\pi^{(r)})=\hat C_{ii}\pi^{(r)}_i/\sum_l\hat C_{il}\pi^{(r)}_l$ of each draw (§T.7),
+    $1/K$ for a predicted class that the draw makes impossible.
+
+    :param prevalences: draws of $\pi$, of shape ``(R, K)``.
+    :param rates: the rate matrix in the ``cap-ml`` layout, row $j$ the column $\hat C_{:j}$ of the paper.
+    :return: ``[r, i]``$=\rho_{ii}(\pi^{(r)})$, shape ``(R, K)``.
+    """
+    prevalences = np.asarray(prevalences, dtype=float)
+    rates = np.asarray(rates, dtype=float)
+    n_classes = rates.shape[0]
     # predicted[r, i] = sum_j pi_j C_ij, the share of the population predicted as class i under draw r
     predicted = prevalences @ rates
     correct = prevalences * np.diag(rates)
-    precision = np.divide(correct, predicted, out=np.full_like(correct, 1.0 / n_classes), where=predicted > 0)
-    sigma_g2 = (precision * (1 - precision)) @ pred_counts / pred_counts.sum() ** 2
-    return float(np.std(accuracies)), float(np.sqrt(np.mean(sigma_g2)))
+    return np.divide(correct, predicted, out=np.full_like(correct, 1.0 / n_classes), where=predicted > 0)
 
 
 class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
@@ -97,6 +110,9 @@ class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
     :param random_state: seed of NUTS, of the MLP and of the multinomial draws; ``qp.environ["_R_SEED"]`` if ``None``.
     """
 
+    # the estimands that the class accepts; a subclass may add its own (BayCAPKDEy: "realised-instance", E3.4)
+    estimands: tuple[str, ...] = ESTIMANDS
+
     def __init__(
         self,
         acc_fn: Callable,
@@ -110,8 +126,8 @@ class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
     ) -> None:
         if input_classifier not in INPUT_CLASSIFIERS:
             raise ValueError(f"input_classifier must be one of {INPUT_CLASSIFIERS}; found {input_classifier!r}")
-        if estimand not in ESTIMANDS:
-            raise ValueError(f"estimand must be one of {ESTIMANDS}; found {estimand!r}")
+        if estimand not in self.estimands:
+            raise ValueError(f"estimand must be one of {self.estimands}; found {estimand!r}")
         if isinstance(prior, str) and prior != "uniform":
             raise ValueError(f"prior must be 'uniform', a positive scalar or a vector; found {prior!r}")
         if not temperature > 0:
@@ -216,6 +232,11 @@ class QuantifierBayCAP(CAPContingencyTable, CTCAPWithConfidence):
             "val_ece": self.val_ece_,
         }
 
+        return self._pushforward(prevalences, posteriors, pred_counts)
+
+    def _pushforward(self, prevalences: np.ndarray, posteriors: np.ndarray, pred_counts: np.ndarray) -> np.ndarray:
+        r"""Turn the draws of $\pi$ into tables through $\hat C$, with the estimand of the method (``"population"`` or
+        ``"realised"``); a subclass with an estimand of its own overrides it."""
         cts = prevalences[:, :, None] * self.rate_matrix_[None, :, :]
         if self.estimand == "realised":
             cts = realised_tables(cts, pred_counts, np.random.default_rng(self.random_state))
@@ -262,5 +283,6 @@ __all__ = [
     "PREV",
     "QuantifierBayCAP",
     "accuracy_moments",
+    "class_precisions",
     "top_label_ece",
 ]

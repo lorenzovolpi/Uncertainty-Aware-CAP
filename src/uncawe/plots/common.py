@@ -28,6 +28,8 @@ METHOD_COLORS = {
     # E3.1: one hue per cell, dark for the population and light for the realised pushforward
     "BayCAP-KDEy-h": "#1F77B4",
     "BayCAP-KDEy-h-real": "#AEC7E8",
+    # E3.4: the per-instance pushforward with the input classifier h (card WP-31)
+    "BayCAP-KDEy-h-inst": "#006D2C",
     "BayCAP-KDEy-mlp": "#2CA02C",
     "BayCAP-KDEy-mlp-real": "#98DF8A",
     "BayCAP-EMQ-h": "#D62728",
@@ -79,8 +81,10 @@ METHOD_PLOT_LABELS = {
     "BayesCAP-Hfn-real": "BayCAP-Hfn-real",
     "BayCAP-KDEy-h": "BayCAP-KDEy-h",
     "BayCAP-KDEy-h-real": "BayCAP-KDEy-h-real",
+    # E3.4 (card WP-31): the BayCAP-KDEy of the project since 2026-11-24; before, BayCAP-KDEy was BayCAP-KDEy-mlp-real
+    "BayCAP-KDEy-h-inst": "BayCAP-KDEy",
     "BayCAP-KDEy-mlp": "BayCAP-KDEy-mlp",
-    "BayCAP-KDEy-mlp-real": "BayCAP-KDEy",
+    "BayCAP-KDEy-mlp-real": "BayCAP-KDEy-mlp-real",
     "BayCAP-EMQ-h": "BayCAP-EMQ-h",
     "BayCAP-EMQ-h-real": "BayCAP-EMQ-h-real",
     "BayCAP-EMQ-mlp": "BayCAP-EMQ-mlp",

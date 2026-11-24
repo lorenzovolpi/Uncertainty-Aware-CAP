@@ -73,7 +73,9 @@ SHORT_LABELS = {
     "PQ": "SQS-S",
     "BayesCAP-real": "\\bcap{}",
     "BayesCAP-Hf-real": "Hf",
-    "BayCAP-KDEy-mlp-real": "KDEy",
+    "BayCAP-KDEy-mlp-real": "KDEy mlp",
+    # since WP-31 the BayCAP-KDEy of MAIN_METHODS (E3.4)
+    "BayCAP-KDEy-h-inst": "KDEy",
 }
 PART_LABELS = {"e1": "$e_1$", "e2": "$e_2$", "e3": "$e_3$", "total": "$\\hat A-A$"}
 CELL_LABELS = {
