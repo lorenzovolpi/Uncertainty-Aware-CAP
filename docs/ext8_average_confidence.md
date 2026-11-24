@@ -2,9 +2,9 @@
 
 ## Claim
 
-This extension adds baselines to the project, against which the methods under study are read. It holds two of them (scope widened by the user's decision of 2026-11-23): Average Confidence with a Poisson-binomial interval (E8.1), the simplest uncertainty-aware CAP method, and the rate matrix of $h$ measured on $V$ rescaled by the prevalences of a point quantifier (E8.2), the simplest CAP method built on quantification, with no uncertainty.
+This extension adds baselines to the project, against which the methods under study are read. It holds two of them (scope widened by the user's decision of 2026-11-23): Average Confidence with a Poisson-binomial interval (E8.1, with a label-shift calibrator in E8.3), the simplest uncertainty-aware CAP method, and the rate matrix of $h$ measured on $V$ rescaled by the prevalences of a point quantifier (E8.2), the simplest CAP method built on quantification, with no uncertainty.
 
-**Average Confidence.** Average Confidence (AC) estimates the accuracy of a classifier $h$ on an unlabelled bag as the mean of its confidences, the largest posterior probability of each instance. Kivimäki et al. ([JAIR 2025](papers/Kivimäki%20et%20al.%20-%202025%20-%20Confidence-based%20Estimators%20for%20Predictive%20Performance%20in%20Model%20Monitoring.pdf)) show that, if the confidences are calibrated on the target distribution, AC is unbiased and consistent, and that the number of correct predictions follows a Poisson-binomial distribution, from which they read a central confidence interval for the accuracy of the bag. AC is therefore the simplest uncertainty-aware CAP method: one mean and one interval, both in closed form. This extension adds it to the project as a baseline (user's decision of 2026-11-20), with the confidences recalibrated per bag by LasCal, a calibration method designed for label shift, as `L-CBPE` already does on the binary datasets. AC works for any number of classes, so it extends that baseline to all the datasets of `main`. It is a baseline, not a method under study: the interval represents only the luck of the bag given the calibrated confidences (§T.6), and this is accepted (user's decision of 2026-11-20).
+**Average Confidence.** Average Confidence (AC) estimates the accuracy of a classifier $h$ on an unlabelled bag as the mean of its confidences, the largest posterior probability of each instance. Kivimäki et al. ([JAIR 2025](papers/Kivimäki%20et%20al.%20-%202025%20-%20Confidence-based%20Estimators%20for%20Predictive%20Performance%20in%20Model%20Monitoring.pdf)) show that, if the confidences are calibrated on the target distribution, AC is unbiased and consistent, and that the number of correct predictions follows a Poisson-binomial distribution, from which they read a central confidence interval for the accuracy of the bag. AC is therefore the simplest uncertainty-aware CAP method: one mean and one interval, both in closed form. This extension adds it to the project as a baseline (user's decision of 2026-11-20), with the confidences recalibrated per bag by LasCal, a calibration method designed for label shift, as `L-CBPE` already does on the binary datasets. AC works for any number of classes, so it extends that baseline to all the datasets of `main`. It is a baseline, not a method under study: the interval represents only the luck of the bag given the calibrated confidences (§T.6), and this is accepted (user's decision of 2026-11-20). LasCal only rescales the logits by a temperature, which cannot represent the exact correction of the posteriors under PPS (§T.4); E8.3 replaces it with label-shift binning, a histogram calibration on $V$ whose frequencies are reweighted by the prevalences estimated on the bag (§T.9), in `AC` and in `L-CBPE` (user's decision of 2026-11-24).
 
 **The rate matrix rescaled by a quantifier.** Under prior probability shift the rates $C_{ij}=P(\hat Y=\omega_i\mid Y=\omega_j)$ of $h$ do not change, so the contingency table of the target is $T=C\operatorname{diag}(\pi^Q)$ and only $\pi^Q$ is unknown. Measuring $\hat C$ on $V$ and replacing $\pi^Q$ by the estimate $\hat\pi^Q$ of a quantifier gives a point estimate of the table, $\hat C\operatorname{diag}(\hat\pi^Q)$, and from it of every metric (§T.7). This is the core that BayCAP and the fixed-$\hat C$ methods of [[ext3_posterior_propagation|Extension 3]] make uncertainty-aware, so its errors are the starting point of the research: how far a CAP estimate built from quantification goes with four standard quantifiers of QuaPy (KDEy, EMQ, ACC, PACC) in their base form, and how its error splits into the error of $\hat\pi^Q$ and the error of $\hat C$ (§T.8). It is a point-estimate baseline, not an uncertainty-aware method (user's decision of 2026-11-23).
 
@@ -17,6 +17,8 @@ This extension adds baselines to the project, against which the methods under st
 | E8.1 (`AC` against `L-CBPE` in a separate table, `tables/average_confidence.py`) | [implemented], card WP-29 (done), run (no pilot, user's decision) and analysed (below) |
 | `cap-ml`'s `ContTableTransferCAP`: the table of $h$ on $V$ rescaled by the prevalences of a quantifier | in `cap-ml`, not used by `uncawe` |
 | E8.2 (`CTT-KDEy`, `CTT-EMQ`, `CTT-ACC`, `CTT-PACC` and the reference `CTT-oracle`, point estimates, in an experiment module of their own) | [proposed] (user's decision of 2026-11-23); code on branch `wp-30/ctt` (`experiments/ctt.py`, `tables/ctt.py`, `plots/ctt.py`), card WP-30 (In progress), not run |
+| `cap-ml`'s `AC` (moved from `methods/ac.py`, with a calibrator argument), `LasCalPerBag`, `LSBinning`, `CBPE(calib_method="lsb")` | in `cap-ml` `eefa550` (version 0.1.1.15), not yet pinned by `uncawe` |
+| E8.3 (`AC-LSB` and `L-CBPE-LSB` against the stored `AC` and `L-CBPE`, in `main`) | [proposed] (user's decision of 2026-11-24), card WP-32 (Scheduled), no code in `uncawe` |
 
 # Experiments
 
@@ -71,10 +73,30 @@ This extension adds baselines to the project, against which the methods under st
   - **Plot:** per quantifier, the mean AE of vanilla accuracy against the mean quantification error, one point per pair, binary and multiclass pairs with different markers, one panel per quantifier, with the mean AE of `CTT-oracle` on the same pair as a second marker joined to the first, so that the vertical gap shows what quantification adds.
 - **Analysis.** Not run.
 
+## E8.3: AC and CBPE with label-shift binning in place of LasCal
+
+**Why.** §T.4 shows that, for posteriors calibrated on the source, the exact correction under PPS reweights each class by $w_k=\pi^Q_k/\pi^P_k$, and that a temperature, the only thing LasCal changes, cannot represent it (a new hypothesis). In E8.1 the AE of `AC` is large (mean $0.108$ over the $75$ pairs) and its coverage far below its level, which §T.6 attributes to the error of the calibrated confidences. Label-shift binning (Podkopaev & Ramdas, UAI 2021) does what §T.4 asks for: it calibrates on $V$ with a histogram of the posteriors and reweights the frequencies of each bin by $\hat w$ estimated on the bag (§T.9). Replacing LasCal by it in `AC` and `L-CBPE`, with everything else fixed, measures how much of the error of the confidence-based baselines comes from the calibration under PPS. This experiment replaces the candidate E8.c2 (promoted by the user's decision of 2026-11-24), with label-shift binning as its calibrator and no oracle reference.
+
+- **Design.**
+  - **Inputs:** the protocol of `main`: the $75$ pairs (the $15$ datasets × the five classifiers of `main`, after FIX-8), the posteriors of $h$ stored by `main` and its predictions $\hat y=\arg\max_kp(\omega_k\mid x)$, $V$, $100$ target bags of size $1000$ per pair with the seeds of `main`; the stored `main` results of `AC` ($75$ pairs, E8.1) and `L-CBPE` ($25$ binary pairs); the results of the new methods `AC-LSB` and `L-CBPE-LSB`, with their own run.
+  - **Varied:** the calibrator: LasCal (stored `AC` and `L-CBPE`) against label-shift binning (`AC-LSB` on the $75$ pairs, `L-CBPE-LSB` on the $25$ binary pairs, §T.9). *Held fixed:* the confidence of an instance, the calibrated posterior of the class predicted by $h$ (§T.9; for LasCal it is the largest calibrated posterior, §T.5); the interval read from the Poisson-binomial distribution (central for `AC` and `AC-LSB`, highest-density for `L-CBPE` and `L-CBPE-LSB`, §T.3); the level $1-\alpha=0.95$; the configuration of label-shift binning (`cap-ml`'s `LSBinning` at its defaults: BBSE-soft, QuaPy's `BBSEsoft` at default arguments on the posteriors of $h$; the number of bins selected per pair on the grid $\{5,10,15,20,30,40,50,75,100,150,200,300\}$ by the leave-one-out Brier score on $V$).
+  - **Measures:**
+    - for the four methods, on vanilla accuracy: AE, coverage, amplitude and Winkler score at $\alpha=0.05$, per bag, per pair and averaged over the pairs (over the $25$ binary pairs for the four methods, over the $75$ pairs for `AC` and `AC-LSB`); macro-F1 and macro-K are not estimated (NaN);
+    - per pair, the paired differences `AC-LSB` minus `AC` and `L-CBPE-LSB` minus `L-CBPE` of the four scores;
+    - per bag, against the shift of the bag $\lVert\bar\pi-\pi^V\rVert_1$ ($\bar\pi$ the prevalence of the bag, $\pi^V$ that of $V$): the signed error $\hat A-A$ of `AC` and of `AC-LSB`, for the hypothesis of §T.4 that the residual bias of LasCal grows with the shift;
+    - for `AC-LSB`, per pair: the selected number of bins and the effective number per class (tied posteriors merge edges, §T.9), whether the grid fell back to its smallest value, and, per bag, the number of instances whose class-wise values were all $0$ (made uniform, §T.9), the fraction of instances whose calibrated argmax differs from the prediction of $h$, and the quantification error of BBSE-soft $\lVert\hat\pi^Q-\bar\pi\rVert_1$;
+    - check: on the binary pairs, the largest absolute difference of the point estimates of `AC-LSB` and `L-CBPE-LSB` (expected $0$ up to rounding, §T.9).
+  - **Estimand:** for the four methods, the realised accuracy of each target bag, the trace of its realised table, scored against the realised table (`true_cts`), as every method of `main`: the Poisson-binomial distribution is conditional on the confidences of the bag (§T.2). The quantification error of BBSE-soft is scored against the prevalence of the bag, the column sums of the realised table.
+  - **Cost:** one run of `main` for `AC-LSB` and `L-CBPE-LSB`: per pair, one fit of label-shift binning on $V$ ($12$ bin counts, each with $K$ binnings of $V$, and one BBSE-soft fit, no classifier to train); per bag, one BBSE-soft estimate, $K$ bin lookups and one Poisson-binomial distribution of size $1001$ by FFT; no NUTS, no LasCal. `AC` and `L-CBPE` are not rerun. Pilot to be decided with the card.
+- **Representation.**
+  - **Comparison table:** one row per pair (dataset × classifier) and one column group per score (AE, coverage, amplitude, Winkler score), with the columns `AC`, `AC-LSB`, `L-CBPE`, `L-CBPE-LSB` (the last two empty on the multiclass pairs); summary rows, the means over the $25$ binary pairs (four methods) and over the $75$ pairs (`AC` and `AC-LSB`). Method names in tables and plots: `AC`, `AC-LSB`, `L-CBPE`, `L-CBPE-LSB`.
+  - **Diagnostics table:** per pair, the selected number of bins, the range of the effective numbers over the classes, the grid fallback, the mean over the bags of the degenerate instances and of the fraction with a changed argmax, and the mean quantification error of BBSE-soft; the check of `AC-LSB` against `L-CBPE-LSB` on the binary pairs.
+  - **Plot:** the signed error of vanilla accuracy against the shift of the bag, one point per bag, one panel per method (`AC`, `AC-LSB`), binary and multiclass pairs with different colours.
+- **Analysis.** Not run.
+
 # Candidate experiments
 
 - **E8.c1, AC with isotonic calibration on $V$ (AC$_c$).** *Why:* it is the setting of the experiments of the AC paper (isotonic regression fitted on held-out labelled data, §5.2.1), as opposed to its method, which leaves the calibrator open; with no label-shift correction it should show the bias of §T.4. *Needs:* an isotonic map of the correctness $\mathbb 1[\hat y=y]$ on the confidence, fitted on $V$ (our adaptation to $K>2$), and one run of `main`.
-- **E8.c2, AC with the confidences corrected by the prevalences.** *Why:* §T.4 shows that, for posteriors calibrated on the source, the exact correction under PPS is a reweighting by $\pi^Q_k/\pi^P_k$, which a temperature cannot represent; with the true $\pi^Q$ it is a reference (it uses target labels), with an estimate $\hat\pi^Q$ (e.g. EMQ) a method. *Needs:* posteriors calibrated on $V$, the reweighting of §T.4 and one run of `main` per variant.
 - **E8.c3, AC against the methods of the main tables.** *Why:* a baseline is useful mainly against the paper's methods, and E8.1 compares `AC` only with `L-CBPE`. *Needs:* the stored results of `MAIN_METHODS` and a table that adds `AC`, no new run beyond E8.1.
 
 # Theory
@@ -172,7 +194,7 @@ The bias is zero when $\pi^Q=\pi^P$ and grows linearly with the shift. *Intuitio
 
 $$P_Q(Y=\omega_k\mid x)=\frac{w_k\,p(\omega_k\mid x)}{\sum_lw_l\,p(\omega_l\mid x)},\qquad w_k=\frac{\pi^Q_k}{\pi^P_k}.$$
 
-The confidence calibrated on $Q$ is then this posterior evaluated at the predicted class, $P_Q(Y=h(x)\mid x)$; it needs $\pi^Q$, which is unknown (candidate E8.c2).
+The confidence calibrated on $Q$ is then this posterior evaluated at the predicted class, $P_Q(Y=h(x)\mid x)$; it needs $\pi^Q$, which is unknown. Label-shift binning (E8.3, §T.9) applies this correction to a histogram calibration fitted on $V$, with $\pi^Q$ estimated on the bag.
 
 **A temperature cannot represent it (new hypothesis).** For $K=2$ write the posterior through its log-odds $z(x)=\log\frac{p(\omega_1\mid x)}{p(\omega_0\mid x)}$. Taking the log of the ratio of the two corrected posteriors, the correction above *adds a constant*: $z_Q(x)=z(x)+\log\frac{w_1}{w_0}$. A temperature $\theta$ *divides* the log-odds: $z_\theta(x)=z(x)/\theta$. The first shifts every instance towards the class that became more frequent; the second only makes all posteriors sharper or flatter, symmetrically around $\frac12$, and keeps every prediction. No single $\theta$ reproduces a shift of the log-odds on all instances, so a temperature-based recalibration such as LasCal (§T.5) can reduce the bias of §T.4 on average over the bag but not remove it; the residual should grow with $\lvert\pi^Q-\pi^P\rvert$. This is a hypothesis for the analysis of E8.1, not a result.
 
@@ -244,6 +266,52 @@ $$\lvert e_\pi\rvert\le\sum_j\lvert d_j\rvert\,\lvert\hat C_{jj}-m\rvert\le\frac
 
 *Intuition:* moving prevalence from one class to another changes the accuracy only as much as the recalls of the two classes differ. If $h$ has the same recall on every class ($R=0$), the accuracy does not depend on the prevalences and a wrong $\hat\pi^Q$ costs nothing; the more the recalls differ, the more the quantifier matters. *Hypothesis (new, for the analysis of E8.2):* the ranking of the four quantifiers on the AE of vanilla accuracy follows their ranking on the quantification error mostly on the pairs with a large $R$, and on pairs with a small $R$ the AE of the four methods is close to that of `CTT-oracle`. Macro-F1 and macro-K are not linear in the table, so the split applies to vanilla accuracy only.
 
+## T.9 Label-shift binning and the confidence of the predicted class (E8.3)
+
+**Which confidence.** Let $\hat y(x)=h(x)$ be the prediction of $h$ and $\tilde p_k(x)$ any calibrated posteriors. The accuracy of $h$ on $Q$ is the probability that the prediction is correct, $A_Q=P_Q(Y=h(X))=\mathbb E_Q\big[\mathbb 1[Y=h(X)]\big]$. By the law of total expectation, conditioning on $X$,
+
+$$A_Q=\mathbb E_Q\Big[\mathbb E_Q\big[\mathbb 1[Y=h(X)]\,\big|\,X\big]\Big]=\mathbb E_Q\big[P_Q(Y=h(X)\mid X)\big],$$
+
+since the conditional mean of an indicator is a probability. So the confidence that AC averages must estimate $P_Q(Y=h(x)\mid x)$, the probability that **the prediction of $h$** is correct: $s_i=\tilde p_{\hat y_i}(x_i)$. The largest calibrated posterior, $\max_k\tilde p_k(x_i)$, estimates instead the probability that the class $\arg\max_k\tilde p_k(x_i)$ is correct, which is the accuracy of another classifier, the one that predicts with the calibrated posteriors. The two coincide when the calibration keeps the argmax, as a temperature does (§T.5), so `AC` and `L-CBPE` are unchanged; label-shift binning can change the argmax, so `AC-LSB` and `L-CBPE-LSB` take $\tilde p_{\hat y_i}(x_i)$.
+
+**The bins.** Label-shift binning is defined by Podkopaev & Ramdas for $K=2$; for $K>2$ we use a class-wise instantiation (our adaptation, not the paper's method). For each class $\omega_k$, the values $h_k(x)=p(\omega_k\mid x)$ of the instances of $V$ are split into $M$ bins with about the same number of instances each (uniform-mass bins, with edges at the quantiles of the values). For a bin $b$ of class $k$, with $n_b$ instances of $V$ of which $c_{b,j}$ have true class $\omega_j$, the bin stores the vector of frequencies
+
+$$f^{(k)}_{b,j}=\frac{c_{b,j}}{n_b},\qquad j=1,\dots,K.$$
+
+Write $B$ for the event "$h_k(X)$ falls in bin $b$". Among the instances of $V$ in the bin, the fraction of class $\omega_j$ estimates the probability of that class given the bin on the source, $f^{(k)}_{b,j}\approx P_P(Y=\omega_j\mid B)$, by the law of large numbers. This is a histogram calibration: all the instances of a bin get the same calibrated value.
+
+**The reweighting is Bayes' rule.** $B$ depends on $x$ alone, so under PPS its probability given the class does not change: $P_Q(B\mid Y=\omega_j)=P_P(B\mid Y=\omega_j)$. Three steps give the probability of the class given the bin on $Q$:
+
+1. Bayes' rule on $Q$: $P_Q(Y=\omega_j\mid B)=\dfrac{P_Q(B\mid Y=\omega_j)\,\pi^Q_j}{P_Q(B)}$.
+2. PPS, then Bayes' rule on $P$ for $P_P(B\mid Y=\omega_j)=\dfrac{P_P(Y=\omega_j\mid B)\,P_P(B)}{\pi^P_j}$: substituting, $P_Q(Y=\omega_j\mid B)=P_P(Y=\omega_j\mid B)\,\dfrac{\pi^Q_j}{\pi^P_j}\cdot\dfrac{P_P(B)}{P_Q(B)}$.
+3. The last factor does not depend on $j$, and the probabilities of the $K$ classes given $B$ sum to $1$, so it is the normalising constant:
+
+$$P_Q(Y=\omega_j\mid B)=\frac{P_P(Y=\omega_j\mid B)\,w_j}{\sum_lP_P(Y=\omega_l\mid B)\,w_l},\qquad w_j=\frac{\pi^Q_j}{\pi^P_j}.$$
+
+This is the correction of §T.4, now exact for the bin and not only for posteriors calibrated in the full sense. With the frequencies in place of $P_P(Y\mid B)$ and $\hat w$ in place of $w$, the class-wise value of an instance $x$ for class $k$ is the $k$-th component of the reweighted vector of its bin:
+
+$$o_k(x)=\frac{f^{(k)}_{b,k}\,\hat w_k}{\sum_lf^{(k)}_{b,l}\,\hat w_l},\qquad b\text{ the bin of }h_k(x).$$
+
+*Intuition:* if a class became twice as frequent, its share in every bin doubles before the shares are normalised again; a temperature, by contrast, only sharpens or flattens the posteriors and cannot move them towards one class (§T.4).
+
+**Combining the classes.** $o_k(x)$ estimates $P_Q(Y=\omega_k\mid h_k(X)\in b)$, and each class conditions on its own binning, so the $K$ values of an instance need not sum to $1$. They are renormalised, with a small $\epsilon=10^{-12}$ added to each:
+
+$$\tilde p_k(x)=\frac{o_k(x)+\epsilon}{\sum_l\big(o_l(x)+\epsilon\big)}.$$
+
+The renormalisation is a choice of the class-wise instantiation, not a consequence of the model. Without $\epsilon$, an instance whose $K$ bins all have frequency $0$ for their own class would give $0/0$; with it, such an instance gets the uniform posterior $1/K$, and every other instance changes by about $\epsilon$. For $K=2$, $h_1=1-h_0$, so the two binnings are mirror images up to ties, $o_0+o_1\approx1$, and the renormalisation changes little.
+
+**The weights.** $\hat w$ comes from the prevalence $\hat\pi^Q$ estimated on the bag by BBSE-soft (Lipton et al., 2018) on the posteriors of $h$: on $V$ it estimates the matrix of the mean posteriors per true class, $M_{ij}=\mathbb E_P[p(\omega_i\mid X)\mid Y=\omega_j]$; under PPS these do not change, so by the law of total expectation the mean posterior on the bag is $\mu^Q_i=\sum_jM_{ij}\pi^Q_j$, a linear system solved for $\pi^Q$ (QuaPy's least squares on the simplex). Then $\hat w_j=\max(\hat\pi^Q_j,10^{-8})/\pi^V_j$, with $\pi^V$ the prevalence of $V$; the floor keeps every weight positive. Every class must appear in $V$, or $\pi^V_j=0$.
+
+**The number of bins.** Few bins average the class frequencies over very different instances; many bins leave few instances per bin, and so noisy frequencies. $M$ is chosen on a grid by the leave-one-out Brier score on $V$, without reweighting (there is no shift on $V$, $w=1$). The Brier score of a probability vector $q$ for an instance of class $\omega_y$ is $\sum_k(q_k-\mathbb 1[k=y])^2$, the squared distance from the one-hot label. Leaving out instance $i$, of class $\omega_{y_i}$, changes only the frequencies of its own bins: for class $k$, with $b$ its bin,
+
+$$f^{(k,-i)}_{b,k}=\frac{c_{b,k}-\mathbb 1[y_i=k]}{n_b-1},$$
+
+so the criterion has a closed form; the edges are kept fixed (an approximation, since the quantiles of $V$ without $i$ can differ slightly). A bin with $n_b<2$ makes the leave-one-out frequency undefined, so that $M$ gets an infinite score. If every $M$ of the grid does, the smallest one is used, and the fallback is recorded. When the posteriors take few distinct values (kNN, RF), equal quantiles merge, so the effective number of bins of a class can be smaller than $M$. The Brier score is used rather than the log-loss because a bin frequency is often exactly $0$.
+
+**CBPE.** For $K=2$, `cap-ml`'s `CBPE` turns the calibrated posterior $\tilde s$ of the positive class into $\max(\tilde s,1-\tilde s)$, the largest calibrated posterior (§T.5). With label-shift binning the confidence is already that of the predicted class, $\tilde p_{\hat y}$, and a value below $\frac12$ is the probability that the prediction of $h$ is correct; folding it would replace it with the probability that it is wrong. `L-CBPE-LSB` therefore uses $\tilde p_{\hat y}$ without folding, so on binary data it has the confidences, point estimate and Poisson-binomial distribution of `AC-LSB`, and differs from it only in the interval (§T.3).
+
+**What changes and what does not (new hypothesis).** The interval is still the Poisson-binomial interval of §T.3, conditional on the confidences, so it still represents only the luck of the bag (§T.6): the error of $\hat\pi^Q$ estimated on one bag and of the frequencies estimated on $V$ is not represented. *Hypothesis:* label-shift binning reduces the bias of §T.4, so `AC-LSB` has a lower AE than `AC` on the pairs where the shift of the bags is large, and the gap of `AC` grows with the shift while that of `AC-LSB` grows less; its coverage stays far below $0.95$, since its amplitude is bounded as in §T.3.
+
 # Implementation
 
 ## E8.1
@@ -294,6 +362,28 @@ Reproducibility and comparability:
 - E8.2 adds an experiment; `main` and its stored results are unchanged. The bags, $V$ and the posteriors of $h$ are those of `main`, so the AE of E8.2 is comparable bag by bag with the stored methods of `main`.
 - The quantifiers are those of `main` in their classifier and seed (`kdey()`, `pacc()`), so `CTT-KDEy` uses the same KDEy as `O-LEAP` and `QuAcc_NxN`, and `CTT-PACC` the same PACC as the SQS methods; EMQ with an MLP is not used elsewhere in `main` (the EMQ of E3.1, `BayCAP-EMQ-*`, is QuaPy's Bayesian version).
 
+## E8.3
+
+The method code lives in `cap-ml` (user's decision of 2026-11-24), at commit `eefa550` (version 0.1.1.15): the interface `cap.calibration.base.BagCalibrator` (fitted once on $V$, applied to each bag, with per-bag diagnostics); `cap.calibration.LasCalPerBag`, the LasCal of `methods/ac.py` moved unchanged (selected temperature, flagged fallback); `cap.calibration.LSBinning` (§T.9); `cap.models.confidence.AC`, the `AC` of `methods/ac.py` with a `calibrator` argument (default `LasCalPerBag`) and the confidence of the predicted class (`predicted_class_confidences`), with `CentralPoissonInterval`; `CBPE(calib_method="lsb")`, and `CBPE(calib_method="lascal")` through `LasCalPerBag`.
+
+Components in `uncawe`:
+
+- **Pin bump** of `cap-ml` from `93ae246` to `eefa550` (`pyproject.toml`, `uv lock`). Between the two commits `cap-ml` changes only the calibration package, `cap/models/confidence.py` (`AC`, `CentralPoissonInterval`, the two `CBPE` changes), their tests, the README and the version.
+- **`AC` from `cap-ml`:** `experiments/methods.py`, `experiments/main.py` and `tables/main.py` import `AC` and `CentralPoissonInterval` from `cap.models.confidence`; the per-bag columns come from `last_calibration_columns()` (for LasCal still `lascal_temperature` and `lascal_fallback`); `methods/ac.py` is removed and its entry leaves [[work_plan]] §II.12, with the `cap-ml` commit.
+- **`main`:** factory entries `AC-LSB` (`AC(calibrator=LSBinning())`, every dataset) and `L-CBPE-LSB` (`CBPE(acc_name, calib_method="lsb")`, binary datasets, NaN elsewhere, as `L-CBPE`); per bag, the columns of `LSBinning.last_columns()` (`lsb_nbins`, `lsb_nbins_eff`, `lsb_grid_fallback`, `lsb_prevalence`, `lsb_n_degenerate`, `lsb_argmax_changed`); both in `tables/main.py:PMF_INTERVALS` (central and highest-density), outside the main tables, the rank tables and the coverage vs amplitude plot, as `AC` and `L-CBPE`.
+- **Table and plot modules** for the comparison table, the diagnostics table and the plot of E8.3, following [[work_plan]] Part V.
+
+Tests (in `uncawe`; those of the calibrators and of `AC` are in `cap-ml`, `tests/test_ac.py` and `tests/test_ls_binning.py`):
+
+- `cap-ml`'s `AC` with LasCal gives, bit for bit, the probability mass function, temperature, fallback flag and interval of the former `methods/ac.py` on seeded synthetic bags (checked before the removal; 80 bags with $K\in\{2,3,5,10\}$ in a one-off check of 2026-11-24);
+- the factory entries, the per-bag columns stored by `main` for vanilla accuracy only, and the NaN of `L-CBPE-LSB` on multiclass data;
+- the tables on synthetic results.
+
+Reproducibility and comparability:
+
+- With `LasCalPerBag`, `AC` and `L-CBPE` give the same results as before wherever the `lascal` package works; on a failure of the package `L-CBPE` now falls back to the uncalibrated posteriors instead of raising. No stored bag of `AC` fell back (E8.1), and the stored `L-CBPE` results have no error, so the stored results of both stay valid and are not rerun.
+- `AC-LSB` and `L-CBPE-LSB` add methods to `main`; the bags, $V$ and the posteriors of $h$ are those of `main`, so they are comparable bag by bag with the stored `AC` and `L-CBPE`. Label-shift binning is deterministic (no random component), so the methods take no `random_state`.
+
 # Appendix
 
 ## A. Toy simulations
@@ -311,5 +401,6 @@ None.
 
 - extensions of CBPE: a multiclass CBPE, and precision, recall and $F_1$ from its random confusion matrix (user's decision of 2026-11-20);
 - the highest-density interval for AC (the central interval of the AC paper is used, user's decision of 2026-11-20);
+- in E8.3, a reference with the true prevalence of the bag in place of $\hat\pi^Q$ in label-shift binning (user's decision of 2026-11-24);
 - the other confidence-based estimators compared in the AC paper (DoC-Feat, ATC);
 - for now, in E8.2: other quantifiers, the posteriors of $h$ as the input of the quantifiers, the no-adaptation reference $\hat\pi^Q=\pi^V$ and comparisons with the methods of `main` or of E3.1 other than the point estimates of BayCAP-KDEy and BayCAP-Hf in the AE tables (user's decisions of 2026-11-23).
