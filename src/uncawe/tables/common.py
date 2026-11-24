@@ -27,6 +27,8 @@ METHOD_LATEX_LABELS = {
     "BayCAP-KDEy-h-real": "\\bcap{}-KDEy-h-real",
     # E3.4 (card WP-31): the BayCAP-KDEy of the project since 2026-11-24; before, \bcapkdey was BayCAP-KDEy-mlp-real
     "BayCAP-KDEy-h-inst": "\\bcapkdey",
+    # E3.5 (card WP-33): BayCAP-KDEy with the bandwidth selected for calibrated class probabilities
+    "BayCAP-KDEy-h-inst-cb": "\\bcapkdey{}-cb",
     "BayCAP-KDEy-mlp": "\\bcap{}-KDEy-mlp",
     "BayCAP-KDEy-mlp-real": "\\bcap{}-KDEy-mlp-real",
     "BayCAP-EMQ-h": "\\bcap{}-EMQ-h",

@@ -30,6 +30,8 @@ METHOD_COLORS = {
     "BayCAP-KDEy-h-real": "#AEC7E8",
     # E3.4: the per-instance pushforward with the input classifier h (card WP-31)
     "BayCAP-KDEy-h-inst": "#006D2C",
+    # E3.5: the bandwidth selected for calibrated class probabilities (card WP-33)
+    "BayCAP-KDEy-h-inst-cb": "#41AB5D",
     "BayCAP-KDEy-mlp": "#2CA02C",
     "BayCAP-KDEy-mlp-real": "#98DF8A",
     "BayCAP-EMQ-h": "#D62728",
@@ -83,6 +85,8 @@ METHOD_PLOT_LABELS = {
     "BayCAP-KDEy-h-real": "BayCAP-KDEy-h-real",
     # E3.4 (card WP-31): the BayCAP-KDEy of the project since 2026-11-24; before, BayCAP-KDEy was BayCAP-KDEy-mlp-real
     "BayCAP-KDEy-h-inst": "BayCAP-KDEy",
+    # E3.5 (card WP-33)
+    "BayCAP-KDEy-h-inst-cb": "BayCAP-KDEy-cb",
     "BayCAP-KDEy-mlp": "BayCAP-KDEy-mlp",
     "BayCAP-KDEy-mlp-real": "BayCAP-KDEy-mlp-real",
     "BayCAP-EMQ-h": "BayCAP-EMQ-h",

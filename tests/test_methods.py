@@ -137,6 +137,7 @@ class BayCAPFactoryTest(unittest.TestCase):
             | set(E31_METHODS)
             | set(E32_METHODS)
             | {"BayCAP-KDEy-h-inst"}
+            | {"BayCAP-KDEy-h-inst-cb"}
             | {"SQS-B"}
             | set(TEMPERED_VARIANTS)
             | set(LOO_VARIANTS)

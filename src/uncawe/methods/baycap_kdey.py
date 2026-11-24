@@ -36,6 +36,13 @@ $z_n$ the outputs of $h$ and $\hat f_j$ the class densities of BayesKDEy, and th
 $h$, drawn class) (:func:`instance_tables`); the weights are untempered whatever ``temperature``. The prevalence draws
 are those of ``"population"`` and ``"realised"`` for the same seeds.
 
+Work-plan card WP-33 (E3.5, §T.16) adds ``bandwidth="logloss"``, with ``c_prior="fixed"`` and ``input_classifier="h"``
+only: one bandwidth $b^\star$ shared by the classes, selected inside ``fit`` from $V$ alone by the class-balanced
+leave-one-out log-loss of the kernel class probabilities of the validation instances
+(``methods/bayes_kdey.py:class_logloss_curve``), and used both in the likelihood of the bag and, with
+``"realised-instance"``, in the per-instance weights. The selection draws no random number, so a selected $0.1$ gives the
+draws of ``bandwidth=0.1``.
+
 ``c_prior="hierarchical-f"`` gives the methods ``BayCAP-KDEy-Hf-<s>-real`` of E3.2 (work-plan card WP-13, §T.10–§T.13):
 each class of $V$ is split into cells by the prediction of $h$, the class density of BayesKDEy becomes the mixture
 $f_j=\sum_kC_{kj}\hat\phi_{kj}$ of the kernel densities of its cells, and $(\pi,C)$ are sampled jointly by NUTS, with the
@@ -80,6 +87,8 @@ from uncawe.methods.baycap import (
 )
 from uncawe.methods.baycap_quantifier import QuantifierBayCAP, _validate_prevalence_samples, class_precisions
 from uncawe.methods.bayes_kdey import (
+    LOGLOSS,
+    LOGLOSS_SUMMARIES,
     LOO,
     LOO_DEFAULT_BANDWIDTH,
     LOO_GRID,
@@ -88,6 +97,7 @@ from uncawe.methods.bayes_kdey import (
     bag_log_likelihoods,
     em_prevalences,
     kdey_model,
+    select_from_curve,
     slsqp_prevalences,
 )
 from uncawe.methods.bayesian_quantifier import PREV, _validate_outputs
@@ -243,18 +253,6 @@ def accuracy_criterion(estimates: np.ndarray, prevalences: np.ndarray, recalls: 
     """
     errors = (np.asarray(estimates, dtype=float) - np.asarray(prevalences, dtype=float)) @ np.asarray(recalls, float)
     return np.abs(errors).mean(axis=-1)
-
-
-def select_from_curve(grid, curve: np.ndarray, reference: float = CAL_REFERENCE) -> int:
-    r"""The index of the smallest value of ``curve`` over ``grid``; among values equal up to rounding (relative
-    difference $10^{-9}$), the bandwidth closest to ``reference`` on the $\log_{10}$ scale, and the smaller of two at the
-    same distance."""
-    grid, curve = np.asarray(grid, dtype=float), np.asarray(curve, dtype=float)
-    if not np.isfinite(curve).any():
-        raise ValueError("the criterion is not finite at any bandwidth")
-    best = np.nanmin(curve)
-    ties = np.flatnonzero(np.isclose(curve, best, rtol=1e-9, atol=0.0))
-    return int(ties[np.argmin(np.abs(np.log10(grid[ties]) - np.log10(reference)))])
 
 
 def interval_scores(accs: np.ndarray, true_acc: float, confidence: float = CAL_TAU_CONFIDENCE) -> tuple[float, float]:
@@ -442,6 +440,10 @@ class BayCAPKDEy(QuantifierBayCAP):
       full $V$ at $(b_{\text{cal}},\tau_{\text{cal}})$ exactly as with those numeric settings; the selection of
       $b_{\text{cal}}$ is made at $\tau=1$ and is the same as without the temperature step. The per-bag summaries add
       ``CAL_TAU_SUMMARIES``.
+    - ``bandwidth="logloss"`` (E3.5, §T.16, ``c_prior="fixed"`` and ``input_classifier="h"`` only, Gaussian kernel and
+      no shrinkage): the quantifier selects $b^\star$ in its fit by the class-balanced leave-one-out log-loss of the
+      kernel class probabilities on $V$ and fits its class densities at $b^\star$
+      (:class:`uncawe.methods.bayes_kdey.BayesKDEy`); the per-bag summaries add ``LOGLOSS_SUMMARIES``.
     - ``estimand="realised-instance"`` (E3.4, §T.15, ``c_prior="fixed"`` and ``input_classifier="h"`` only, not with
       ``temperature="cal"``): the draws of $\pi$ are those of the other estimands; each becomes a realised table by
       drawing the true class of each instance of the bag from its posterior class probabilities under the draw
@@ -466,9 +468,11 @@ class BayCAPKDEy(QuantifierBayCAP):
     :param c_prior: ``"fixed"`` or ``"hierarchical-f"``.
     :param kernel: kernel of BayesKDEy (``"gaussian"``, ``"aitchison"`` or ``"ilr"``).
     :param bandwidth: bandwidth of BayesKDEy, a positive number, ``"scott"``, ``"silverman"``, ``"loo"`` (per-class
-        bandwidths selected by leave-one-out likelihood) or ``"cal"`` (one bandwidth selected on calibration bags);
-        ``"loo"`` and ``"cal"`` need the Gaussian kernel, no shrinkage and ``c_prior="fixed"``.
-    :param bandwidth_grid: the grid of ``"loo"`` and ``"cal"``; ``bayes_kdey.LOO_GRID`` if ``None``.
+        bandwidths selected by leave-one-out likelihood), ``"cal"`` (one bandwidth selected on calibration bags) or
+        ``"logloss"`` (one bandwidth selected by the leave-one-out log-loss of the class probabilities, with
+        ``input_classifier="h"``); ``"loo"``, ``"cal"`` and ``"logloss"`` need the Gaussian kernel, no shrinkage and
+        ``c_prior="fixed"``.
+    :param bandwidth_grid: the grid of ``"loo"``, ``"cal"`` and ``"logloss"``; ``bayes_kdey.LOO_GRID`` if ``None``.
     :param shrinkage: shrinkage of BayesKDEy, in $[0,1)$, $0$ with the Gaussian kernel.
     :param num_warmup: number of NUTS warm-up iterations.
     :param num_samples: number of posterior draws retained after warm-up.
@@ -497,7 +501,7 @@ class BayCAPKDEy(QuantifierBayCAP):
         estimand: Literal["population", "realised", "realised-instance"] = "population",
         c_prior: Literal["fixed", "hierarchical-f"] = "fixed",
         kernel: Literal["gaussian", "aitchison", "ilr"] = "gaussian",
-        bandwidth: float | Literal["scott", "silverman", "loo", "cal"] = 0.1,
+        bandwidth: float | Literal["scott", "silverman", "loo", "cal", "logloss"] = 0.1,
         bandwidth_grid=None,
         shrinkage: float = 0.0,
         num_warmup: int = 500,
@@ -529,8 +533,10 @@ class BayCAPKDEy(QuantifierBayCAP):
         if calibrates_temperature:
             self.temperature = CAL
         self.temperature_grid = temperature_grid
-        if c_prior != "fixed" and bandwidth in (LOO, CAL):
+        if c_prior != "fixed" and bandwidth in (LOO, CAL, LOGLOSS):
             raise ValueError(f'bandwidth="{bandwidth}" is implemented only with c_prior="fixed"')
+        if bandwidth == LOGLOSS and input_classifier != "h":
+            raise ValueError(f'bandwidth="{LOGLOSS}" is implemented only with input_classifier="h" (§T.16)')
         if estimand == INSTANCE:
             if c_prior != "fixed" or input_classifier != "h":
                 raise ValueError(f'estimand="{INSTANCE}" needs c_prior="fixed" and input_classifier="h" (§T.15)')
@@ -1014,6 +1020,8 @@ class BayCAPKDEy(QuantifierBayCAP):
             cts = super().predict_ct_range(X, posteriors)
             if self.quantifier_.selects_bandwidth:
                 self._last_summaries |= self.quantifier_.selection_summaries()
+            if self.quantifier_.selects_logloss:
+                self._last_summaries |= self.quantifier_.logloss_summaries()
             if self.calibrates_bandwidth:
                 self._last_summaries |= self.calibration_summaries()
             return cts
@@ -1102,6 +1110,8 @@ __all__ = [
     "KDEY_C_PRIORS",
     "KDEY_ESTIMANDS",
     "KDEY_HF_SUMMARIES",
+    "LOGLOSS",
+    "LOGLOSS_SUMMARIES",
     "LOO_SUMMARIES",
     "TAU_GRID",
     "TAU_REFERENCE",
