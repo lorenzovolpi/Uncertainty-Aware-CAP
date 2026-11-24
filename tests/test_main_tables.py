@@ -113,7 +113,7 @@ class TestSummaryRows(unittest.TestCase):
         lines = [line for line in tail.splitlines() if line.startswith("\\multicolumn{2}{l}")]
         self.assertEqual(len(lines), 2)
         wtl, ranks = lines
-        self.assertIn("W/T/L vs \\bcappop", wtl)
+        self.assertIn("W/T/L vs LEAP", wtl)
         # one cell per method and metric after the label; the reference gets none
         cells = wtl.removesuffix(" \\\\").split(" & ")[1:]
         self.assertEqual(len(cells), 2 * N)

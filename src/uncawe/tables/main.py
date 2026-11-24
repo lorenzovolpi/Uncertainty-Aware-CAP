@@ -105,9 +105,8 @@ MAIN_METHODS_BEFORE_BAYESCAP = tuple(m for m in MAIN_METHODS if m != "BayesCAP")
 EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
 # the baselines of the main tables, under "Baseline methods" and separated from the other methods by a vertical line
 BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP")
-# the reference of the win/tie/loss row at the bottom of the main tables (user's decision of 2026-11-24): BayCAP with
-# the population pushforward
-WTL_REFERENCE = "BayesCAP"
+# the reference of the win/tie/loss row at the bottom of the main tables (user's decision of 2026-11-24): LEAP
+WTL_REFERENCE = "O-LEAP"
 
 
 def table_method_names() -> list[str]:
