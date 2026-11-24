@@ -78,7 +78,14 @@ CSV_NAMES = ("bags", "seeds", "pairs", "summary", "slopes", "diagnostics", "cost
 EXPERIMENT_PARTS = {"a": "bag_size", "b": "v_fraction"}
 # the dataset left out in the check of E4.4b (its near-vertex errors could move the multiclass pairs)
 CHECK_DATASET = "poker_hand"
-SHORT_LABELS = {"BayesCAP-Hf-real": "BayCAP-Hf", "BayCAP-KDEy-mlp-real": "BayCAP-KDEy", "PQ": "SQS-S"}
+# BayCAP-KDEy is BayCAP-KDEy-h-inst since E3.4 (card WP-31); the former one keeps its full name (card WP-33)
+SHORT_LABELS = {
+    "BayesCAP-Hf-real": "BayCAP-Hf",
+    "BayCAP-KDEy-h-inst": "BayCAP-KDEy",
+    "BayCAP-KDEy-h-inst-cb": "BayCAP-KDEy-cb",
+    "BayCAP-KDEy-mlp-real": "BayCAP-KDEy-mlp-real",
+    "PQ": "SQS-S",
+}
 SCORE_LABELS = {"ae": "AE", "winkler": "$W$", "coverage": "coverage", "amplitude": "amplitude"}
 CAPTIONS = {
     "a": (

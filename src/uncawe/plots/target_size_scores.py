@@ -40,7 +40,10 @@ from uncawe.tables.target_size_scores import CHECK_DATASET, SHORT_LABELS, comput
 FIGURES = {"u-scores": "a", "v-scores": "b"}
 METHOD_COLORS = {
     "BayesCAP-Hf-real": "#1f77b4",
-    "BayCAP-KDEy-mlp-real": "#d62728",
+    "BayCAP-KDEy-h-inst": "#d62728",
+    "BayCAP-KDEy-h-inst-cb": "#e377c2",
+    # the former BayCAP-KDEy (invalidated), no longer among E44_METHODS (card WP-33)
+    "BayCAP-KDEy-mlp-real": "#7f7f7f",
     "SQS-H": "#2ca02c",
     "SQS-Hbs": "#ff7f0e",
     "PQ": "#9467bd",
