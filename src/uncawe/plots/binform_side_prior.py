@@ -10,7 +10,7 @@ against it.
   multiclass $K\ge3$; ``PAIR_GROUPS``) and metric (vanilla accuracy by default), with two panels side by side: the AE
   and the Winkler score of the per-pair means over the $100$ bags (``pair_means``), the pairs drawn as points, on a
   logarithmic vertical axis. Methods left to right in ``METHOD_ORDER`` (SQS-S, SQS-H, SQS-Hbs, SQS-B, BayCAP-Hf,
-  BayCAP-KDEy); a method without a prior has one violin, a method with a prior three, the wrong-side prior on the
+  BayCAP-KDEy, BayCAP-KDEy-cb; the panels widen with the number of violins, ``PANEL_WIDTH``); a method without a prior has one violin, a method with a prior three, the wrong-side prior on the
   left, the uniform prior in the middle and the right-side prior on the right. The uniform prior and the methods
   without a prior are drawn light and hatched, the informative priors solid. A white dot marks the median and a black
   diamond the arithmetic mean of the values (not floored, drawn at $\max(\text{mean},10^{-5})$); the mean of a violin is
@@ -62,10 +62,14 @@ FLOOR = 1e-5
 CUT = 2.0
 BANDWIDTHS = {"bags": 0.15, "pairs": 0.3}
 PANELS = {"ae": "AE", "winkler": "Winkler score"}
-METHOD_ORDER = ("PQ", "SQS-H", "SQS-Hbs", SQS_B, "BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
+# the per-instance BayCAP-KDEy methods in place of BayCAP-KDEy-mlp-real since card WP-33
+METHOD_ORDER = ("PQ", "SQS-H", "SQS-Hbs", SQS_B, "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
 SIDE_ROLES = ("wrong", "uniform", "right")
 ROLE_TICKS = {"wrong": "wrong", "uniform": "uniform", "right": "right", NO_PRIOR: "no prior"}
 GROUP_GAP = 0.9
+# the width of a panel: 7.5 inches for the 12 violins of WP-27, the same width per violin for more (card WP-33)
+PANEL_WIDTH = 7.5
+PANEL_VIOLINS = 12
 DISTRIBUTION_TITLES = {
     "centre": "bags from $\\operatorname{Dir}(10\\cdot\\mathbf{1})$",
     "edge": "bags from $\\operatorname{Dir}(\\frac{1}{10}\\mathbf{1})$",
@@ -178,7 +182,8 @@ def plot_violins(
         for method, role, position in violin_cells()
         if not (part := rows.loc[(rows["method"] == method) & (rows["role"] == role)]).empty
     ]
-    fig, axes = plt.subplots(1, len(PANELS), figsize=(7.5 * len(PANELS), 5.2), layout="constrained")
+    width = PANEL_WIDTH * max(1.0, len(cells) / PANEL_VIOLINS)
+    fig, axes = plt.subplots(1, len(PANELS), figsize=(width * len(PANELS), 5.2), layout="constrained")
     for ax, (score, label) in zip(axes, PANELS.items()):
         data = [log_values(part, score) for *_, part in cells]
         keep = [i for i, d in enumerate(data) if d.size > 0]

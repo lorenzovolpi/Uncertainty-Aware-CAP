@@ -4,7 +4,9 @@ r"""Right-side and wrong-side priors under strong shifts, with SQS references (w
 E5.5 (``experiments/binform.py --e55``) draws the bags of $|U|=1000$ instances of each pair of ``main`` at prevalences
 from one of two symmetric distributions with mean $\mathbf 1/K$, concentrated ($G_c=\operatorname{Dir}(10\cdot\mathbf
 1)$, ``centre``) or sparse ($G_e=\operatorname{Dir}(\tfrac1{10}\mathbf 1)$, ``edge``). ``BayesCAP-Hf-real``
-(BayCAP-Hf), ``BayCAP-KDEy-mlp-real`` (BayCAP-KDEy) and ``SQS-B`` run on each set of bags with three priors on $\pi^Q$:
+(BayCAP-Hf), ``BayCAP-KDEy-h-inst`` (BayCAP-KDEy) and ``BayCAP-KDEy-h-inst-cb`` (BayCAP-KDEy-cb) (since card WP-33, in
+place of ``BayCAP-KDEy-mlp-real``, whose results are invalidated; ``experiments/binform.py:E55_PRIOR_BASES``) and
+``SQS-B`` run on each set of bags with three priors on $\pi^Q$:
 uniform, ``centre`` ($\operatorname{Dir}(3\cdot\mathbf 1)$) and ``edge`` ($\operatorname{Dir}(\tfrac13\mathbf 1)$). For
 the bags of a distribution, the prior on its side is the right-side one (``right``) and the other the wrong-side one
 (``wrong``); neither equals the distribution. ``SQS-H``, ``SQS-Hbs`` and ``PQ`` (SQS-S) take no prior on $\pi^Q$ and run

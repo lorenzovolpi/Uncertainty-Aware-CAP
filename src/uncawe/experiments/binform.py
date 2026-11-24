@@ -47,8 +47,11 @@ requested prevalences from distributions more extreme than those of E5.4, concen
 shared by the five classifiers. The priors on $\pi^Q$ stay those of E5.4 (``_uniform``, ``_centre``
 $=\operatorname{Dir}(3\cdot\mathbf 1)$, ``_edge`` $=\operatorname{Dir}(\tfrac13\mathbf 1)$), so the parameters of the
 distributions of the bags (``E55_BAG_ALPHAS``) are set apart from those of the priors (``E54_ALPHAS``); on the bags of a
-distribution the prior on its side is the right-side one, the other the wrong-side one. The methods with a prior are the
-two of E5.4 and ``SQS-B`` (``experiments/methods.py:sqs_b`` with ``prior``); ``SQS-H``, ``SQS-Hbs`` and ``PQ`` (SQS-S)
+distribution the prior on its side is the right-side one, the other the wrong-side one. The methods with a prior
+(``E55_PRIOR_BASES``) are ``BayesCAP-Hf-real``, the two per-instance BayCAP-KDEy methods ``BayCAP-KDEy-h-inst`` and
+``BayCAP-KDEy-h-inst-cb`` (E3.4, E3.5; since card WP-33, user's decision of 2026-11-24, in place of
+``BayCAP-KDEy-mlp-real``, whose results are invalidated and whose stored files of E5.5 stay on disk; E5.1 and E5.4 keep
+it) and ``SQS-B`` (``experiments/methods.py:sqs_b`` with ``prior``); ``SQS-H``, ``SQS-Hbs`` and ``PQ`` (SQS-S)
 take no prior on $\pi^Q$, are built as in ``main`` and run once per distribution (method names without a suffix), in the
 pool of the regular methods of ``main``. Results go to ``<OUT_DIR>/uncawe/binform_e55/<distribution>/``, with the
 columns ``bag_size``, ``requested_prev``, ``distribution``, ``bag_alpha`` and, for the methods with a prior,
@@ -97,8 +100,8 @@ from uncawe.experiments.methods import (
     SAMPLE_SIZE,
     SQS_B,
     THREAD_LIMITS,
-    fixed_c_method,
     gen_methods,
+    kdey_method,
     sqs_b,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
@@ -158,7 +161,10 @@ E55_SIZE = 1000
 E55_BAG_ALPHAS = {"centre": 10.0, "edge": 0.1}
 E55_DISTRIBUTIONS = tuple(E55_BAG_ALPHAS)
 E55_PRIORS = E54_PRIORS
-E55_PRIOR_BASES = (*E51_BASE_METHODS, SQS_B)
+# since WP-33 (user's decision of 2026-11-24) the per-instance BayCAP-KDEy methods in place of BayCAP-KDEy-mlp-real,
+# which stays a base of E5.1 and E5.4 (E51_BASE_METHODS)
+E55_KDEY_BASES = ("BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+E55_PRIOR_BASES = ("BayesCAP-Hf-real", *E55_KDEY_BASES, SQS_B)
 E55_REFERENCES = ("SQS-H", "SQS-Hbs", "PQ")
 # name -> (base method, prior); the prior is None for the methods without a prior on pi^Q
 E55_METHODS = {f"{base}_{prior}": (base, prior) for base in E55_PRIOR_BASES for prior in E55_PRIORS} | {
@@ -425,7 +431,7 @@ def e51_method(method_name: str, mu_star: np.ndarray, mu_dagger: np.ndarray):
 
 
 def _prior_method(base: str, prior: str | np.ndarray):
-    """The base method ``base`` of ``E51_BASE_METHODS`` (or ``SQS-B``, E5.5) built as in ``main`` (same settings and
+    """The base method ``base`` of ``E51_BASE_METHODS`` or ``E55_PRIOR_BASES`` built as in ``main`` (same settings and
     seed), with the prior ``prior`` on $\\pi^Q$ (E5.1, E5.4 and E5.5)."""
     _, acc = next(gen_acc_measure(True))
     if base == SQS_B:
@@ -441,7 +447,7 @@ def _prior_method(base: str, prior: str | np.ndarray):
             prior=prior,
             **BAYCAP_OPTIONS.get(base, {}),
         )
-    return fixed_c_method(acc, base, prior=prior)
+    return kdey_method(acc, base, prior=prior)
 
 
 def e51_experiment(size: int) -> str:

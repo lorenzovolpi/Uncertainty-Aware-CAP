@@ -255,34 +255,36 @@ def fixed_c_method(
     return BayCAPMAPLS(acc, **common)
 
 
-def instance_method(acc, name: str, temperature: float = 1.0) -> BayCAPKDEy:
+def instance_method(acc, name: str, temperature: float = 1.0, prior="uniform") -> BayCAPKDEy:
     """The method ``name`` of E3.4 (``INSTANCE_VARIANTS``): its stored method of E3.1 with the per-instance
     pushforward (``estimand="realised-instance"``), everything else as the stored method; ``temperature`` divides the
-    likelihood of the bag ($1$ except in E5.2 and E5.3), the per-instance weights stay untempered."""
-    return fixed_c_method(acc, INSTANCE_VARIANTS[name], estimand=INSTANCE, temperature=temperature)
+    likelihood of the bag ($1$ except in E5.2 and E5.3), the per-instance weights stay untempered; ``prior`` is the
+    Dirichlet parameter of the prior on $\\pi$ (uniform except in E5.5)."""
+    return fixed_c_method(acc, INSTANCE_VARIANTS[name], estimand=INSTANCE, temperature=temperature, prior=prior)
 
 
-def logloss_method(acc, name: str, temperature: float = 1.0) -> BayCAPKDEy:
+def logloss_method(acc, name: str, temperature: float = 1.0, prior="uniform") -> BayCAPKDEy:
     """The method ``name`` of E3.5 (``LOGLOSS_VARIANTS``): its method of E3.4 with ``bandwidth="logloss"`` (grid
-    ``LOO_GRID``), everything else as the method of E3.4; ``temperature`` as in :func:`instance_method` (the selection
-    of the bandwidth does not depend on it)."""
+    ``LOO_GRID``), everything else as the method of E3.4; ``temperature`` and ``prior`` as in :func:`instance_method`
+    (the selection of the bandwidth depends on neither)."""
     return fixed_c_method(
         acc,
         INSTANCE_VARIANTS[LOGLOSS_VARIANTS[name]],
         estimand=INSTANCE,
         bandwidth=LOGLOSS,
         temperature=temperature,
+        prior=prior,
     )
 
 
-def kdey_method(acc, name: str, temperature: float = 1.0) -> BayCAPKDEy | BayCAPMAPLS:
+def kdey_method(acc, name: str, temperature: float = 1.0, prior="uniform") -> BayCAPKDEy | BayCAPMAPLS:
     """A method with a fixed $\\hat C$ by name (``FIXED_C_VARIANTS``, ``INSTANCE_VARIANTS`` or ``LOGLOSS_VARIANTS``) at
-    the temperature ``temperature``."""
+    the temperature ``temperature`` and with the prior ``prior`` on $\\pi$."""
     if name in LOGLOSS_VARIANTS:
-        return logloss_method(acc, name, temperature=temperature)
+        return logloss_method(acc, name, temperature=temperature, prior=prior)
     if name in INSTANCE_VARIANTS:
-        return instance_method(acc, name, temperature=temperature)
-    return fixed_c_method(acc, name, temperature=temperature)
+        return instance_method(acc, name, temperature=temperature, prior=prior)
+    return fixed_c_method(acc, name, temperature=temperature, prior=prior)
 
 
 def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"], prior="uniform", sample_size: int = SAMPLE_SIZE) -> SQSB:

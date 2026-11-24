@@ -84,15 +84,20 @@ class DistributionsTest(unittest.TestCase):
         self.assertGreater(edge.var(), binform.e54_requested_prevs("letter", k, "edge").var())
 
 
+# the methods with a prior on pi^Q (four since card WP-33: BayCAP-Hf, the two per-instance BayCAP-KDEy, SQS-B)
+N_PRIOR_BASES = len(binform.E55_PRIOR_BASES)
+
+
 class MethodsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.main = dict(gen_methods())
 
-    def test_twelve_methods(self):
+    def test_fifteen_methods(self):
+        # the per-instance BayCAP-KDEy methods in place of BayCAP-KDEy-mlp-real since card WP-33
         expected = [
             f"{b}_{p}"
-            for b in ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real", "SQS-B")
+            for b in ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb", "SQS-B")
             for p in ("uniform", "centre", "edge")
         ]
         self.assertEqual(list(binform.E55_METHODS), [*expected, "SQS-H", "SQS-Hbs", "PQ"])
@@ -126,6 +131,20 @@ class MethodsTest(unittest.TestCase):
         np.testing.assert_allclose(method._make_quantifier().prior, np.full(4, 1 / 3))
         # main's SQS-B keeps the uniform prior
         self.assertEqual(self.main[SQS_B].prior, "uniform")
+
+    def test_kdey_bases_receive_the_prior_and_e51_e54_keep_theirs(self):
+        self.assertEqual(binform.E55_KDEY_BASES, ("BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb"))
+        self.assertNotIn("BayCAP-KDEy-mlp-real", binform.E55_PRIOR_BASES)
+        self.assertEqual(binform.E51_BASE_METHODS, ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real"))
+        inst = binform.e55_method("BayCAP-KDEy-h-inst_centre", 4)
+        cb = binform.e55_method("BayCAP-KDEy-h-inst-cb_edge", 4)
+        self.assertEqual((inst.estimand, inst.input_classifier, inst.bandwidth), ("realised-instance", "h", 0.1))
+        self.assertEqual((cb.estimand, cb.input_classifier, cb.bandwidth), ("realised-instance", "h", "logloss"))
+        np.testing.assert_allclose(inst.prior, np.full(4, 3.0))
+        np.testing.assert_allclose(cb.prior, np.full(4, 1 / 3))
+        np.testing.assert_allclose(cb._make_quantifier().prior, np.full(4, 1 / 3))
+        # main's methods keep the uniform prior
+        self.assertEqual(self.main["BayCAP-KDEy-h-inst-cb"].prior, "uniform")
 
     def test_methods_without_a_prior_are_those_of_main(self):
         for name, cls in (("SQS-H", RQBS), ("SQS-Hbs", RQBS), ("PQ", PrediQuant)):
@@ -205,7 +224,7 @@ class TaskTest(unittest.TestCase):
             self.assertEqual({path for path, *_ in tasks}, {"a", "b"})
             self.assertFalse(any(name.endswith("_edge") for _, name, _ in tasks))
             # distributions x (methods without _edge) x pairs; the methods without a prior once per distribution
-            self.assertEqual(len(tasks), 2 * (3 * 2 + 3) * 2)
+            self.assertEqual(len(tasks), 2 * (N_PRIOR_BASES * 2 + 3) * 2)
             for distribution in binform.E55_DISTRIBUTIONS:
                 block = [name for _, name, d in tasks if d == distribution]
                 for reference in binform.E55_REFERENCES:
@@ -419,14 +438,15 @@ class TablesTest(unittest.TestCase):
         self.assertEqual(set(self.table["size"]), {1000})
 
     def test_bag_table(self):
-        self.assertEqual(len(self.bags), 2 * (3 * 3 + 3) * len(PAIRS) * N_BAGS)
+        self.assertEqual(len(self.bags), 2 * (N_PRIOR_BASES * 3 + 3) * len(PAIRS) * N_BAGS)
         self.assertEqual(set(self.bags["role"]), set(bsp.ALL_ROLES))
         self.assertTrue(self.bags.loc[self.bags["failed"], "winkler"].isna().all())
-        self.assertEqual(int(self.bags["failed"].sum()), 2 * 3)  # wrong side, spam, one bag, two distributions
+        # wrong side, spam, one bag per method with a prior, two distributions
+        self.assertEqual(int(self.bags["failed"].sum()), 2 * N_PRIOR_BASES)
 
     def test_summary(self):
         allk = self.summary.loc[self.summary["K"] == "all"]
-        self.assertEqual(len(allk), 2 * (3 * 3 + 3))
+        self.assertEqual(len(allk), 2 * (N_PRIOR_BASES * 3 + 3))
         right = allk.loc[allk["role"] == "right"]
         self.assertTrue((right["pairs_lower"] == len(PAIRS)).all())
         self.assertTrue((right["datasets_lower"] == 3).all())
@@ -471,7 +491,7 @@ class TablesTest(unittest.TestCase):
             table, bags = bsp.tables(["vanilla_accuracy"], root=root)
             self.assertEqual(len(table), len(bsp.METHODS) * len(PAIRS))
             self.assertEqual(set(table["distribution"]), {"edge"})
-            self.assertEqual(len(bags), (3 * 3 + 3) * len(PAIRS) * N_BAGS)
+            self.assertEqual(len(bags), (N_PRIOR_BASES * 3 + 3) * len(PAIRS) * N_BAGS)
             with self.assertRaises(RuntimeError):
                 bsp.tables(["macro-F1"], root=root)
 
@@ -504,10 +524,13 @@ class TablesTest(unittest.TestCase):
 
     def test_violin_cells_and_floor(self):
         cells = plots.violin_cells()
-        self.assertEqual(len(cells), 3 + 3 * 3)
+        self.assertEqual(len(cells), 3 + 4 * 3)
         methods = list(dict.fromkeys(method for method, _, _ in cells))
-        self.assertEqual(methods, ["PQ", "SQS-H", "SQS-Hbs", "SQS-B", "BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real"])
-        self.assertEqual([plots.short_label(m) for m in methods][-2:], ["BayCAP-Hf", "BayCAP-KDEy"])
+        self.assertEqual(
+            methods,
+            ["PQ", "SQS-H", "SQS-Hbs", "SQS-B", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb"],
+        )
+        self.assertEqual([plots.short_label(m) for m in methods][-3:], ["BayCAP-Hf", "BayCAP-KDEy", "BayCAP-KDEy-cb"])
         # wrong side on the left, uniform in the middle, right side on the right
         self.assertEqual([role for method, role, _ in cells if method == "SQS-B"], ["wrong", "uniform", "right"])
         self.assertEqual([role for method, role, _ in cells if method == "PQ"], ["none"])
@@ -542,7 +565,7 @@ class TablesTest(unittest.TestCase):
                 self.assertIn("all pairs", fig.get_suptitle())
                 labels = [t.get_text() for t in fig.axes[0].get_xticklabels()]
                 self.assertEqual(labels[:4], ["no prior", "no prior", "no prior", "wrong"])
-                self.assertEqual(len(labels), 12)
+                self.assertEqual(len(labels), len(plots.violin_cells()))
                 fig.canvas.draw()
                 plt.close(fig)
         self.assertIsNone(plots.plot_violins(bags, "edge", "macro-K"))
@@ -569,7 +592,8 @@ class TablesTest(unittest.TestCase):
         bags = self.bags
         fig = plots.plot_violins(bags, "edge", level="bags")
         ax = fig.axes[1]  # Winkler score
-        diamonds = [c for c in ax.collections if c.get_offsets().shape[0] == 12][-1]
+        n_cells = len(plots.violin_cells())
+        diamonds = [c for c in ax.collections if c.get_offsets().shape[0] == n_cells][-1]
         part = bags.loc[(bags["distribution"] == "edge") & (bags["method"] == "PQ") & (bags["role"] == "none")]
         expected = np.log10(max(part["winkler"].mean(), plots.FLOOR))
         self.assertAlmostEqual(diamonds.get_offsets()[0][1], expected)
@@ -617,7 +641,7 @@ class TablesTest(unittest.TestCase):
             names = sorted(f for f in os.listdir(out_dir) if f.endswith(".png"))
             groups = [g for g in plots.PAIR_GROUPS if not plots.pair_group(self.bags, g).empty]
             # by default the pair violins and the scatters, not the bag violins
-            self.assertEqual(len(names), len(groups) + 3)
+            self.assertEqual(len(names), len(groups) + N_PRIOR_BASES)
             self.assertIn("binform_side_prior_pair_violins_edge_all_vanilla_accuracy.png", names)
             self.assertFalse(any("bag_violins" in name for name in names))
             args = plots.parse_args(
