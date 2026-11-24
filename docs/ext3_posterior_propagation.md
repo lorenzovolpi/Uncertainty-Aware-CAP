@@ -2,7 +2,7 @@
 
 ## Claim
 
-A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, not just one estimate. This extension adds CAP methods that turn such a posterior into an interval on classifier performance, and compares them with the methods of the paper. **BayCAP with a fixed $\hat C$** takes the posterior of a Bayesian quantifier and pushes each draw $\pi^{(r)}$ through the rate matrix of the classifier measured on the validation set, $\hat C\operatorname{diag}(\pi^{(r)})$, either as a population table or, with the realised-table predictive of [[ext2_baycap|Extension 2]], as a plausible realised table of the target bag. Two quantifiers are considered: the Bayesian KDEy of [KDE-Bayes](papers/kde_bayes.pdf) (BayesKDEy, giving **BayCAP-KDEy**), which estimates from the validation set how the outputs of a classifier are spread within each class, and QuaPy's BayesianMAPLS, a Bayesian version of the EM quantifier EMQ (giving **BayCAP-EMQ**), which reads the outputs as calibrated probabilities. Each quantifier can read the outputs of the classifier $h$ whose performance we estimate, or those of a separate MLP trained on the validation set. **SQS-B** does what the other SQS methods do, but draws the prevalences of its validation bags from the posterior of a Bayesian quantifier instead of from a point estimate or a bootstrap. The methods differ from existing ones in one component at a time (the quantifier, the classifier it reads, the handling of $C$, the source of the prevalences), so their comparison with BayCAP and RQBS tells which component matters. [[ext4_uncertainty_budget|Extension 4]] splits the error of the realised BayCAP-KDEy with an MLP input into prevalence, recall and bag parts, with the same implementation, and measures them over $\lvert U\rvert$ and $\lvert V\rvert$. The first experiment, E3.1, evaluates the four combinations of quantifier and input classifier, with both pushforwards, on the protocol of `main`. The second, E3.2, makes the rate matrix of BayCAP-KDEy random: it splits each class of the validation set by the prediction of $h$, so that the class densities of BayesKDEy become mixtures of cell densities whose weights are the columns of $C$, and samples $C$ jointly with $\pi$, with the Hf prior of Extension 2, so that the target bag updates both. The third, E3.3, evaluates SQS-B with the quantifier of the best method of E3.1, BayesKDEy with an MLP input, against the realised BayCAP-KDEy with the same prevalence draws and against the SQS methods of `main`.
+A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, not just one estimate. This extension adds CAP methods that turn such a posterior into an interval on classifier performance, and compares them with the methods of the paper. **BayCAP with a fixed $\hat C$** takes the posterior of a Bayesian quantifier and pushes each draw $\pi^{(r)}$ through the rate matrix of the classifier measured on the validation set, $\hat C\operatorname{diag}(\pi^{(r)})$, either as a population table or, with the realised-table predictive of [[ext2_baycap|Extension 2]], as a plausible realised table of the target bag. Two quantifiers are considered: the Bayesian KDEy of [KDE-Bayes](papers/kde_bayes.pdf) (BayesKDEy, giving **BayCAP-KDEy**), which estimates from the validation set how the outputs of a classifier are spread within each class, and QuaPy's BayesianMAPLS, a Bayesian version of the EM quantifier EMQ (giving **BayCAP-EMQ**), which reads the outputs as calibrated probabilities. Each quantifier can read the outputs of the classifier $h$ whose performance we estimate, or those of a separate MLP trained on the validation set. **SQS-B** does what the other SQS methods do, but draws the prevalences of its validation bags from the posterior of a Bayesian quantifier instead of from a point estimate or a bootstrap. The methods differ from existing ones in one component at a time (the quantifier, the classifier it reads, the handling of $C$, the source of the prevalences), so their comparison with BayCAP and RQBS tells which component matters. [[ext4_uncertainty_budget|Extension 4]] splits the error of the realised BayCAP-KDEy with an MLP input into prevalence, recall and bag parts, with the same implementation, and measures them over $\lvert U\rvert$ and $\lvert V\rvert$. The first experiment, E3.1, evaluates the four combinations of quantifier and input classifier, with both pushforwards, on the protocol of `main`. The second, E3.2, makes the rate matrix of BayCAP-KDEy random: it splits each class of the validation set by the prediction of $h$, so that the class densities of BayesKDEy become mixtures of cell densities whose weights are the columns of $C$, and samples $C$ jointly with $\pi$, with the Hf prior of Extension 2, so that the target bag updates both. The third, E3.3, evaluates SQS-B with the quantifier of the best method of E3.1, BayesKDEy with an MLP input, against the realised BayCAP-KDEy with the same prevalence draws and against the SQS methods of `main`. The fourth, E3.4 (user's decision of 2026-11-24), replaces the realised pushforward of BayCAP-KDEy by a per-instance one, with $h$ as input classifier: given a draw $\pi^{(r)}$, the true class of each target instance is drawn from its own posterior class probabilities under the kernel mixture of BayesKDEy, $w^{(r)}_{nj}\propto\pi^{(r)}_j\hat f_j(z_n)$, instead of from the precisions of its predicted class; with $s=h$ these are exact draws of the joint posterior of $\pi^Q$ and of the classes of the bag under the model of the quantifier (§T.15). The new method, `BayCAP-KDEy-h-inst`, becomes the BayCAP-KDEy method of the project, and the results of the realised BayCAP-KDEy with the cell pushforward are invalidated (user's decision of 2026-11-24; see below the Status).
 
 ## Status
 
@@ -17,7 +17,11 @@ A Bayesian quantifier returns a posterior over the target prevalence $\pi^Q$, no
 | The predictions of §T.9 and the moving centre of §T.8 | checked by E3.1: P1–P3, P5, P6 hold, P8 only for BayesKDEy, P7 does not; the centre barely moves |
 | The predictions P9–P14 of §T.13 | checked by E3.2: P9 in part, P11 only for `mlp`, P14 hold; P10 and P12 do not; P13 shows the opposite pattern |
 | The predictions P15–P18 of §T.14 | checked by E3.3: P15 holds; P16 holds in the main, the formula overstating the widening where $V$ is small; P17 in part (the same failures and some more); P18 as stated, the source of the gain on the macro metrics not separable |
+| E3.4, BayCAP-KDEy with the per-instance pushforward and $s=h$ (`BayCAP-KDEy-h-inst`, §T.15) | [proposal], decided by the user on 2026-11-24 and promoted directly to the main section; card WP-31 of [[work_plan]] (Scheduled); not implemented, not run |
+| The results of the realised BayCAP-KDEy with the cell pushforward (`BayCAP-KDEy-h-real`, `BayCAP-KDEy-mlp-real` and the methods and experiments built on them) | invalidated (user's decision of 2026-11-24), see below |
 | Candidate experiments E3.c2–E3.c4, E3.c6–E3.c9 (E3.c5 became E3.2, E3.c1 became E3.3) | [proposal], not scheduled |
+
+**Invalidated results (user's decision of 2026-11-24).** E3.4 replaces the realised pushforward and the input classifier of the BayCAP-KDEy method. The results of `BayCAP-KDEy-h-real` and `BayCAP-KDEy-mlp-real` (E3.1), of the realised methods of E3.2, of the comparisons of E3.3 with `BayCAP-KDEy-mlp-real`, and, in other extensions, of every experiment that uses the realised BayCAP-KDEy (E4.1–E4.4, E5.1–E5.5, E7.1–E7.2, and the BayCAP-KDEy of the main tables, ranks and plots and of the paper artefacts) no longer represent the BayCAP-KDEy method. They stay stored, and their analyses stay in this document as they were, as the record of the cell pushforward; `BayCAP-KDEy-h-real` and `BayCAP-KDEy-mlp-real` are the references of E3.4. Anything that involves BayCAP-KDEy is rerun with `BayCAP-KDEy-h-inst` when needed, and only on the user's request. The population methods (`BayCAP-KDEy-h`, `BayCAP-KDEy-mlp`), BayCAP-EMQ and the bags of SQS-B are unaffected, since their bridge from the prevalence to the table does not change.
 
 This document replaces the former Extensions 8 (`docs/sqs_b.md`) and 9 (`docs/baycap_kdey.md`); their last version is in commit `391220c`, and the material that was set aside is in [[optional_extensions]] §8.
 
@@ -142,6 +146,25 @@ All experiments use the protocol of `main`: the $15$ datasets and $5$ classifier
   - **The sampler and the shared draws.** The stored $\bar\pi$ of SQS-B and `KDEy-real` are equal on every bag (largest difference $0$), so the two methods have the same prevalence draws and differ only in the bridge. The posterior does not depend on $h$, so the diagnostics are the same for the five classifiers of a dataset: divergent transitions only on `poker_hand` (one bag of $100$), largest split-$\hat R$ $1.024$, smallest effective sample size $101$. In the error split of E4.1 the identity holds for SQS-B within $1.5\cdot10^{-15}$, with no dropped bag.
 
   What this shows: with the same posterior of $\pi$, the bridge from the prevalence to the table matters little for the width and much for the centre. The forward bag of SQS-B behaves as §T.14 derives: it is centred on the population accuracy of the draws (P15), and its width is close to that of the realised pushforward (P16), slightly narrower than the formula predicts where $V$ is small. But it throws away the predictions of $h$ on the target bag, which the backward bridge of `KDEy-real` uses to move its centre towards the realised accuracy; this movement, small on average ($0.003$), is what costs SQS-B coverage on `german`, `nursery`, `wine-quality` and `semeion`, and makes it worse than `KDEy-real` on $24$ pairs and better on $2$. SQS-B does not fix any failure of `KDEy-real` (P17): where the error comes from $V$ or from the quantifier, only Hf comes near covering. Within the SQS family, the Bayesian posterior ties with the bootstrap of `SQS-Hbs` on vanilla accuracy and improves it clearly on macro-F1 and macro-K, for a reason E3.3 cannot isolate (P18). SQS-B is therefore not a replacement for `KDEy-real`; it is the better SQS method on the macro metrics.
+
+## E3.4: BayCAP-KDEy with the per-instance pushforward and $s=h$
+
+**Why.** The realised pushforward of E3.1 (§T.7) uses the outputs of the input classifier to infer $\pi^Q$, but then forgets them: given a draw $\pi^{(r)}$, every instance that $h$ predicts as $\omega_i$ gets a true class from the same probabilities $\rho^{(r)}_{i\cdot}$, computed from $\hat C$. With $s=h$, the kernel mixture of BayesKDEy gives each target instance its own posterior class probabilities, $w^{(r)}_{nj}=\pi^{(r)}_j\hat f_j(z_n)/\sum_\ell\pi^{(r)}_\ell\hat f_\ell(z_n)$, with $z_n=h(x_n)$ the output of $h$ on the $n$-th instance of the bag and $\hat f_j$ the kernel density of class $\omega_j$ fitted on $V$; drawing the true class of each instance from them gives exact draws of the joint posterior of $\pi^Q$ and of the classes of the bag under the model of the quantifier, i.e. of the posterior of the realised table (§T.15). The cell pushforward is the special case in which each output is replaced by its prediction (§T.15). The construction needs $s=h$: the prediction of $h$ is a function of its outputs, so conditioning on the outputs also conditions on the prediction, while with an MLP input the kernel mixture says nothing about whether $h$ is right on an instance (§T.15). For this reason E3.4 also moves the BayCAP-KDEy method of the project from the MLP input to $h$ (user's decision of 2026-11-24); after FIX-8 the cell pushforward with $h$ already had the lower mean Winkler score ($0.472$ against $0.508$, E3.1). §T.15 derives that the new pushforward centres each draw on an average of per-instance confidences of $h$ recalibrated by the kernel mixture and the draw of $\pi^Q$, and that it narrows the luck of the bag by the spread of these confidences within each predicted class. E3.4 measures whether the finer pushforward improves the method, and whether the narrower intervals keep their coverage.
+
+- **Design.**
+  - **Inputs:** the $75$ pairs and $100$ bags of `main`, after FIX-8 and after the re-run of `main` of FIX-2 + FIX-3 ([[work_plan]]); the stored `main` results of `BayCAP-KDEy-h-real` and `BayCAP-KDEy-mlp-real` (E3.1, cell pushforward; references for the change), of `BayCAP-KDEy-h` (population pushforward, same prevalence draws), of `BayesCAP-Hf-real` and of the other methods of `main`; the results of one new method of `main`, `BayCAP-KDEy-h-inst`, with its own run.
+  - **Varied:** the pushforward: per-instance (`BayCAP-KDEy-h-inst`) against cell (`BayCAP-KDEy-h-real`), with the same prevalence draws, so that only the bridge from the prevalence to the table differs; and, for the change of the BayCAP-KDEy method of the project, against `BayCAP-KDEy-mlp-real` (input classifier and pushforward differ). *Held fixed* for `BayCAP-KDEy-h-inst`: BayesKDEy as in E3.1 (Gaussian kernel, $b=0.1$, $\lambda=0$, $\pi\sim\operatorname{Dir}(\mathbf 1)$, $\tau=1$) on the outputs of $h$; NUTS with $500$ warm-up iterations, $1000$ draws and the seed of `BayCAP-KDEy-h-real`, so that on the same platform the two methods have the same prevalence draws; untempered weights $w$ (user's decision of 2026-11-24; relevant only to tempered variants, §T.15); $\hat C$ of $h$ on $V$, used only by the summaries and by the population counterpart; data, bags and seeds of `main`.
+  - **Measures:** for `BayCAP-KDEy-h-inst`, all three metrics of `main` (vanilla accuracy, macro-F1, macro-K): AE, coverage, amplitude, Winkler score at $\alpha=0.05$. For vanilla accuracy only:
+    - per bag, label-free, from the draws (§T.15): $\bar\sigma_w$, the bag term of the per-instance pushforward; $\bar\sigma_g$, that of the cell pushforward (§T.8), and $\bar{\tilde\sigma}_g$, the same with the precisions replaced by the mean confidences of each predicted class; the within-class spread of the confidences, which separates $\bar\sigma_w$ from $\bar{\tilde\sigma}_g$; the standard deviations over the draws of the two centres $m_w(\pi)$ and $m(\pi)$; the difference $\bar m_w-\bar m$ of their means; and the predicted ratio of the amplitudes of `BayCAP-KDEy-h-inst` and `BayCAP-KDEy-h-real`, against the observed one;
+    - paired bootstrap tests of the mean Winkler difference, as in E3.1 ($10{,}000$ seeded resamples of the $100$ per-bag differences, Holm-adjusted over the $75$ pairs, separately for each test): `BayCAP-KDEy-h-inst` against `BayCAP-KDEy-h-real` and against `BayCAP-KDEy-mlp-real`.
+  - **Estimand:** realised table of the target sample for `BayCAP-KDEy-h-inst` and for the comparison methods, all scored against the realised table of each bag (`true_cts`), as every method of `main`. The population counterpart of the new method is the stored `BayCAP-KDEy-h`, $\hat C\operatorname{diag}(\pi^{(r)})$ with the same draws (§T.15), which is not re-run. The quantities of the Measures use no target labels.
+  - **Cost:** one run of `main` on `bcuda` with `JAX=cpu`, $75\times100=7500$ NUTS runs, as one method of E3.1; per bag, in addition, $R\times N^Q=10^6$ categorical draws. A pilot on `mammographic`, `poker_hand` and `letter` ($15$ pairs) precedes the full run; both only on the user's request.
+- **Representation.**
+  - **Main tables:** `BayCAP-KDEy-h-inst` replaces `BayCAP-KDEy-mlp-real` in the tables, rank tables, coverage vs amplitude plot and shift profile of `main`, with the label BayCAP-KDEy (`\bcapkdey`) (user's decision of 2026-11-24); they, and the paper artefacts that depend on them, are regenerated only on the user's request.
+  - **Comparison table:** one row per pair, grouped by dataset and ordered by $K$: coverage, amplitude, AE and Winkler score of `BayCAP-KDEy-h-inst`, `BayCAP-KDEy-h-real`, `BayCAP-KDEy-mlp-real` and `BayesCAP-Hf-real`; the observed and predicted ratios of the amplitudes of `BayCAP-KDEy-h-inst` and `BayCAP-KDEy-h-real`; the mean centre difference $\bar m_w-\bar m$; the bootstrap intervals and Holm-adjusted p-values of the two Winkler tests. CSV, LaTeX and landscape PDF, like the tables of E3.1.
+  - **Scatter, coverage:** coverage of `BayCAP-KDEy-h-real` on the horizontal axis and of `BayCAP-KDEy-h-inst` on the vertical axis, one point per pair, coloured by $K$, with lines at $0.95$ on both axes.
+  - **Scatter, width:** observed against predicted ratio of the amplitudes of `BayCAP-KDEy-h-inst` and `BayCAP-KDEy-h-real`, one point per pair, with the line $y=x$, coloured by the share of $\bar{\tilde\sigma}^2_g$ removed by the within-class spread.
+- **Analysis.** Not run.
 
 # Candidate experiments
 
@@ -694,6 +717,97 @@ which can be computed on each bag from the draws, $\hat C$ and $n^t$, without ta
 - **P17, the same failures.** SQS-B covers about as much as `BayCAP-KDEy-mlp-real` and fails on the same pairs, where the error comes from $V$ or from a bias of the quantifiers (E3.1).
 - **P18, against SQS-Hbs.** Both represent $e_1^U$ and $e_3$, so their differences come from the quantifier (BayesKDEy against PACC) and from the source of the prevalences (posterior against bootstrap); E3.3 cannot tell the two apart, E3.c9 would.
 
+## T.15 The per-instance pushforward (E3.4)
+
+*Intuition:* BayesKDEy already tells, for each target instance, how plausible each class is given its output and a draw of the prevalence. Instead of guessing the true classes of all the instances predicted as $\omega_i$ from the same probabilities, we guess the class of each instance from its own probabilities.
+
+**Notation.** The bag has $N^Q$ instances; $z_n=h(x_n)$ is the output of $h$ on instance $n$ (a probability vector of length $K$), $\hat y_n=\arg\max_kz_{nk}$ its prediction, and $n^t_i$ the number of instances with $\hat y_n=\omega_i$. $\hat f_j$ is the kernel density of class $\omega_j$ fitted on the validation outputs of $h$ (§T.3).
+
+**The model of the quantifier, with the classes kept.** §T.3 describes the bag as a mixture: each instance $n$ has a class $Y_n$, equal to $\omega_j$ with probability $\pi_j$, and an output $z_n$ drawn from the density $\hat f_j$ of its class, independently across instances. The likelihood of §T.3 is what remains of this model when the unknown classes are summed out. Keeping them, the product rule ($p(a,b)=p(a)\,p(b\mid a)$) and the independence of the instances give the joint density of the prevalence, the classes and the outputs:
+
+$$
+p(\pi,y,z)=p(\pi)\prod_{n=1}^{N^Q}\pi_{y_n}\hat f_{y_n}(z_n).
+$$
+
+**The class of each instance given a draw.** Fix $\pi$ and the outputs $z$. As a function of the classes $y=(y_1,\dots,y_{N^Q})$, the joint density is a product of one factor per instance, each depending only on its own $y_n$; a density that factorises in this way makes the $Y_n$ independent given $(\pi,z)$. Normalising the factor of instance $n$ over its $K$ possible classes is Bayes' rule, with prior $\pi$ and likelihood $\hat f_j(z_n)$:
+
+$$
+w_{nj}(\pi)=P(Y_n=\omega_j\mid\pi,z)=\frac{\pi_j\,\hat f_j(z_n)}{\sum_\ell\pi_\ell\,\hat f_\ell(z_n)}.
+$$
+
+**Exact draws of the posterior of the classes.** By the product rule again, $p(\pi,y\mid z)=p(\pi\mid z)\,p(y\mid\pi,z)$. So a draw $\pi^{(r)}$ of the posterior of §T.3, followed by an independent draw
+
+$$
+Y^{(r)}_n\sim\operatorname{Categorical}\big(w_{n1}(\pi^{(r)}),\dots,w_{nK}(\pi^{(r)})\big)
+$$
+
+for every instance, is a draw of the joint posterior of $\pi$ and of the classes of the bag. This is the step that a Gibbs sampler of the mixture alternates with the update of $\pi$ (data augmentation). The values $\hat f_j(z_n)$ are those already computed for the likelihood (§T.3).
+
+**The realised table.** The predictions $\hat y_n$ of $h$ are observed, so each draw of the classes gives one table, with predicted classes on rows:
+
+$$
+\tilde T^{(r)}_{ij}=\frac1{N^Q}\sum_{n=1}^{N^Q}\mathbb 1[\hat y_n=\omega_i]\,\mathbb 1[Y^{(r)}_n=\omega_j].
+$$
+
+Its row sums are the observed shares $n^t_i/N^Q$, as in §T.7, and $A(\tilde T^{(r)})$ is a draw of the posterior of the realised metric. With the true classes in place of the drawn ones, $\tilde T$ would be the realised table of the bag, which `main` scores (`true_cts`).
+
+**Why the input classifier must be $h$.** The realised table counts pairs (prediction of $h$, true class), so the class of instance $n$ must be drawn given everything known about it, its prediction $\hat y_n$ included. With $s=h$, $\hat y_n$ is a function of $z_n$: knowing $z_n$ means knowing $\hat y_n$, so $P(Y_n=\omega_j\mid z_n,\hat y_n)=P(Y_n=\omega_j\mid z_n)=w_{nj}$. With an MLP input $g$, the output $z'_n=g(x_n)$ does not determine $\hat y_n$, and in general $P(Y_n\mid z'_n,\hat y_n)\ne P(Y_n\mid z'_n)$: among the instances with the same output of the MLP, those that $h$ predicts as $\omega_i$ are more often of class $\omega_i$ than the others. The kernel mixture on $g$ gives only the right-hand side, so the drawn classes would ignore whether $h$ is right and the diagonal of $\tilde T$ would be biased. An MLP variant would need the densities of $z'$ within each cell (class, prediction of $h$), as in E3.2 (§T.10); it is not considered.
+
+**The cell pushforward as a special case.** Replace the output $z_n$ by its prediction $\hat y_n$ alone. The likelihood of the observation given the class becomes $P(\hat Y=\omega_i\mid Y=\omega_j)=\hat C_{ij}$ for $\hat y_n=\omega_i$, and the formula for $w$ gives $w_{nj}=\hat C_{ij}\pi_j/\sum_\ell\hat C_{i\ell}\pi_\ell=\rho_{ij}$ (§T.7), the same for every instance predicted as $\omega_i$. The class counts of $n^t_i$ independent categorical draws with the same probabilities follow the multinomial $\operatorname{Mult}(n^t_i,\rho_{i\cdot})$ of §T.7. So the cell pushforward is the per-instance one in which the quantifier sees only the predictions of $h$: with BayesKDEy, it uses the outputs to infer $\pi$ and only the predictions to assign the classes.
+
+**Centre.** Write $p_n(\pi)=w_{n\hat y_n}(\pi)$, the probability, given the draw, that $h$ is right on instance $n$: a confidence of $h$ recalibrated by the kernel mixture and by the draw of $\pi$. The realised accuracy of a draw is $\tilde a=\frac1{N^Q}\sum_n\mathbb 1[Y_n=\hat y_n]$, and by linearity of the expectation, given $\pi$,
+
+$$
+m_w(\pi)=\mathbb E[\tilde a\mid\pi]=\frac1{N^Q}\sum_{n=1}^{N^Q}p_n(\pi),
+$$
+
+the Average Confidence of [[ext8_average_confidence|Extension 8]] with these recalibrated confidences. Grouping the instances by their prediction, $m_w(\pi)=\sum_i\frac{n^t_i}{N^Q}\bar p_i(\pi)$, with $\bar p_i$ the mean of $p_n$ over the $n^t_i$ instances predicted as $\omega_i$, while the cell pushforward has $m(\pi)=\sum_i\frac{n^t_i}{N^Q}\rho_{ii}(\pi)$ (§T.8). The two centres differ only where, in some predicted class, the mean confidence $\bar p_i$ differs from the precision $\rho_{ii}$ given by $\hat C$, i.e. where the kernel mixture and $\hat C$ disagree on the bag. Whether the change of centre reduces the AE depends on which of the two is closer to the bag [new hypothesis].
+
+**Width.** By the law of total variance, as in §T.8,
+
+$$
+\operatorname{Var}(\tilde a)=\mathbb E\big[\sigma^2_w(\pi)\big]+\operatorname{Var}\big(m_w(\pi)\big),\qquad\sigma^2_w(\pi)=\operatorname{Var}(\tilde a\mid\pi).
+$$
+
+Given $\pi$, $\tilde a$ is $1/N^Q$ times a sum of independent Bernoulli variables with probabilities $p_n$. The variance of a sum of independent variables is the sum of their variances, a Bernoulli variable with probability $p$ has variance $p(1-p)$, and multiplying a variable by $c$ multiplies its variance by $c^2$, so
+
+$$
+\sigma^2_w(\pi)=\frac1{(N^Q)^2}\sum_{n=1}^{N^Q}p_n(1-p_n).
+$$
+
+To compare it with the bag term $\sigma^2_g$ of §T.8, split the sum by predicted class. For the $n^t_i$ instances predicted as $\omega_i$, with mean confidence $\bar p_i$: $\sum_np_n(1-p_n)=\sum_np_n-\sum_np_n^2$; $\sum_np_n=n^t_i\bar p_i$ by the definition of the mean; and $\sum_np_n^2=n^t_i\bar p_i^2+\sum_n(p_n-\bar p_i)^2$, since expanding $\sum_n(p_n-\bar p_i)^2=\sum_np_n^2-2\bar p_i\sum_np_n+n^t_i\bar p_i^2=\sum_np_n^2-n^t_i\bar p_i^2$. Hence
+
+$$
+\sum_{n:\hat y_n=\omega_i}p_n(1-p_n)=n^t_i\,\bar p_i(1-\bar p_i)-\sum_{n:\hat y_n=\omega_i}(p_n-\bar p_i)^2,
+$$
+
+and, summing over the predicted classes,
+
+$$
+\sigma^2_w(\pi)=\tilde\sigma^2_g(\pi)-\frac1{(N^Q)^2}\sum_i\sum_{n:\hat y_n=\omega_i}\big(p_n-\bar p_i\big)^2,
+\qquad
+\tilde\sigma^2_g(\pi)=\frac1{(N^Q)^2}\sum_in^t_i\,\bar p_i(1-\bar p_i).
+$$
+
+$\tilde\sigma^2_g$ is the bag term of §T.8 with each precision $\rho_{ii}$ replaced by the mean confidence $\bar p_i$. So, at the same centre, the per-instance pushforward is narrower than the cell one by the spread of the confidences within each predicted class: knowing which instances are hard and which are easy removes part of the luck of the bag. The two are equal only if all the instances of each predicted class have the same confidence. Where $\bar p_i\approx\rho_{ii}$, $\sigma^2_w\le\sigma^2_g$; otherwise the comparison also depends on the two centres.
+
+**Tempering.** With $\tau\ne1$ the posterior of §T.3 tempers the likelihood of the bag, which is the likelihood of the mixture with the classes summed out, and no model with the classes kept has it as a margin. The weights $w$ are taken untempered, the conditional of the model at $\tau=1$, so that $\tau$ acts only on the spread of the posterior of $\pi$ (user's decision of 2026-11-24). E3.4 uses $\tau=1$, so this matters only for tempered variants.
+
+**The population counterpart.** The population table needs the population rates of $h$, which do not depend on the bag. Under the model of BayesKDEy they are
+
+$$
+C^{\text{KDE}}_{ij}=\int\mathbb 1\big[\arg\max_kz_k=\omega_i\big]\,\hat f_j(z)\,dz,
+$$
+
+the probability that an output drawn from the density of class $\omega_j$ falls where $h$ predicts $\omega_i$. Each kernel is a small Gaussian bump around a validation output, so $C^{\text{KDE}}$ differs from $\hat C$ only through the validation outputs within about $b$ of a boundary between decision regions; the population counterpart is therefore taken as $\hat C\operatorname{diag}(\pi^{(r)})$, the stored `BayCAP-KDEy-h` with the same draws. The mean of the categorical draws, $\frac1{N^Q}\sum_{n:\hat y_n=\omega_i}w_{nj}(\pi)$, is not a population table: it is the expected realised table given the draw and the outputs of the bag, whose rows sum to the observed shares $n^t_i/N^Q$, not to the shares $\sum_jC_{ij}\pi_j$ of the population.
+
+**Predictions for E3.4** [new hypotheses where not derived]:
+
+- **P19, the same draws.** `BayCAP-KDEy-h-inst` and `BayCAP-KDEy-h-real` have the same $\bar\pi$ on every bag (by construction).
+- **P20, narrower intervals.** $\bar\sigma_w\le\bar{\tilde\sigma}_g$ on every bag (derived above); the amplitude of `BayCAP-KDEy-h-inst` is below that of `BayCAP-KDEy-h-real` on most pairs, most where the confidences of $h$ are spread within its predicted classes, and the observed ratio of the amplitudes follows the predicted $\sqrt{(\operatorname{Var}(m_w)+\bar\sigma^2_w)/(\operatorname{Var}(m)+\bar\sigma^2_g)}$, computed on the draws.
+- **P21, the centre follows the kernel densities.** The AE changes where the kernel mixture and $\hat C$ disagree on the bag; it should worsen where the kernel densities of the outputs of $h$ are poor: outputs with few distinct values (kNN, §T.3) and small validation classes (`poker_hand`).
+- **P22, coverage.** Where the centre does not improve, the narrower interval loses coverage, so the Winkler score improves only on the pairs where the centre moves towards the realised accuracy.
+
 # Implementation
 
 Components (for E3.1):
@@ -777,6 +891,30 @@ Reproducibility and comparability (for E3.3):
 - `SQS-B` is comparable with the stored CPU results of E3.1 and of `BayesCAP-Hf-real`, and with `SQS-H` and `SQS-Hbs` after the re-run of FIX-2 + FIX-3, all after FIX-8 (same bags, same platform);
 - no pilot: the full run is started directly (user's decision of 2026-11-13).
 
+Components (for E3.4), [proposal] (card WP-31, Scheduled):
+
+- **The per-instance pushforward in `BayCAPKDEy`.** A new value of `estimand` (e.g. `"realised-instance"`), accepted only with `c_prior="fixed"` and `input_classifier="h"` (a `ValueError` otherwise). `predict_ct_range` takes the log-densities $\log\hat f_j(z_n)$ of the bag that BayesKDEy computes for its likelihood and the draws of $\pi$, computes $\log w$ by a log-sum-exp over the classes, and draws one class per instance and draw with a NumPy `Generator` seeded by `random_state`, as the realised pushforward; the draws are processed in chunks, so that the $R\times N^Q\times K$ array of weights fits in memory ($K=26$ for `letter`: about $200$ MB at once in double precision). The counts form tables in the `cap-ml` layout (true classes on rows), divided by $N^Q$. The weights are untempered, whatever `temperature`.
+- **Summaries:** per bag, `FIXED_SUMMARIES` plus $\bar\sigma_w$, $\bar{\tilde\sigma}_g$, the mean over the draws of the within-class term of §T.15, the standard deviations of $m_w(\pi)$ and $m(\pi)$ over the draws, and $\bar m_w-\bar m$.
+- **Method in `main`:** a factory entry `BayCAP-KDEy-h-inst` in `experiments/methods.py`, with the configuration and seed of `BayCAP-KDEy-h-real`, in the BayCAP pool; `tables/main.py:MAIN_METHODS` and `plots/shift_profile.py:DEFAULT_METHODS` with `BayCAP-KDEy-h-inst` in place of `BayCAP-KDEy-mlp-real`, and the label `\bcapkdey` moved to it (`tables/common.py`); §II.12 of [[work_plan]] updated.
+- **Tables and plots of E3.4:** a table module and a plot module with the Representation above, reusing the paired bootstrap of `tables/pushforward.py`.
+
+Tests (for E3.4):
+
+- with weights equal to $\rho_{i\cdot}$ for every instance predicted as $\omega_i$, the per-instance tables have the mean and variance of `methods/baycap.py:realised_tables` (Monte Carlo, within a tolerance);
+- the predicted-class margins equal $n^t/N^Q$, and every table sums to one;
+- for the same seeds, the prevalence draws equal those of `BayCAP-KDEy-h-real` and `BayCAP-KDEy-h`;
+- $w$ equals Bayes' rule computed directly on a small kernel mixture, and does not change with `temperature`;
+- the identity $\sigma^2_w=\tilde\sigma^2_g-\text{(within-class term)}$ on synthetic confidences;
+- a `ValueError` with `input_classifier="mlp"` or `c_prior="hierarchical-f"`;
+- two runs with the same seed give the same tables; the factory builds the new method with the configuration of E3.4, and the main tables and the shift profile show it in place of `BayCAP-KDEy-mlp-real`.
+
+Reproducibility and comparability (for E3.4):
+
+- E3.4 adds one method to `main` and leaves the stored results of every other method untouched; the new value of `estimand` leaves the draws of the existing estimands unchanged;
+- replacing `BayCAP-KDEy-mlp-real` in the main tables changes the tables, ranks and plots of `main` and the paper artefacts (`docs/paper.md`), which are regenerated together, only on the user's request;
+- the new method is comparable with the stored CPU results of E3.1, E3.2, E3.3 and `BayesCAP-Hf-real` (same bags, same platform);
+- the experiments of other extensions that use `BayCAP-KDEy-mlp-real` (in the paper: E4.4, E5.2 and E5.3, E5.5; outside it: E4.1–E4.3, E5.1, E5.4, E7.1–E7.2) are not rerun by E3.4; since their bags are seeded and their other methods do not change, each needs a run of the new method alone, on the user's request.
+
 # Appendix
 
 ## A. Toy simulations
@@ -817,7 +955,8 @@ This is BayCAP's posterior on the column from $V$ alone, with the prior $\operat
 - **[[ext2_baycap|Extension 2]]**: supplies the realised-table predictive (§T.7), the decomposition of the shift and the paired Winkler test (E2.2, E2.3), the finding that the prior on $C$ displaces BayCAP on large-$K$ datasets, which P3 tests from the other side, and the Hf prior on $C$ (E2.8) used by E3.2, whose reference is `BayesCAP-Hf-real`.
 - **[[ext4_uncertainty_budget|Extension 4]]**: supplied the budget of §T.9 (its variance model is set aside in [[optional_extensions]] §10 since 2026-11-09); its E4.2 measures the error split of the realised BayCAP-KDEy with an MLP input over $\lvert U\rvert$ and $\lvert V\rvert$, with the same implementation, so this extension does not vary $\lvert U\rvert$ or $\lvert V\rvert$.
 - **[[ext5_baycap_priors_tempering|Extension 5]]**: the prior on $\pi^Q$ and tempering of BayCAP-KDEy with the MLP input and the fixed $\hat C$ (E5.1, E5.2); tempering BayesianMAPLS is out of its scope.
-- **Extension 7** ([[extensions]] §7): tuning of the MLP input classifier and of the hyperparameters of BayesKDEy (kernel, $b$, $\lambda$) beyond the configuration fixed for E3.1.
+- **Extension 7** ([[extensions]] §7): tuning of the MLP input classifier and of the hyperparameters of BayesKDEy (kernel, $b$, $\lambda$) beyond the configuration fixed for E3.1. With the per-instance pushforward of E3.4 the bandwidth sets the confidence of each instance, not only the posterior of $\pi$ (§T.15), while E7.1 and E7.2 were measured with the cell pushforward and the MLP input.
+- **[[ext8_average_confidence|Extension 8]]**: the centre of the per-instance pushforward of E3.4 is Average Confidence (E8.1) with the confidences of $h$ recalibrated by the kernel mixture and the draw of $\pi^Q$ instead of by LasCal (§T.15).
 - **[[optional_extensions]]**: §3 keeps Aitchison-SQS; §8 keeps the material set aside from the former Extensions 8 and 9.
 
 ## D. Out of scope
