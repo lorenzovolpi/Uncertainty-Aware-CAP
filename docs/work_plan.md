@@ -68,6 +68,8 @@ All methods return 1000 performance samples per bag. The point estimate is their
 
 Since 2026-11-09 the default method sets of these three modules are the eight methods of the main table (§V.4), not those of the paper; the paper's artefacts are reproduced by the code at the paper's commit, or with `--methods` for the plot.
 
+The tables and figures of the extended version of the paper are listed in `docs/paper.md` (user's decision of 2026-11-24): the list is `src/uncawe/paper.py:ARTEFACTS`, `make run-paper` regenerates them all on `bcuda` and collects them in `<OUT_DIR>/uncawe/paper/` (`tables/`, `figures/` as pdf and png, `macros.tex`), and `make pull PULL_DIRS=paper` brings the folder back; tests: `tests/test_paper.py`. Since then `plots/shift_profile.py`, `plots/binform_side_prior.py`, `plots/pq_rho.py` and `plots/target_size_scores.py` also write a pdf (`--pdf`, default on).
+
 ## I.5 Reproduction
 
 ```bash

@@ -298,10 +298,12 @@ def parse_args(argv: list[str] | None = None):
         "--bags-csv", default=None, help="Per-bag CSV of tables/binform_side_prior.py (default: its output)"
     )
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
+    # also pdf since 2026-11-24, for the paper folder (uncawe/paper.py)
+    parser.add_argument("--pdf", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--add-stem", default=None)
     args = parser.parse_args(argv)
-    args.formats = ["png", "svg"] if args.svg else ["png"]
+    args.formats = ["png"] + (["svg"] if args.svg else []) + (["pdf"] if args.pdf else [])
     return args
 
 

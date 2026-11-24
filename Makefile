@@ -132,6 +132,9 @@ EXP_plot-kdey-cal    := python -m uncawe.plots.kdey_cal
 EXP_plot-kdey-tcal   := python -m uncawe.plots.kdey_tcal
 EXP_plot-ctt         := python -m uncawe.plots.ctt
 EXP_plot-shift-profile := python -m uncawe.plots.shift_profile --domain classic
+# every table and figure of the extended paper, regenerated and collected in <OUT_DIR>/uncawe/paper/ (docs/paper.md);
+# then make pull PULL_DIRS=paper
+EXP_paper            := python -m uncawe.paper --generate --collect
 EXP_test             := python -m unittest discover -s tests
 EXP_bench-bayes-jobs := python scripts/bench/bayes_n_jobs.py
 EXP_bench-xla-stored := python scripts/bench/xla_vs_stored.py

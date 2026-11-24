@@ -227,10 +227,12 @@ def parse_args(argv=None):
     parser.add_argument("--methods", nargs="+", default=list(DEFAULT_METHODS))
     parser.add_argument("--bins", type=int, default=DEFAULT_BINS)
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
+    # also pdf since 2026-11-24, for the paper folder (uncawe/paper.py)
+    parser.add_argument("--pdf", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--add-stem", default=None)
     args = parser.parse_args(argv)
-    args.formats = ["png", "svg"] if args.svg else ["png"]
+    args.formats = ["png"] + (["svg"] if args.svg else []) + (["pdf"] if args.pdf else [])
     return args
 
 
