@@ -109,8 +109,19 @@ BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP")
 WTL_REFERENCE = "O-LEAP"
 
 
-def table_method_names() -> list[str]:
-    return [method for method in MAIN_METHODS if method in get_method_names()]
+def table_method_names(include: tuple[str, ...] = ()) -> list[str]:
+    """The methods of the main tables, plus the stored methods in ``include`` (e.g. ``BayCAP-KDEy-h-real``, user's
+    decision of 2026-11-24), in the order of ``get_method_names``, so that an included method sits next to its
+    siblings."""
+    names = get_method_names()
+    return [method for method in names if method in MAIN_METHODS or method in include]
+
+
+# output subfolder of the main tables with included methods (--include), so that the main tables are not overwritten
+EXTENDED_DIR = "extended"
+# when both BayCAP-KDEy variants are shown (the realised predictive, with the input classifier h or an MLP), their
+# labels name the input (user's decision of 2026-11-24); alone, BayCAP-KDEy-mlp-real is BayCAP-KDEy
+KDEY_PAIR_LABELS = {"BayCAP-KDEy-h-real": "\\bcapkdey{}-h", "BayCAP-KDEy-mlp-real": "\\bcapkdey{}-mlp"}
 
 
 # the methods that store in estim_acc_ranges the probability mass function of the number of correct predictions of the
@@ -641,13 +652,14 @@ def _results_latex_table(
     metrics: tuple[str, ...] = METRICS,
     show_std: bool = True,
     dataset_order: list[str] | None = None,
+    include: tuple[str, ...] = (),
 ) -> str:
     row_levels = _row_levels(df)
     stats = df.groupby(row_levels + ["method"], sort=False)[list(metrics)].agg(["mean", "std"])
     mean = stats.xs("mean", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
     std = stats.xs("std", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
 
-    methods = [method for method in table_method_names() if method in mean.columns.get_level_values("method")]
+    methods = [method for method in table_method_names(include) if method in mean.columns.get_level_values("method")]
     columns = _ordered_columns(methods, metrics)
     rows = _ordered_row_index(mean.index, dataset_order)
     mean = mean.reindex(index=rows)
@@ -830,10 +842,14 @@ def _escape_latex_text(text: str) -> str:
 
 def _latex_display_columns(columns: pd.Index) -> pd.Index:
     if isinstance(columns, pd.MultiIndex):
+        methods = set(columns.get_level_values("method")) if "method" in columns.names else set()
+        overrides = KDEY_PAIR_LABELS if set(KDEY_PAIR_LABELS) <= methods else {}
         return pd.MultiIndex.from_tuples(
             (
                 tuple(
-                    _latex_display_column_value(value, columns.names[level]) if isinstance(value, str) else value
+                    _latex_display_column_value(value, columns.names[level], overrides)
+                    if isinstance(value, str)
+                    else value
                     for level, value in enumerate(col)
                 )
                 for col in columns
@@ -844,11 +860,11 @@ def _latex_display_columns(columns: pd.Index) -> pd.Index:
     return _escape_latex_columns(columns)
 
 
-def _latex_display_column_value(value: str, level_name: str | None) -> str:
+def _latex_display_column_value(value: str, level_name: str | None, overrides: dict[str, str] | None = None) -> str:
     if level_name == "metric":
         return metrics_map.get(value, _escape_latex_text(value))
     if level_name == "method":
-        return _escape_latex_text(METHOD_LATEX_LABELS.get(value, value))
+        return _escape_latex_text((overrides or {}).get(value, METHOD_LATEX_LABELS.get(value, value)))
     return _escape_latex_text(value)
 
 
@@ -930,12 +946,23 @@ def _selected_metrics(pargs) -> tuple[str, ...]:
     return tuple(metric for metric in METRICS if metric in pargs.metrics)
 
 
+def _included(pargs) -> tuple[str, ...]:
+    include = tuple(getattr(pargs, "include", None) or ())
+    unknown = [method for method in include if method not in get_method_names()]
+    if unknown:
+        raise ValueError(f"Unknown methods: {', '.join(unknown)}")
+    return include
+
+
 def _table_dir(pargs) -> str:
-    return pargs.table_dir if pargs.table_dir is not None else os.path.join(env.root_dir, "tables", "main")
+    if pargs.table_dir is not None:
+        return pargs.table_dir
+    base = os.path.join(env.root_dir, "tables", "main")
+    return os.path.join(base, EXTENDED_DIR) if _included(pargs) else base
 
 
 def load_table_frame(
-    main_base_dir: str, domain: str, acc: str, classifiers: list[str]
+    main_base_dir: str, domain: str, acc: str, classifiers: list[str], include: tuple[str, ...] = ()
 ) -> tuple[pd.DataFrame, list[str]]:
     """The per-bag scores of the main-table methods (AE, coverage, amplitude and Winkler score of the realised
     accuracy, from ``true_cts``), with the display names of the datasets and their order."""
@@ -944,7 +971,7 @@ def load_table_frame(
         acc_name=acc,
         domain=domain,
         filter_classifiers=classifiers,
-        filter_methods=table_method_names(),
+        filter_methods=table_method_names(include),
     )
     dataset_order = _ordered_dataset_names(results.df)
     df = (
@@ -980,9 +1007,10 @@ def gen_tables(pargs):
             continue
 
         name = f"{experiment}_{domain}_{acc}"
-        df, dataset_order = load_table_frame(main_base_dir, domain, acc, classifiers)
+        include = _included(pargs)
+        df, dataset_order = load_table_frame(main_base_dir, domain, acc, classifiers, include)
 
-        tbl = _results_latex_table(df, metrics, pargs.show_std, dataset_order)
+        tbl = _results_latex_table(df, metrics, pargs.show_std, dataset_order, include)
         tabular_filename = f"{name}.tex"
         with open(os.path.join(tabular_dir, tabular_filename), "w") as f:
             f.write(tbl)
@@ -1032,6 +1060,12 @@ if __name__ == "__main__":
     parser.add_argument("--classic", action="store_const", dest="domain", const="classic")
     parser.add_argument("--metrics", nargs="+", choices=METRICS, default=None, help="Metrics to include in tables")
     parser.add_argument("--no-std", action="store_false", dest="show_std", help="Show only means, without std")
+    parser.add_argument(
+        "--include",
+        nargs="+",
+        default=None,
+        help=f"Stored methods to show next to those of the main tables (output under main/{EXTENDED_DIR}/)",
+    )
     parser.add_argument(
         "--table-dir",
         "--output-dir",
