@@ -166,8 +166,10 @@ class TemperedMethodsTest(unittest.TestCase):
 
     def test_names_and_levels(self):
         self.assertEqual(TEMPERATURE_LEVELS, (0.5, 2.0, 4.0, 8.0))
-        self.assertEqual(TEMPERED_BASES, ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real"))
-        expected = [f"{base}-t{tau}" for base in TEMPERED_BASES for tau in ("0.5", "2", "4", "8")]
+        self.assertEqual(TEMPERED_BASES, ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb"))
+        # the former BayCAP-KDEy keeps its tempered methods in the factory, so that its stored results keep their names
+        bases = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+        expected = [f"{base}-t{tau}" for base in bases for tau in ("0.5", "2", "4", "8")]
         self.assertEqual(list(TEMPERED_VARIANTS), expected)
 
     def test_each_is_its_untempered_method_with_the_temperature(self):
@@ -300,9 +302,9 @@ def _frames(base: str, seed: int = 0) -> dict[float, pd.DataFrame]:
     return {tau: pd.DataFrame(rows) for tau, rows in frames.items()}
 
 
-def _pair_table() -> pd.DataFrame:
+def _pair_table(bases=TEMPERED_BASES) -> pd.DataFrame:
     rows = []
-    for base in TEMPERED_BASES:
+    for base in bases:
         rows.extend(tt.pair_rows(_frames(base), "vanilla_accuracy", base))
     return tt.ordered(pd.DataFrame(rows))
 
@@ -331,11 +333,11 @@ class TablesTest(unittest.TestCase):
         # the samples widen by sqrt(tau)
         for tau in tt.TAUS:
             np.testing.assert_allclose(self.table[f"t{tt.tau_label(tau)}_widening"], np.sqrt(tau), rtol=1e-6)
-        # with r = 1 the prediction is sqrt((tau + 1)/2), for BayCAP-KDEy only
-        kdey = self.table.loc[self.table["method"] == tt.WIDENING_METHOD]
-        hf = self.table.loc[self.table["method"] != tt.WIDENING_METHOD]
+        # the prediction of §T.6 is that of the cell pushforward, for the former BayCAP-KDEy only: none for the bases
+        self.assertTrue(self.table["t4_widening_predicted"].isna().all())
+        # with r = 1 the prediction is sqrt((tau + 1)/2)
+        kdey = _pair_table((tt.WIDENING_METHOD,))
         np.testing.assert_allclose(kdey["t4_widening_predicted"], np.sqrt(5 / 2))
-        self.assertTrue(hf["t4_widening_predicted"].isna().all())
         self.assertEqual(self.table.iloc[: len(PAIRS)]["n_classes"].tolist(), [2, 2, 3, 3, 7, 7, 26, 26])
 
     def test_predicted_widening(self):
@@ -502,9 +504,11 @@ class PlotsTest(unittest.TestCase):
         self.assertIsNone(plots.plot_lines(self.table, "BayesCAP-Hf-real", "macro-K"))
 
     def test_widening(self):
-        points = plots.widening_points(self.table)
+        self.assertIsNone(plots.plot_widening(self.table))
+        table = pd.concat([self.table, _pair_table((tt.WIDENING_METHOD,))], ignore_index=True)
+        points = plots.widening_points(table)
         self.assertEqual(len(points), len(PAIRS) * len(TEMPERATURE_LEVELS))
-        fig = plots.plot_widening(self.table)
+        fig = plots.plot_widening(table)
         self.assertIsNotNone(fig)
         fig.canvas.draw()
         plt.close(fig)

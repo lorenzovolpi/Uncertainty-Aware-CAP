@@ -143,10 +143,17 @@ SQS_B_QUANTIFIER = "BayCAP-KDEy-mlp-real"
 # likelihood terms divided by tau (methods/baycap.py:BayCAP, temperature) and BayCAP-KDEy-mlp-real with the likelihood
 # of the bag divided by tau (methods/baycap_kdey.py:BayCAPKDEy, temperature), everything else as the untempered method,
 # so tau=1 is the stored method itself; name -> (untempered method, tau). Outside the main tables, ranks and default
-# plots (tables/main.py)
+# plots (tables/main.py). Since WP-33 (user's decision of 2026-11-24) E5.2, E5.3 and their tables use the bases
+# TEMPERED_BASES: BayesCAP-Hf-real and the two per-instance BayCAP-KDEy methods of E3.4 and E3.5 (the likelihood of the
+# bag divided by tau, the per-instance weights untempered, with -cb the bandwidth selected in the fit as untempered);
+# BayCAP-KDEy-mlp-real, whose results are invalidated (2026-11-24), keeps its tempered methods in the factory
+# (INVALIDATED_TEMPERED_BASES), so that its stored results keep their names, but no study runs or tabulates them
 TEMPERATURE_LEVELS = (0.5, 2.0, 4.0, 8.0)
-TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
-TEMPERED_VARIANTS = {f"{base}-t{tau:g}": (base, tau) for base in TEMPERED_BASES for tau in TEMPERATURE_LEVELS}
+TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+INVALIDATED_TEMPERED_BASES = ("BayCAP-KDEy-mlp-real",)
+# in the order of WP-20 first, then the bases added by WP-33
+ALL_TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+TEMPERED_VARIANTS = {f"{base}-t{tau:g}": (base, tau) for base in ALL_TEMPERED_BASES for tau in TEMPERATURE_LEVELS}
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, (base, _) in TEMPERED_VARIANTS.items()}
 # the methods of E7.1 of docs/ext7_kdey_bandwidth.md (card WP-25): BayCAP-KDEy-mlp-real and SQS-B with BayesKDEy at
 # bandwidth="loo" (one bandwidth per class, selected by leave-one-out likelihood on the cross-fitted validation outputs
@@ -248,16 +255,34 @@ def fixed_c_method(
     return BayCAPMAPLS(acc, **common)
 
 
-def instance_method(acc, name: str) -> BayCAPKDEy:
+def instance_method(acc, name: str, temperature: float = 1.0) -> BayCAPKDEy:
     """The method ``name`` of E3.4 (``INSTANCE_VARIANTS``): its stored method of E3.1 with the per-instance
-    pushforward (``estimand="realised-instance"``), everything else as the stored method."""
-    return fixed_c_method(acc, INSTANCE_VARIANTS[name], estimand=INSTANCE)
+    pushforward (``estimand="realised-instance"``), everything else as the stored method; ``temperature`` divides the
+    likelihood of the bag ($1$ except in E5.2 and E5.3), the per-instance weights stay untempered."""
+    return fixed_c_method(acc, INSTANCE_VARIANTS[name], estimand=INSTANCE, temperature=temperature)
 
 
-def logloss_method(acc, name: str) -> BayCAPKDEy:
+def logloss_method(acc, name: str, temperature: float = 1.0) -> BayCAPKDEy:
     """The method ``name`` of E3.5 (``LOGLOSS_VARIANTS``): its method of E3.4 with ``bandwidth="logloss"`` (grid
-    ``LOO_GRID``), everything else as the method of E3.4."""
-    return fixed_c_method(acc, INSTANCE_VARIANTS[LOGLOSS_VARIANTS[name]], estimand=INSTANCE, bandwidth=LOGLOSS)
+    ``LOO_GRID``), everything else as the method of E3.4; ``temperature`` as in :func:`instance_method` (the selection
+    of the bandwidth does not depend on it)."""
+    return fixed_c_method(
+        acc,
+        INSTANCE_VARIANTS[LOGLOSS_VARIANTS[name]],
+        estimand=INSTANCE,
+        bandwidth=LOGLOSS,
+        temperature=temperature,
+    )
+
+
+def kdey_method(acc, name: str, temperature: float = 1.0) -> BayCAPKDEy | BayCAPMAPLS:
+    """A method with a fixed $\\hat C$ by name (``FIXED_C_VARIANTS``, ``INSTANCE_VARIANTS`` or ``LOGLOSS_VARIANTS``) at
+    the temperature ``temperature``."""
+    if name in LOGLOSS_VARIANTS:
+        return logloss_method(acc, name, temperature=temperature)
+    if name in INSTANCE_VARIANTS:
+        return instance_method(acc, name, temperature=temperature)
+    return fixed_c_method(acc, name, temperature=temperature)
 
 
 def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"], prior="uniform", sample_size: int = SAMPLE_SIZE) -> SQSB:
@@ -328,7 +353,7 @@ def tempered_method(acc, name: str) -> BayCAP | BayCAPKDEy:
     base, tau = TEMPERED_VARIANTS[name]
     if base in BAYCAP_VARIANTS:
         return baycap_method(acc, base, temperature=tau)
-    return fixed_c_method(acc, base, temperature=tau)
+    return kdey_method(acc, base, temperature=tau)
 
 
 def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:

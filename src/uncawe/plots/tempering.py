@@ -4,11 +4,12 @@ r"""Plots of the tempering of BayCAP-Hf and BayCAP-KDEy on ``main`` (work-plan c
 The figures read the per-pair CSV of :mod:`uncawe.tables.tempering` (run ``tables/tempering.py --tables`` first). Both
 methods target the realised table of each bag and are scored against it.
 
-- ``lines``: per method (``BayesCAP-Hf-real``, ``BayCAP-KDEy-mlp-real``) and metric (vanilla accuracy by default), the
+- ``lines``: per method (``experiments/methods.py:TEMPERED_BASES``) and metric (vanilla accuracy by default), the
   per-pair mean Winkler score, coverage and amplitude against $\tau$ (log scale), one panel per measure, each pair as a
   faint line coloured by $K$ and the mean over the pairs in bold; coverage with the nominal level $0.95$.
 - ``lines_k``: the same with one row of panels per group of $K$ ($K=2$, $3\le K\le7$, $K\ge8$).
-- ``widening``: for ``BayCAP-KDEy-mlp-real`` and vanilla accuracy, the observed widening of the amplitude with respect
+- ``widening``: for ``BayCAP-KDEy-mlp-real`` (``tables/tempering.py:WIDENING_METHOD``; not drawn for the bases of WP-33)
+  and vanilla accuracy, the observed widening of the amplitude with respect
   to $\tau=1$ (median over the bags of the per-bag ratio) against the predicted one, $\sqrt{(\tau+r^2)/(1+r^2)}$ with
   $r=\bar\sigma_g/\sigma_p$ (§T.6), one point per pair and $\tau\neq1$, coloured by $K$, markers by classifier, with the
   diagonal.

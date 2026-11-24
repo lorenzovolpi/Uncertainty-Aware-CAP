@@ -1,8 +1,11 @@
 r"""Tempering of BayCAP-Hf and BayCAP-KDEy on the protocol of ``main`` (work-plan card WP-20, E5.2 of
 ``docs/ext5_baycap_priors_tempering.md``).
 
-E5.2 runs ``BayesCAP-Hf-real`` (BayCAP-Hf, both likelihood terms divided by $\tau$) and ``BayCAP-KDEy-mlp-real``
-(BayCAP-KDEy with an MLP input and a fixed $\hat C$, the likelihood of the bag divided by $\tau$) at the temperatures
+E5.2 runs ``BayesCAP-Hf-real`` (BayCAP-Hf, both likelihood terms divided by $\tau$) and, since WP-33,
+``BayCAP-KDEy-h-inst`` and ``BayCAP-KDEy-h-inst-cb`` (BayCAP-KDEy with the input classifier $h$, a fixed $\hat C$ and the
+per-instance pushforward, the likelihood of the bag divided by $\tau$, the weights untempered)
+(``experiments/methods.py:TEMPERED_BASES``; until WP-33 ``BayCAP-KDEy-mlp-real``, whose results are invalidated; the
+predicted widening below is computed for it only, ``WIDENING_METHOD``, since §T.6 derives it for the cell pushforward) at the temperatures
 $\tau\in\{0.5,1,2,4,8\}$ on the $75$ pairs of ``main`` (``experiments/methods.py:TEMPERED_VARIANTS``; $\tau=1$ is the
 stored untempered method). Both methods target the realised table of each bag and are scored against it
 (``true_cts``); the scores use the target labels, so they are analyses. The pairs are those where the five temperatures
@@ -46,7 +49,12 @@ from scipy.stats import wilcoxon
 
 from uncawe import env
 from uncawe.experiments.main import EXPERIMENT
-from uncawe.experiments.methods import TEMPERATURE_LEVELS, TEMPERED_BASES, TEMPERED_VARIANTS
+from uncawe.experiments.methods import (
+    INVALIDATED_TEMPERED_BASES,
+    TEMPERATURE_LEVELS,
+    TEMPERED_BASES,
+    TEMPERED_VARIANTS,
+)
 from uncawe.experiments.metrics import acc_from_ct, get_acc_names
 from uncawe.results import Results
 from uncawe.tables import baycap_fixed, eb_prior, hierarchical
@@ -250,7 +258,8 @@ def pair_table(
 def ordered(table: pd.DataFrame) -> pd.DataFrame:
     table = table.copy()
     table["_acc"] = table["acc_name"].map(get_acc_names().index)
-    table["_method"] = table["method"].map(TEMPERED_BASES.index)
+    # the bases of the studies first, then the former BayCAP-KDEy (only in tables built from its stored results)
+    table["_method"] = table["method"].map((*TEMPERED_BASES, *INVALIDATED_TEMPERED_BASES).index)
     table["_clf"] = table["classifier"].map(lambda c: CLASSIFIER_ORDER.index(c) if c in CLASSIFIER_ORDER else 99)
     table = table.sort_values(["_acc", "_method", "n_classes", "dataset", "_clf"])
     return table.drop(columns=["_acc", "_method", "_clf"]).reset_index(drop=True)
@@ -452,7 +461,13 @@ def oracle_distribution(selected: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------------------------------- LaTeX
 
-METHOD_LABELS = {"BayesCAP-Hf-real": "\\bcaphf", "BayCAP-KDEy-mlp-real": "\\bcapkdey"}
+# BayCAP-KDEy is BayCAP-KDEy-h-inst since E3.4 (card WP-31); the former one keeps its own label (card WP-33)
+METHOD_LABELS = {
+    "BayesCAP-Hf-real": "\\bcaphf",
+    "BayCAP-KDEy-h-inst": "\\bcapkdey",
+    "BayCAP-KDEy-h-inst-cb": "\\bcapkdey{}-cb",
+    "BayCAP-KDEy-mlp-real": "\\bcap{}-KDEy-mlp-real",
+}
 K_LABELS = {"all": "all", "K=2": "$K=2$", "3<=K<=7": "$3\\le K\\le7$", "K>=8": "$K\\ge8$"}
 SCORE_LABELS = {
     "ae": "AE",
