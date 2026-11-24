@@ -21,7 +21,7 @@ from uncawe.methods.ac import AC
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import CAL, INSTANCE, BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
-from uncawe.methods.bayes_kdey import LOO
+from uncawe.methods.bayes_kdey import LOGLOSS, LOO
 from uncawe.methods.sqs_b import SQSB
 
 BAYES_WARMUPS = 500
@@ -73,6 +73,8 @@ METHOD_CLASS = {
     "BayCAP-KDEy-h-real": BayCAPKDEy,
     # E3.4 (card WP-31), see INSTANCE_VARIANTS below
     "BayCAP-KDEy-h-inst": BayCAPKDEy,
+    # E3.5 (card WP-33), see LOGLOSS_VARIANTS below
+    "BayCAP-KDEy-h-inst-cb": BayCAPKDEy,
     "BayCAP-KDEy-mlp": BayCAPKDEy,
     "BayCAP-KDEy-mlp-real": BayCAPKDEy,
     "BayCAP-EMQ-h": BayCAPMAPLS,
@@ -119,6 +121,12 @@ FIXED_C_VARIANTS = {
 # the stored method, so that the two have the same prevalence draws; name -> stored method. The BayCAP-KDEy method of
 # the project since 2026-11-24 (user's decision), in the main tables in place of BayCAP-KDEy-mlp-real
 INSTANCE_VARIANTS = {"BayCAP-KDEy-h-inst": "BayCAP-KDEy-h-real"}
+# the method of E3.5 of docs/ext3_posterior_propagation.md (card WP-33, §T.16): BayCAP-KDEy-h-inst with BayesKDEy at
+# bandwidth="logloss" (one bandwidth shared by the classes, selected per pair over methods/bayes_kdey.py:LOO_GRID by the
+# class-balanced leave-one-out log-loss of the kernel class probabilities on V, ties towards 0.1, and used in both the
+# likelihood and the per-instance weights), everything else, seeds included, as the method of E3.4; name -> method of
+# E3.4. Outside the main tables, ranks and default plots until it is analysed (user's decision of 2026-11-24)
+LOGLOSS_VARIANTS = {"BayCAP-KDEy-h-inst-cb": "BayCAP-KDEy-h-inst"}
 # input classifier of the methods of E3.2 (methods/baycap_kdey.py:BayCAPKDEy with c_prior="hierarchical-f"): BayesKDEy
 # with a random C, the Hf prior with centred shares and the kernel of E3.1; realised pushforward only; NUTS settings and
 # default seed of the BayCAP methods
@@ -167,6 +175,7 @@ BAYES_POOL_METHODS = (
     frozenset(BAYCAP_VARIANTS)
     | frozenset(FIXED_C_VARIANTS)
     | frozenset(INSTANCE_VARIANTS)
+    | frozenset(LOGLOSS_VARIANTS)
     | frozenset(KDEY_HF_VARIANTS)
     | frozenset({SQS_B})
     | frozenset(TEMPERED_VARIANTS)
@@ -219,7 +228,7 @@ def fixed_c_method(
     is the Dirichlet parameter of the prior on $\\pi$ (uniform in ``main``; E5.1, ``experiments/binform.py``, varies
     it), ``temperature`` the posterior temperature ($1$ in E3.1 and E5.1; the other values are those of E5.2; ``"cal"``
     in E7.2b), and
-    ``bandwidth`` that of BayesKDEy ($0.1$; ``"loo"`` in E7.1, ``"cal"`` in E7.2); ``kdey_options`` are further
+    ``bandwidth`` that of BayesKDEy ($0.1$; ``"loo"`` in E7.1, ``"cal"`` in E7.2, ``"logloss"`` in E3.5); ``kdey_options`` are further
     arguments of ``BayCAPKDEy`` (e.g. ``cal_nuts_check``); ``estimand``, if given, replaces that of ``name``
     (``"realised-instance"`` in E3.4)."""
     quantifier, source, stored_estimand = FIXED_C_VARIANTS[name]
@@ -243,6 +252,12 @@ def instance_method(acc, name: str) -> BayCAPKDEy:
     """The method ``name`` of E3.4 (``INSTANCE_VARIANTS``): its stored method of E3.1 with the per-instance
     pushforward (``estimand="realised-instance"``), everything else as the stored method."""
     return fixed_c_method(acc, INSTANCE_VARIANTS[name], estimand=INSTANCE)
+
+
+def logloss_method(acc, name: str) -> BayCAPKDEy:
+    """The method ``name`` of E3.5 (``LOGLOSS_VARIANTS``): its method of E3.4 with ``bandwidth="logloss"`` (grid
+    ``LOO_GRID``), everything else as the method of E3.4."""
+    return fixed_c_method(acc, INSTANCE_VARIANTS[LOGLOSS_VARIANTS[name]], estimand=INSTANCE, bandwidth=LOGLOSS)
 
 
 def sqs_b(acc, bandwidth=KDEY_SETTINGS["bandwidth"], prior="uniform", sample_size: int = SAMPLE_SIZE) -> SQSB:
@@ -343,6 +358,9 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
         # the method of E3.4 right after its stored method, in the order of METHOD_CLASS
         for variant in (v for v, base in INSTANCE_VARIANTS.items() if base == name):
             yield variant, instance_method(acc, variant)
+            # the method of E3.5 right after its method of E3.4, in the order of METHOD_CLASS
+            for cb in (v for v, inst in LOGLOSS_VARIANTS.items() if inst == variant):
+                yield cb, logloss_method(acc, cb)
     for name, source in KDEY_HF_VARIANTS.items():
         yield (
             name,

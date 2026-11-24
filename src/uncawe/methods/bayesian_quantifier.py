@@ -47,6 +47,18 @@ def top_label_ece(outputs: np.ndarray, labels: np.ndarray, classes: np.ndarray, 
     outputs = np.asarray(outputs, dtype=float)
     confidence = outputs.max(axis=1)
     correct = np.asarray(classes)[outputs.argmax(axis=1)] == np.asarray(labels)
+    return confidence_ece(confidence, correct, n_bins)
+
+
+def confidence_ece(confidence: np.ndarray, correct: np.ndarray, n_bins: int = ECE_BINS) -> float:
+    r"""Expected calibration error of confidences $c_n\in[0,1]$ against the indicators of being right, with the
+    ``n_bins`` equal-width bins of :func:`top_label_ece` (which applies it to the largest output of each instance).
+
+    :param confidence: $c_n$, shape ``(N,)``.
+    :param correct: whether each prediction is right, shape ``(N,)``.
+    """
+    confidence = np.asarray(confidence, dtype=float)
+    correct = np.asarray(correct, dtype=bool)
     bins = np.clip(np.ceil(confidence * n_bins).astype(int) - 1, 0, n_bins - 1)
     ece = 0.0
     for b in np.unique(bins):
@@ -208,5 +220,6 @@ __all__ = [
     "NUTS_DIAGNOSTICS",
     "PREV",
     "BayesianQuantifier",
+    "confidence_ece",
     "top_label_ece",
 ]
