@@ -90,7 +90,7 @@ class TestMethodTableLabel(unittest.TestCase):
         self.assertEqual(method_table_label("SQS-B"), "SQS-B")
         self.assertEqual(method_table_label("BayesCAP-Hf-real"), "BayCAP-Hf")
         self.assertEqual(method_table_label("BayCAP-KDEy-mlp-real"), "BayCAP-KDEy")
-        self.assertEqual(method_table_label("BayesCAP-real"), "BayCAP-real")
+        self.assertEqual(method_table_label("BayesCAP-real"), "BayCAP-sample")
         self.assertEqual(method_table_label("PQ"), "SQS-S")
         self.assertEqual(method_table_label("DoC"), "DoC")
 

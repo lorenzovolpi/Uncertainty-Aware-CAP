@@ -6,6 +6,8 @@ METHOD_LATEX_MACROS = (
     "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
     "\\newcommand{\\sqsb}{SQS-B}",
     "\\newcommand{\\bcap}{BayCAP}",
+    "\\newcommand{\\bcappop}{BayCAP-pop}",
+    "\\newcommand{\\bcapsample}{BayCAP-sample}",
     "\\newcommand{\\bcaphf}{BayCAP-Hf}",
     "\\newcommand{\\bcapkdey}{BayCAP-KDEy}",
 )
@@ -14,8 +16,8 @@ METHOD_LATEX_PREAMBLE = "\n".join(METHOD_LATEX_MACROS)
 METHOD_LATEX_LABELS = {
     "QuAcc_NxN": "QuAcc",
     "PQ": "\\pq",
-    "BayesCAP": "\\bcap",
-    "BayesCAP-real": "\\bcap{}-real",
+    "BayesCAP": "\\bcappop",
+    "BayesCAP-real": "\\bcapsample",
     "BayesCAP-EB": "\\bcap{}-EB",
     "BayesCAP-EB-real": "\\bcap{}-EB-real",
     "BayesCAP-H-real": "\\bcap{}-H-real",
