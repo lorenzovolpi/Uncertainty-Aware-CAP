@@ -111,16 +111,21 @@ class TestSummaryRows(unittest.TestCase):
         latex = main_tables._results_latex_table(df, METRICS, show_std=False, dataset_order=["d1", "d2"])
         tail = latex[latex.index("\\midrule", latex.index("d2")) :]
         lines = [line for line in tail.splitlines() if line.startswith("\\multicolumn{2}{l}")]
-        self.assertEqual(len(lines), 2)
-        wtl, ranks = lines
-        self.assertIn("W/T/L vs LEAP", wtl)
+        self.assertEqual(len(lines), 4)
+        wins, ties, losses, ranks = lines
+        for line, outcome in ((wins, "Wins"), (ties, "Ties"), (losses, "Losses")):
+            self.assertIn(f"{{{outcome} vs LEAP}}", line)
         # one cell per method and metric after the label; the reference gets none
-        cells = wtl.removesuffix(" \\\\").split(" & ")[1:]
-        self.assertEqual(len(cells), 2 * N)
-        self.assertEqual(cells[methods.index(main_tables.WTL_REFERENCE)], "{--}")
-        for cell in cells:
-            if cell != "{--}":
-                self.assertEqual(sum(int(c) for c in cell.strip("{}").split("/")), 2)
+        rows = [line.removesuffix(" \\\\").split(" & ")[1:] for line in (wins, ties, losses)]
+        reference = methods.index(main_tables.WTL_REFERENCE)
+        for cells in rows:
+            self.assertEqual(len(cells), 2 * N)
+            self.assertEqual(cells[reference], "{--}")
+            self.assertEqual(cells[N + reference], "{--}")
+        # on each of the two rows of the table a method wins, ties or loses
+        for column in range(2 * N):
+            if column % N != reference:
+                self.assertEqual(sum(int(cells[column].strip("{}")) for cells in rows), 2)
         self.assertIn("Avg.\\ rank", ranks)
         self.assertEqual(ranks.count("\\bfseries"), 2)
         self.assertTrue(latex.rstrip().endswith("\\bottomrule\n\\end{tabular}"))

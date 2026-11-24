@@ -607,17 +607,19 @@ def _summary_lines(
     index_columns: int,
     reference: str = WTL_REFERENCE,
 ) -> list[str]:
-    """The rows under the results: the win/tie/loss counts against ``reference`` (if computed) and the average rank,
-    the best of each metric in bold. The cells are braced, so that the siunitx columns print them as text."""
+    """The rows under the results: the numbers of wins, ties and losses against ``reference`` (if computed), one row
+    each (user's decision of 2026-11-24), and the average rank, the best of each metric in bold. The cells are braced,
+    so that the siunitx columns print them as text."""
     lines = ["\\midrule"]
     if wtl is not None:
         label = METHOD_LATEX_LABELS.get(reference, reference)
-        cells = [f"\\multicolumn{{{index_columns}}}{{l}}{{W/T/L vs {label}}}"]
-        for metric in metrics:
-            for method in methods:
-                counts = wtl.get((method, metric))
-                cells.append("{--}" if counts is None else "{" + "/".join(str(c) for c in counts) + "}")
-        lines.append(" & ".join(cells) + " \\\\")
+        for position, outcome in enumerate(("Wins", "Ties", "Losses")):
+            cells = [f"\\multicolumn{{{index_columns}}}{{l}}{{{outcome} vs {label}}}"]
+            for metric in metrics:
+                for method in methods:
+                    counts = wtl.get((method, metric))
+                    cells.append("{--}" if counts is None else f"{{{counts[position]}}}")
+            lines.append(" & ".join(cells) + " \\\\")
     cells = [f"\\multicolumn{{{index_columns}}}{{l}}{{Avg.\\ rank}}"]
     for metric in metrics:
         values = [ranks[(method, metric)] for method in methods]
