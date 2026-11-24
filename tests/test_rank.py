@@ -38,6 +38,30 @@ class TestRankTable(unittest.TestCase):
         with self.assertRaises(ValueError):
             rank._rank_latex_table(df)
 
+    def test_one_table_per_metric(self):
+        methods = rank._methods()
+        df = _results(methods)
+        n = len(methods)
+        ours = n - 3
+        for metric, label in (("acc_err", "$\\mathrm{AE}$"), ("winkler", "$\\mathcal{W}$")):
+            with self.subTest(metric=metric):
+                latex = rank._rank_latex_table(df, (metric,), methods)
+                value = f"{{w{{c}}{{{rank.VALUE_COLUMN_WIDTH}}}}}"
+                self.assertIn(f"{{l*{{3}}{value}|*{{{ours}}}{value}}}", latex)
+                # the metric heads the columns, with no vertical line after it
+                self.assertIn(f" & \\multicolumn{{{n}}}{{c}}{{{label}}} \\\\", latex)
+                self.assertIn(
+                    f" & \\multicolumn{{3}}{{c|}}{{Baseline methods}} & \\multicolumn{{{ours}}}{{c}}{{Our methods}} \\\\",
+                    latex,
+                )
+                self.assertIn("\\multicolumn{1}{c|}{\\rotatebox{90}{LEAP}}", latex)
+        # the ranks of one metric do not depend on the other metric
+        both = rank._rank_mean_values(rank._dataset_rank_values(df, rank.METRICS))
+        alone = rank._rank_mean_values(rank._dataset_rank_values(df, ("winkler",)))
+        pd.testing.assert_frame_equal(
+            both.xs("winkler", axis=1, level="metric"), alone.xs("winkler", axis=1, level="metric")
+        )
+
     def test_metric_rules_span_the_columns_of_each_metric(self):
         self.assertEqual(rank._metric_cmidrules(6, 2), "\\cmidrule(r){2-7}\\cmidrule(l){8-13}")
 

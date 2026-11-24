@@ -4,7 +4,7 @@ METHOD_LATEX_MACROS = (
     "\\newcommand{\\pq}{SQS-S}",
     "\\newcommand{\\sqsh}{SQS-H}",
     "\\newcommand{\\sqshbs}{SQS-H\\textsubscript{bs}}",
-    "\\newcommand{\\sqsb}{SQS-B}",
+    "\\newcommand{\\sqsb}{SQS-H\\textsubscript{bay}}",
     "\\newcommand{\\bcap}{BayCAP}",
     "\\newcommand{\\bcappop}{BayCAP-pop}",
     "\\newcommand{\\bcapsample}{BayCAP-sample}",

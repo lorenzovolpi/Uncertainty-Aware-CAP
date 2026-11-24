@@ -87,14 +87,14 @@ metrics_map = {
 # (BayesCAP: its interval targets the population table C diag(pi), and main scores it against the realised table of
 # the bag, true_cts) is shown again since 2026-11-23, for the moment, in the main and rank tables and the
 # amplitude-vs-coverage plot (user's decision of 2026-11-23); MAIN_METHODS_BEFORE_BAYESCAP keeps the list without it
-# for the error-split and coverage/amplitude tables.
+# for the error-split and coverage/amplitude tables. SQS-B is left out since 2026-11-24 (user's decision of 2026-11-24),
+# also from the error-split and coverage/amplitude tables.
 MAIN_METHODS = (
     "DoC",
     "QuAcc_NxN",
     "O-LEAP",
     "SQS-H",
     "SQS-Hbs",
-    "SQS-B",
     "PQ",
     "BayesCAP",
     "BayesCAP-real",
@@ -105,6 +105,9 @@ MAIN_METHODS_BEFORE_BAYESCAP = tuple(m for m in MAIN_METHODS if m != "BayesCAP")
 EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
 # the baselines of the main tables, under "Baseline methods" and separated from the other methods by a vertical line
 BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP")
+# the reference of the win/tie/loss row at the bottom of the main tables (user's decision of 2026-11-24): BayCAP with
+# the population pushforward
+WTL_REFERENCE = "BayesCAP"
 
 
 def table_method_names() -> list[str]:
@@ -541,6 +544,97 @@ def _wilcoxon_not_significantly_different(best_samples: pd.Series, method_sample
     return bool(np.isfinite(pvalue) and pvalue >= WILCOXON_ALPHA)
 
 
+def win_tie_loss(
+    df: pd.DataFrame,
+    row_levels: list[str],
+    mean: pd.DataFrame,
+    methods: list[str],
+    metrics: tuple[str, ...],
+    reference: str = WTL_REFERENCE,
+) -> dict[tuple[str, str], tuple[int, int, int]]:
+    """Per (method, metric), the numbers of rows (classifier and dataset) where the method wins, ties and loses against
+    ``reference``: on each row, the two-sided Wilcoxon signed-rank test of the paired per-bag scores at level
+    ``WILCOXON_ALPHA`` (the test of the daggers); a significant difference is a win if the mean of the method is
+    better (lower for AE and the Winkler score), a loss otherwise; no significant difference is a tie. Rows where
+    either method has no score are left out. The reference itself gets no entry."""
+    counts = {(method, metric): [0, 0, 0] for method in methods if method != reference for metric in metrics}
+    for key, group in df.groupby(row_levels, sort=False):
+        row_key = _as_row_key(key)
+        if row_key not in mean.index:
+            continue
+        group = group.copy()
+        group["_sample_id"] = group.groupby("method", sort=False).cumcount()
+        for metric in metrics:
+            samples = group.pivot(index="_sample_id", columns="method", values=metric)
+            if reference not in samples:
+                continue
+            reference_samples = pd.to_numeric(samples[reference], errors="coerce")
+            reference_mean = mean.loc[row_key, (reference, metric)]
+            for method in methods:
+                if method == reference or method not in samples:
+                    continue
+                method_mean = mean.loc[row_key, (method, metric)]
+                paired = pd.concat([reference_samples, pd.to_numeric(samples[method], errors="coerce")], axis=1)
+                paired = paired.dropna()
+                if paired.empty or pd.isna(method_mean) or pd.isna(reference_mean):
+                    continue
+                if _wilcoxon_not_significantly_different(paired.iloc[:, 0], paired.iloc[:, 1]):
+                    counts[(method, metric)][1] += 1
+                elif (method_mean < reference_mean) == LOWER_IS_BETTER[metric]:
+                    counts[(method, metric)][0] += 1
+                else:
+                    counts[(method, metric)][2] += 1
+    return {key: tuple(value) for key, value in counts.items()}
+
+
+def average_ranks(mean: pd.DataFrame, methods: list[str], metrics: tuple[str, ...]) -> dict[tuple[str, str], float]:
+    """Per (method, metric), the mean over the rows (classifier and dataset) of the rank of the method among the
+    methods of the table by its mean score (1 = best; ties get the average rank; a method without a score on a row is
+    left out of that row)."""
+    ranks = {}
+    for metric in metrics:
+        values = mean.xs(metric, axis=1, level="metric").reindex(columns=methods).apply(pd.to_numeric, errors="coerce")
+        row_ranks = values.rank(axis=1, method="average", ascending=LOWER_IS_BETTER[metric])
+        for method in methods:
+            ranks[(method, metric)] = float(row_ranks[method].mean(skipna=True))
+    return ranks
+
+
+def _summary_lines(
+    wtl: dict[tuple[str, str], tuple[int, int, int]] | None,
+    ranks: dict[tuple[str, str], float],
+    methods: list[str],
+    metrics: tuple[str, ...],
+    index_columns: int,
+    reference: str = WTL_REFERENCE,
+) -> list[str]:
+    """The rows under the results: the win/tie/loss counts against ``reference`` (if computed) and the average rank,
+    the best of each metric in bold. The cells are braced, so that the siunitx columns print them as text."""
+    lines = ["\\midrule"]
+    if wtl is not None:
+        label = METHOD_LATEX_LABELS.get(reference, reference)
+        cells = [f"\\multicolumn{{{index_columns}}}{{l}}{{W/T/L vs {label}}}"]
+        for metric in metrics:
+            for method in methods:
+                counts = wtl.get((method, metric))
+                cells.append("{--}" if counts is None else "{" + "/".join(str(c) for c in counts) + "}")
+        lines.append(" & ".join(cells) + " \\\\")
+    cells = [f"\\multicolumn{{{index_columns}}}{{l}}{{Avg.\\ rank}}"]
+    for metric in metrics:
+        values = [ranks[(method, metric)] for method in methods]
+        finite = [v for v in values if np.isfinite(v)]
+        best = min(finite) if finite else np.nan
+        for value in values:
+            if not np.isfinite(value):
+                cells.append("{--}")
+            elif np.isclose(value, best):
+                cells.append(f"{{\\bfseries {value:.2f}}}")
+            else:
+                cells.append(f"{{{value:.2f}}}")
+    lines.append(" & ".join(cells) + " \\\\")
+    return lines
+
+
 def _results_latex_table(
     df: pd.DataFrame,
     metrics: tuple[str, ...] = METRICS,
@@ -564,7 +658,10 @@ def _results_latex_table(
     table = _apply_significance_markers(table, significance_markers)
     sigma_zscores, sigmas = _metric_sigma_context(df, row_levels, mean, methods, metrics)
     styles = _cell_styles(mean, metrics, sigma_zscores, sigmas)
-    return _render_latex_table(table, styles, methods, metrics, row_levels)
+    # win/tie/loss against WTL_REFERENCE and average rank under the results (user's decision of 2026-11-24)
+    wtl = win_tie_loss(df, row_levels, mean, methods, metrics) if WTL_REFERENCE in methods else None
+    summary = _summary_lines(wtl, average_ranks(mean, methods, metrics), methods, metrics, len(row_levels))
+    return _render_latex_table(table, styles, methods, metrics, row_levels, summary)
 
 
 def _render_latex_table(
@@ -573,8 +670,10 @@ def _render_latex_table(
     methods: list[str],
     metrics: tuple[str, ...],
     row_levels: list[str],
+    summary_lines: list[str] | None = None,
 ) -> str:
-    """LaTeX of a table with (method, metric) columns: metric groups, Baseline/Our methods row, rotated names."""
+    """LaTeX of a table with (method, metric) columns: metric groups, Baseline/Our methods row, rotated names; the
+    ``summary_lines`` (in display column order) go between the results and the closing rule."""
     table = _to_display_column_order(table, methods, metrics)
     styles = _to_display_column_order(styles, methods, metrics)
     latex_columns = _latex_display_columns(table.columns)
@@ -588,7 +687,11 @@ def _render_latex_table(
         multicol_align="c|",
         convert_css=True,
     )
-    return _hide_latex_header_names(latex, methods, metrics, show_metric_names=len(metrics) > 1)
+    latex = _hide_latex_header_names(latex, methods, metrics, show_metric_names=len(metrics) > 1)
+    if summary_lines:
+        head, tail = latex.rsplit("\\bottomrule", 1)
+        latex = head + "\n".join(summary_lines) + "\n\\bottomrule" + tail
+    return latex
 
 
 def _hide_latex_header_names(
@@ -651,7 +754,8 @@ def _is_horizontal_rule(line: str) -> bool:
 
 
 def _format_metric_header_separators(line: str, metric_count: int) -> str:
-    if metric_count <= 1 or "\\multicolumn" not in line:
+    # a single metric also passes: its multicolumn loses the closing vertical line of multicol_align="c|"
+    if "\\multicolumn" not in line:
         return line
 
     pieces = line.split("\\multicolumn")

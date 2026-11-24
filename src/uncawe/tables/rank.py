@@ -259,7 +259,8 @@ def _rank_latex_table(df: pd.DataFrame, metrics: tuple[str, ...] = METRICS, meth
         multicol_align="c|",
         convert_css=True,
     )
-    return _hide_latex_header_names(latex, methods, metrics, show_metric_names=len(metrics) > 1)
+    # one metric per table since 2026-11-24 (user's decision): its name heads the columns, above the method families
+    return _hide_latex_header_names(latex, methods, metrics, show_metric_names=True)
 
 
 def _metric_cmidrules(n_methods: int, n_metrics: int) -> str:
@@ -423,20 +424,25 @@ def gen_tables(pargs):
         if df.empty:
             continue
 
-        name = f"{EXPERIMENT}_{domain}_{acc_name}_rank"
-        table = _rank_latex_table(df, metrics, methods)
-        tabular_filename = f"{name}.tex"
-        with open(os.path.join(tabular_dir, tabular_filename), "w") as f:
-            f.write(table)
+        # one table per metric (user's decision of 2026-11-24): first AE, then the Winkler score
+        for metric in metrics:
+            name = f"{EXPERIMENT}_{domain}_{acc_name}_rank_{metric}"
+            table = _rank_latex_table(df, (metric,), methods)
+            tabular_filename = f"{name}.tex"
+            with open(os.path.join(tabular_dir, tabular_filename), "w") as f:
+                f.write(table)
 
-        document_tables.append(
-            (
-                f"tabular/{tabular_filename}",
-                f"Mean rank of {_escape_latex_text(acc_name)} results on {_escape_latex_text(domain)} datasets.",
-                f"tab:{EXPERIMENT}-{domain}-{acc_name}-rank",
+            document_tables.append(
+                (
+                    f"tabular/{tabular_filename}",
+                    (
+                        f"Mean rank by {main_tables.metrics_map[metric]} of {_escape_latex_text(acc_name)} results on "
+                        f"{_escape_latex_text(domain)} datasets."
+                    ),
+                    f"tab:{EXPERIMENT}-{domain}-{acc_name}-rank-{metric}",
+                )
             )
-        )
-        print(f"table {name} genned")
+            print(f"table {name} genned")
 
     if not document_tables:
         raise RuntimeError(f"No rank tables generated for domain={domain!r}.")

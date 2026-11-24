@@ -34,7 +34,9 @@ from uncawe.tables.main import MAIN_METHODS
 PLOT_NAME = "amplitude_vs_coverage"
 # the methods of the main tables (tables/main.py:MAIN_METHODS, user's decision of 2026-11-09), one facet each; before,
 # DEFAULT_METHODS plus BayesCAP-real, BayesCAP-EB-real, BayesCAP-Hf-real, BayCAP-KDEy-h-real and BayCAP-KDEy-mlp-real
-PLOT_METHODS = list(MAIN_METHODS)
+# without BayesCAP (BayCAP-pop), which the main tables show since 2026-11-23 (user's decision of 2026-11-24); SQS-B
+# left MAIN_METHODS on 2026-11-24
+PLOT_METHODS = [method for method in MAIN_METHODS if method != "BayesCAP"]
 
 
 def _plot_dir() -> str:

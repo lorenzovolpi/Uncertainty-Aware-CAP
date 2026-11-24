@@ -50,7 +50,6 @@ MAIN_SET = [
     "O-LEAP",
     "SQS-H",
     "SQS-Hbs",
-    "SQS-B",
     "PQ",
     "BayesCAP",
     "BayesCAP-real",
@@ -153,7 +152,7 @@ class BayCAPFactoryTest(unittest.TestCase):
     def test_main_tables_ranks_and_plots_show_the_main_set(self):
         self.assertEqual(main_tables.table_method_names(), MAIN_SET)
         self.assertEqual(rank._methods(), MAIN_SET)
-        self.assertEqual(AVC_METHODS, MAIN_SET)
+        self.assertEqual(AVC_METHODS, [m for m in MAIN_SET if m != "BayesCAP"])
         for name in ("BayesCAP", "L-CBPE", *E2_METHODS, *E31_METHODS, *E32_METHODS):
             with self.subTest(method=name):
                 if name not in MAIN_SET:

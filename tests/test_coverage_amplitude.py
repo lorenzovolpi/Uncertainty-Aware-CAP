@@ -8,6 +8,8 @@ from uncawe.tables import main as main_tables
 from uncawe.tables import rank
 
 METHODS = list(main_tables.MAIN_METHODS)
+# the coverage/amplitude table shows the methods of the main table without BayesCAP
+N = len(main_tables.MAIN_METHODS_BEFORE_BAYESCAP)
 
 
 def _frame(coverage: dict[str, float], amplitude: dict[str, float]) -> pd.DataFrame:
@@ -47,14 +49,14 @@ class TestCoverageAmplitude(unittest.TestCase):
         coverage["SQS-H"] = 0.99
         coverage["PQ"] = 0.93  # closest to 0.95
         amplitude = {m: 0.1 + 0.01 * i for i, m in enumerate(METHODS)}
-        amplitude["SQS-B"] = 0.01  # narrowest
+        amplitude["SQS-Hbs"] = 0.01  # narrowest
         mean = _frame(coverage, amplitude).groupby(["classifier", "dataset", "method"])[list(ca.METRICS)].mean()
         mean = mean.unstack("method").swaplevel(0, 1, axis=1)
         mean.columns = mean.columns.set_names(["method", "metric"])
         styles = ca.cell_styles(mean)
         row = ("LR", "d1")
         bold = [col for col in styles.columns if "bold" in styles.loc[row, col]]
-        self.assertEqual(sorted(bold), [("PQ", "coverage"), ("SQS-B", "amplitude")])
+        self.assertEqual(sorted(bold), [("PQ", "coverage"), ("SQS-Hbs", "amplitude")])
         # coverage 0.80 is 0.15 away: coloured, not white
         self.assertIn("background-color", styles.loc[row, ("DoC", "coverage")])
         self.assertNotIn("#ffffff", styles.loc[row, ("DoC", "coverage")])
@@ -63,8 +65,8 @@ class TestCoverageAmplitude(unittest.TestCase):
         coverage = dict.fromkeys(METHODS, 0.95)
         amplitude = dict.fromkeys(METHODS, 0.1)
         latex = ca.latex_table(_frame(coverage, amplitude), ["d1"])
-        self.assertIn("\\multicolumn{10}{c|}{$\\mathcal{C}$} & \\multicolumn{10}{c}{$\\mathcal{A}$}", latex)
-        self.assertIn("\\multicolumn{3}{c|}{Baseline methods} & \\multicolumn{7}{c|}{Our methods}", latex)
+        self.assertIn(f"\\multicolumn{{{N}}}{{c|}}{{$\\mathcal{{C}}$}} & \\multicolumn{{{N}}}{{c}}{{$\\mathcal{{A}}$}}", latex)
+        self.assertIn(f"\\multicolumn{{3}}{{c|}}{{Baseline methods}} & \\multicolumn{{{N - 3}}}{{c|}}{{Our methods}}", latex)
         self.assertIn("\\multicolumn{1}{c|}{\\rotatebox{90}{LEAP}}", latex)
         self.assertNotIn("\\pm", latex)
         self.assertNotIn("\\dag", latex)
