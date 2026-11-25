@@ -24,7 +24,7 @@ from quapy.data import LabelledCollection
 from quapy.protocol import UPP
 
 from uncawe.experiments import tau_select as ts
-from uncawe.experiments.methods import TEMPERED_BASES
+from uncawe.experiments.methods import INVALIDATED_TEMPERED_BASES, TEMPERED_BASES
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import BayCAPKDEy
 from uncawe.plots import tau_select as plots
@@ -515,6 +515,35 @@ class TablesTest(unittest.TestCase):
             np.testing.assert_allclose(out["calibration"]["sigma_e2"].iloc[0], tables.sigma_e2([0.8, 0.8], [100, 100]))
             with self.assertRaises(RuntimeError):
                 tables.compute(["macro-F1"], root=root)
+
+    def test_invalidated_base_only_on_request(self):
+        invalidated = INVALIDATED_TEMPERED_BASES[0]
+        bases = (TEMPERED_BASES[1], invalidated)
+        with tempfile.TemporaryDirectory() as root:
+            for base in bases:
+                for experiment, calibration in ((ts.EXPERIMENT, True), ("main", False)):
+                    for tau, df in _frames(base, calibration).items():
+                        for (dataset, classifier), part in df.groupby(["dataset", "classifier"]):
+                            folder = os.path.join(root, experiment, "classic", "vanilla_accuracy", dataset, classifier)
+                            os.makedirs(folder, exist_ok=True)
+                            part = part.assign(
+                                method=base,
+                                true_cts=part["true_cts"].map(np.ravel),
+                                estim_cts=part["estim_cts"].map(np.ravel),
+                            )
+                            part.to_parquet(os.path.join(folder, f"{tt.method_name(base, tau)}.parquet"))
+            default = tables.compute(["vanilla_accuracy"], root=root)
+            self.assertEqual(set(default["pairs"]["method"]), {TEMPERED_BASES[1]})
+            out = tables.compute(["vanilla_accuracy"], root=root, bases=(*TEMPERED_BASES, *INVALIDATED_TEMPERED_BASES))
+        self.assertEqual(list(dict.fromkeys(out["pairs"]["method"])), list(bases))
+        self.assertEqual(list(dict.fromkeys(out["calibration"]["method"])), list(bases))
+        with tempfile.TemporaryDirectory() as tmp:
+            tables.write_tables(out, tmp)
+            with open(os.path.join(tmp, "tabular", f"{tables._stem('vanilla_accuracy', 'compact')}.tex")) as f:
+                self.assertIn(tt.METHOD_LABELS[invalidated], f.read())
+        compact = tables._compact_frame(out["pairs"])
+        labels = list(dict.fromkeys(compact.columns.get_level_values(0)))
+        self.assertEqual(labels, [tt.METHOD_LABELS[b] for b in bases])
 
 
 class PlotsTest(unittest.TestCase):

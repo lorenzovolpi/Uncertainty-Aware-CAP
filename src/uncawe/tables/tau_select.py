@@ -45,7 +45,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 from uncawe import env
-from uncawe.experiments.methods import TEMPERED_BASES
+from uncawe.experiments.methods import INVALIDATED_TEMPERED_BASES, TEMPERED_BASES
 from uncawe.experiments.metrics import get_acc_names
 from uncawe.experiments.tau_select import EXPERIMENT
 from uncawe.tables import eb_prior
@@ -108,11 +108,13 @@ def calibration_rows(frames: dict[float, pd.DataFrame], acc_name: str, base: str
     return rows.merge(_pair_validation(frames[REFERENCE_TAU]), on=KEYS, how="left")
 
 
-def calibration_table(acc_names: list[str] | None = None, root: str | None = None) -> pd.DataFrame:
-    """One row per metric, method and pair of the calibration runs stored at the five temperatures."""
+def calibration_table(
+    acc_names: list[str] | None = None, root: str | None = None, bases=TEMPERED_BASES
+) -> pd.DataFrame:
+    """One row per metric, method (of ``bases``) and pair of the calibration runs stored at the five temperatures."""
     parts = []
     for acc_name in acc_names or get_acc_names():
-        for base, frames in tt.load_all(acc_name, root, EXPERIMENT).items():
+        for base, frames in tt.load_all(acc_name, root, EXPERIMENT, bases).items():
             parts.append(calibration_rows(frames, acc_name, base))
     if not parts:
         raise RuntimeError(f"No pair of {EXPERIMENT} has stored results for the five temperatures of a method.")
@@ -413,7 +415,7 @@ COMPACT_DIGITS = 3
 
 def _compact_frame(pairs: pd.DataFrame) -> pd.DataFrame:
     """One row per classifier (``CLASSIFIER_ORDER``) and dataset (by $K$, then name); per method of
-    ``TEMPERED_BASES``: $\\tau_{\\text{cal}}$, the oracle-best $\\tau$ and the mean test AE and Winkler score at
+    ``TEMPERED_BASES`` (then ``INVALIDATED_TEMPERED_BASES``, if present): $\\tau_{\\text{cal}}$, the oracle-best $\\tau$ and the mean test AE and Winkler score at
     $\\tau=1$ and at $\\tau_{\\text{cal}}$ (NaN for a pair missing for a method)."""
     rows = pairs.assign(
         _clf=pairs["classifier"].map(lambda c: CLASSIFIER_ORDER.index(c) if c in CLASSIFIER_ORDER else 99)
@@ -422,7 +424,7 @@ def _compact_frame(pairs: pd.DataFrame) -> pd.DataFrame:
     index = pd.MultiIndex.from_frame(keys)
     by_pair = pairs.set_index(["method", "classifier", "dataset"])
     columns = {}
-    for base in [b for b in TEMPERED_BASES if b in set(pairs["method"])]:
+    for base in [b for b in (*TEMPERED_BASES, *INVALIDATED_TEMPERED_BASES) if b in set(pairs["method"])]:
         part = by_pair.loc[base].reindex(index)
         label = tt.METHOD_LABELS[base]
         columns[(label, "$\\tau$", COLUMN_LABELS["cal"])] = part["tau_cal"].to_numpy(dtype=float)
@@ -539,10 +541,10 @@ TABLES = ("summary", "crosstab", "pairs", "compact")
 CSV_NAMES = ("calibration", "pairs", "datasets", "tests", "summary", "crosstab", "taus", "nuts")
 
 
-def compute(metrics: list[str] | None = None, root: str | None = None) -> dict[str, pd.DataFrame]:
-    """Every output frame (``CSV_NAMES``) from the stored calibration and test runs."""
-    cal = calibration_table(metrics, root)
-    test = tt.pair_table(metrics, root)
+def compute(metrics: list[str] | None = None, root: str | None = None, bases=TEMPERED_BASES) -> dict[str, pd.DataFrame]:
+    """Every output frame (``CSV_NAMES``) from the stored calibration and test runs of the methods of ``bases``."""
+    cal = calibration_table(metrics, root, bases)
+    test = tt.pair_table(metrics, root, bases=bases)
     compared = compare(cal, test)
     return {
         "calibration": cal,
@@ -607,7 +609,8 @@ def write_tables(out: dict[str, pd.DataFrame], out_dir: str) -> None:
 
 
 def gen_tables(pargs):
-    out = compute(pargs.metrics)
+    bases = (*TEMPERED_BASES, *INVALIDATED_TEMPERED_BASES) if pargs.include_invalidated else TEMPERED_BASES
+    out = compute(pargs.metrics, bases=bases)
     out_dir = table_dir(pargs)
     write_tables(out, out_dir)
     with pd.option_context("display.width", 220, "display.max_columns", None, "display.precision", 3):
@@ -641,6 +644,12 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--pdf", action="store_true", help="Generate PDF from tables")
     parser.add_argument("-a", "--all", action="store_true", help="Generate both tables and PDF")
     parser.add_argument("--metrics", nargs="+", choices=get_acc_names(), default=None, help="Default: all three")
+    parser.add_argument(
+        "--include-invalidated",
+        action="store_true",
+        help="Also the bases whose results are invalidated (INVALIDATED_TEMPERED_BASES: BayCAP-KDEy-mlp-real), from "
+        "their stored calibration and test runs, after the bases of the study",
+    )
     parser.add_argument(
         "--table-dir",
         "--output-dir",
