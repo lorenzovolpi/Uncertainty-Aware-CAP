@@ -34,15 +34,34 @@ class TestCoverageAmplitude(unittest.TestCase):
         d = ca.coverage_distance(pd.Series([1.0, 0.9, 0.95, 0.0]))
         np.testing.assert_allclose(d, [0.05, 0.05, 0.0, 0.95])
 
-    def test_coverage_color_fades_to_white_at_d_max(self):
+    def test_coverage_color_is_green_within_the_band_and_white_outside(self):
         self.assertEqual(ca.coverage_color(0.0), rank._rank_color(1.0))
-        self.assertEqual(ca.coverage_color(ca.COVERAGE_D_MAX), "#ffffff")
-        self.assertEqual(ca.coverage_color(0.5), "#ffffff")
-        self.assertEqual(ca.coverage_color(ca.COVERAGE_D_MAX / 2), rank._rank_color(1.0 + (rank.WHITE_RANK - 1) / 2))
+        self.assertEqual(ca.coverage_color(ca.COVERAGE_BAND), ca.GREEN)
+        self.assertEqual(ca.coverage_color(ca.COVERAGE_BAND + 0.001), "#ffffff")
         self.assertEqual(ca.coverage_color(np.nan), "")
 
-    def test_amplitude_ranks_lower_is_better_with_average_ties(self):
-        np.testing.assert_allclose(ca.amplitude_ranks(pd.Series([0.3, 0.1, 0.1, 0.2])), [4.0, 1.5, 1.5, 3.0])
+    def test_amplitude_color_is_green_below_the_threshold_and_white_from_it(self):
+        self.assertEqual(ca.amplitude_color(0.099), ca.GREEN)
+        self.assertEqual(ca.amplitude_color(ca.AMPLITUDE_MAX), "#ffffff")
+        self.assertEqual(ca.amplitude_color(0.5), "#ffffff")
+        self.assertEqual(ca.amplitude_color(np.nan), "")
+
+    def test_colours_follow_the_printed_values(self):
+        # 0.8496 prints as 0.850: in the band; 0.0996 prints as 0.100: not below the threshold
+        coverage = dict.fromkeys(METHODS, 0.95)
+        coverage["DoC"] = 0.8496
+        coverage["PQ"] = 0.8494
+        amplitude = dict.fromkeys(METHODS, 0.05)
+        amplitude["DoC"] = 0.0996
+        mean = _frame(coverage, amplitude).groupby(["classifier", "dataset", "method"])[list(ca.METRICS)].mean()
+        mean = mean.unstack("method").swaplevel(0, 1, axis=1)
+        mean.columns = mean.columns.set_names(["method", "metric"])
+        styles = ca.cell_styles(mean)
+        row = ("LR", "d1")
+        self.assertIn(ca.GREEN, styles.loc[row, ("DoC", "coverage")])
+        self.assertIn("#ffffff", styles.loc[row, ("PQ", "coverage")])
+        self.assertIn("#ffffff", styles.loc[row, ("DoC", "amplitude")])
+        self.assertIn(ca.GREEN, styles.loc[row, ("PQ", "amplitude")])
 
     def test_bold_goes_to_closest_coverage_and_narrowest_amplitude(self):
         coverage = dict.fromkeys(METHODS, 0.80)
@@ -57,16 +76,20 @@ class TestCoverageAmplitude(unittest.TestCase):
         row = ("LR", "d1")
         bold = [col for col in styles.columns if "bold" in styles.loc[row, col]]
         self.assertEqual(sorted(bold), [("PQ", "coverage"), ("SQS-Hbs", "amplitude")])
-        # coverage 0.80 is 0.15 away: coloured, not white
-        self.assertIn("background-color", styles.loc[row, ("DoC", "coverage")])
-        self.assertNotIn("#ffffff", styles.loc[row, ("DoC", "coverage")])
+        # coverage 0.80 is 0.15 away: white; 0.93 is in the band: green
+        self.assertIn("#ffffff", styles.loc[row, ("DoC", "coverage")])
+        self.assertIn(ca.GREEN, styles.loc[row, ("PQ", "coverage")])
 
     def test_latex_table_has_the_main_table_structure(self):
         coverage = dict.fromkeys(METHODS, 0.95)
         amplitude = dict.fromkeys(METHODS, 0.1)
         latex = ca.latex_table(_frame(coverage, amplitude), ["d1"])
-        self.assertIn(f"\\multicolumn{{{N}}}{{c|}}{{$\\mathcal{{C}}$}} & \\multicolumn{{{N}}}{{c}}{{$\\mathcal{{A}}$}}", latex)
-        self.assertIn(f"\\multicolumn{{3}}{{c|}}{{Baseline methods}} & \\multicolumn{{{N - 3}}}{{c|}}{{Our methods}}", latex)
+        self.assertIn(
+            f"\\multicolumn{{{N}}}{{c|}}{{$\\mathcal{{C}}$}} & \\multicolumn{{{N}}}{{c}}{{$\\mathcal{{A}}$}}", latex
+        )
+        self.assertIn(
+            f"\\multicolumn{{3}}{{c|}}{{Baseline methods}} & \\multicolumn{{{N - 3}}}{{c|}}{{Our methods}}", latex
+        )
         self.assertIn("\\multicolumn{1}{c|}{\\rotatebox{90}{LEAP}}", latex)
         self.assertNotIn("\\pm", latex)
         self.assertNotIn("\\dag", latex)

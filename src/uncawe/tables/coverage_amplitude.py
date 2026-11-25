@@ -10,14 +10,14 @@ the bags of the pair of:
 
 Both target the realised table of the target bag, as in ``main``.
 
-Colour and bold, per row and score (the colour scale of the rank table, ``tables/rank.py``: from ``BEST_RGB`` to
-white):
+Colour and bold, per row and score (user's decision of 2026-11-25): hard colours, no gradient, each cell either full
+``rank.BEST_RGB`` or white, decided on the printed value (``main_tables.VALUE_FORMAT``):
 
-- coverage: the distance $d=\\lvert\\bar c-0.95\\rvert$ from the nominal level, the same for over- and
-  under-coverage; the colour fades linearly with $d$ on a fixed scale and is white from ``COVERAGE_D_MAX`` on; the
-  cell with the smallest $d$ is in bold;
-- amplitude: lower is better; the colour follows the rank of the method within the row (ties get the average rank),
-  white from rank ``rank.WHITE_RANK`` on; the narrowest cell is in bold.
+- coverage: green when the distance $d=\\lvert\\bar c-0.95\\rvert$ from the nominal level is at most
+  ``COVERAGE_BAND`` ($\\bar c\\in[0.85,1]$), the same for over- and under-coverage; the cell with the smallest $d$
+  is in bold;
+- amplitude: green when the mean amplitude is below ``AMPLITUDE_MAX``, independently of the coverage; the narrowest
+  cell is in bold.
 
 There is no significance test, no dagger and no standard deviation.
 """
@@ -37,8 +37,11 @@ from uncawe.tables import rank
 
 TABLE_NAME = "coverage_amplitude"
 METRICS = ("coverage", "amplitude")
-# the distance from the nominal coverage at which the colour of a coverage cell becomes white
-COVERAGE_D_MAX = 0.20
+# a coverage cell is green when its distance from the nominal coverage is at most COVERAGE_BAND, an amplitude cell
+# when its value is below AMPLITUDE_MAX (user's decision of 2026-11-25; until then, gradients)
+COVERAGE_BAND = 0.10
+AMPLITUDE_MAX = 0.10
+GREEN = rank._rank_color(1.0)  # rank.BEST_RGB, the colour of the best rank
 
 
 def coverage_distance(values: pd.Series) -> pd.Series:
@@ -46,17 +49,25 @@ def coverage_distance(values: pd.Series) -> pd.Series:
     return (pd.to_numeric(values, errors="coerce") - CONFIDENCE_LEVEL).abs()
 
 
+def _printed(values: pd.Series) -> pd.Series:
+    """The values as printed in the cells (``main_tables.VALUE_FORMAT``), so that the colour agrees with the number."""
+    return pd.to_numeric(values, errors="coerce").apply(
+        lambda v: np.nan if pd.isna(v) else float(main_tables.VALUE_FORMAT.format(v))
+    )
+
+
 def coverage_color(distance: float) -> str:
-    """From ``rank.BEST_RGB`` at distance 0 to white at ``COVERAGE_D_MAX`` and beyond, linearly."""
+    """Green when ``distance`` (of the printed coverage) is at most ``COVERAGE_BAND``, white otherwise."""
     if pd.isna(distance):
         return ""
-    # rank._rank_color maps 1 to BEST_RGB and rank.WHITE_RANK to white
-    return rank._rank_color(1.0 + min(distance / COVERAGE_D_MAX, 1.0) * (rank.WHITE_RANK - 1.0))
+    return GREEN if distance <= COVERAGE_BAND + 1e-9 else "#ffffff"
 
 
-def amplitude_ranks(values: pd.Series) -> pd.Series:
-    """Rank of each mean amplitude within a row (1 = narrowest; ties get the average rank)."""
-    return pd.to_numeric(values, errors="coerce").rank(method="average", ascending=True)
+def amplitude_color(amplitude: float) -> str:
+    """Green when the printed ``amplitude`` is below ``AMPLITUDE_MAX``, white otherwise."""
+    if pd.isna(amplitude):
+        return ""
+    return GREEN if amplitude < AMPLITUDE_MAX - 1e-9 else "#ffffff"
 
 
 def _style(color: str) -> str:
@@ -75,10 +86,10 @@ def cell_styles(mean: pd.DataFrame) -> pd.DataFrame:
         for row_key, values in metric_values.iterrows():
             if metric == "coverage":
                 keys = coverage_distance(values)
-                colors = keys.apply(coverage_color)
+                colors = coverage_distance(_printed(values)).apply(coverage_color)
             else:
                 keys = pd.to_numeric(values, errors="coerce")
-                colors = amplitude_ranks(values).apply(rank._rank_color)
+                colors = _printed(values).apply(amplitude_color)
 
             for method, color in colors.items():
                 styles.loc[row_key, (method, metric)] = _style(color)
@@ -118,9 +129,8 @@ def _caption(acc: str, domain: str) -> str:
     return (
         f"Coverage $\\mathcal{{C}}$ and amplitude $\\mathcal{{A}}$ ({main_tables._escape_latex_text(acc)}, "
         f"{main_tables._escape_latex_text(domain)} datasets), mean over the bags, against the realised table of each "
-        f"bag. Coverage: the colour fades with the distance from the nominal level ${CONFIDENCE_LEVEL:g}$, white "
-        f"from ${COVERAGE_D_MAX:g}$ on, and the closest is in bold. Amplitude: the colour follows the rank within "
-        "the row, and the narrowest is in bold."
+        f"bag. Coverage: green within ${COVERAGE_BAND:g}$ of the nominal level ${CONFIDENCE_LEVEL:g}$, and the "
+        f"closest is in bold. Amplitude: green below ${AMPLITUDE_MAX:g}$, and the narrowest is in bold."
     )
 
 
