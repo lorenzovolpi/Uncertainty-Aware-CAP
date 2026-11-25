@@ -122,7 +122,14 @@ class TestMethods(unittest.TestCase):
         bayes, regular = ts.split_pools(tasks)
         self.assertEqual(
             {t.method_name for t in bayes},
-            {"BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb", "SQS-B"},
+            {
+                "BayesCAP-Hf-real",
+                "BayCAP-KDEy-h-inst",
+                "BayCAP-KDEy-h-inst-cb",
+                "BayesCAP-Hf-real-tcal",
+                "BayCAP-KDEy-h-inst-cb-tcal",
+                "SQS-B",
+            },
         )
         self.assertEqual({t.method_name for t in regular}, {"SQS-H", "SQS-Hbs", "PQ"})
 
@@ -130,7 +137,18 @@ class TestMethods(unittest.TestCase):
         # the per-instance methods in place of BayCAP-KDEy-mlp-real, which stays a method of E4.2 only
         self.assertEqual(
             ts.E44_METHODS,
-            ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb", "SQS-H", "SQS-Hbs", "PQ", "SQS-B"),
+            # the methods of WP-34 after the BayCAP-KDEy methods
+            (
+                "BayesCAP-Hf-real",
+                "BayCAP-KDEy-h-inst",
+                "BayCAP-KDEy-h-inst-cb",
+                "BayesCAP-Hf-real-tcal",
+                "BayCAP-KDEy-h-inst-cb-tcal",
+                "SQS-H",
+                "SQS-Hbs",
+                "PQ",
+                "SQS-B",
+            ),
         )
         self.assertNotIn("BayCAP-KDEy-mlp-real", ts.E44_METHODS)
         self.assertEqual(ts.METHODS, ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real"))

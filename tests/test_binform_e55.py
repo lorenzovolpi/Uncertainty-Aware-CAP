@@ -100,12 +100,19 @@ class MethodsTest(unittest.TestCase):
             for b in ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb", "SQS-B")
             for p in ("uniform", "centre", "edge")
         ]
-        self.assertEqual(list(binform.E55_METHODS), [*expected, "SQS-H", "SQS-Hbs", "PQ"])
+        # the methods of WP-34 with each prior, after those of E5.5
+        tcal = [
+            f"{b}_{p}"
+            for b in ("BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal")
+            for p in ("uniform", "centre", "edge")
+        ]
+        self.assertEqual(list(binform.E55_METHODS), [*expected, *tcal, "SQS-H", "SQS-Hbs", "PQ"])
         self.assertTrue(all(binform.E55_METHODS[name][1] is None for name in ("SQS-H", "SQS-Hbs", "PQ")))
 
     def test_methods_with_a_prior_are_those_of_main_with_the_prior(self):
         for name, (base, kind) in binform.E55_METHODS.items():
-            if kind is None:
+            # the methods of WP-34 are checked in tests/test_tcal.py
+            if kind is None or base in binform.E55_TCAL_BASES:
                 continue
             method = binform.e55_method(name, 3)
             reference = self.main[base]
@@ -224,7 +231,7 @@ class TaskTest(unittest.TestCase):
             self.assertEqual({path for path, *_ in tasks}, {"a", "b"})
             self.assertFalse(any(name.endswith("_edge") for _, name, _ in tasks))
             # distributions x (methods without _edge) x pairs; the methods without a prior once per distribution
-            self.assertEqual(len(tasks), 2 * (N_PRIOR_BASES * 2 + 3) * 2)
+            self.assertEqual(len(tasks), 2 * ((N_PRIOR_BASES + len(binform.E55_TCAL_BASES)) * 2 + 3) * 2)
             for distribution in binform.E55_DISTRIBUTIONS:
                 block = [name for _, name, d in tasks if d == distribution]
                 for reference in binform.E55_REFERENCES:

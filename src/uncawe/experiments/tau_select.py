@@ -45,7 +45,6 @@ the caches of JAX are cleared after each task, as in ``main``.
 """
 
 import os
-import zlib
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
@@ -61,9 +60,8 @@ from traceback import print_exception
 import jax
 import numpy as np
 import quapy as qp
-from cap.utils.commons import contingency_table, get_shift
+from cap.utils.commons import get_shift
 from quapy.data import LabelledCollection
-from quapy.protocol import UPP
 
 from uncawe.experiments.datasets import get_filtered_datasets
 from uncawe.experiments.execution import ExperimentOutcome, run_tasks, shutdown_parallel_workers
@@ -80,6 +78,17 @@ from uncawe.experiments.methods import (
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.records import EvaluationContext, build_result_frame
+from uncawe.methods.tcal import (  # noqa: F401 (re-exported: the split and the bags of the study)
+    _BAG_STREAM,
+    _SPLIT_STREAM,
+    CalibrationBag,
+    _seed,
+    _seed_words,
+    calibration_bags,
+    calibration_seed,
+    split_index,
+    split_seed,
+)
 from uncawe.pretrain.data import PretrainInfo, load_info_paths
 from uncawe.util import get_logger, get_plain_prev, local_path
 
@@ -94,9 +103,6 @@ N_BAGS = 50
 PILOT_DATASETS = ("mammographic", "poker_hand", "letter")
 # 1: first version (WP-23)
 SCHEMA_VERSION = 1
-# streams of the seed sequences of a dataset
-_SPLIT_STREAM = 0
-_BAG_STREAM = 1
 
 qp.environ["SAMPLE_SIZE"] = SAMPLE_SIZE
 qp.environ["_R_SEED"] = 0
@@ -122,27 +128,8 @@ def make_method(base: str, tau: float):
 
 
 # --------------------------------------------------------------------------------------------------- seeds
-
-
-def _seed_words(dataset: str, stream: int, *words: int) -> list[int]:
-    """The entropy of a seed sequence: the experiment seed, the ``zlib.crc32`` of the dataset name, the stream and
-    ``words``; it depends on nothing else (not on the classifier, the method, $\\tau$ or the global random state)."""
-    return [int(qp.environ["_R_SEED"]), zlib.crc32(dataset.encode()), stream, *map(int, words)]
-
-
-def _seed(dataset: str, stream: int, *words: int) -> int:
-    return int(np.random.SeedSequence(_seed_words(dataset, stream, *words)).generate_state(1)[0])
-
-
-def split_seed(dataset: str) -> int:
-    """The seed of the split of $V$ of ``dataset``: a 32-bit integer of the experiment seed and the dataset only."""
-    return _seed(dataset, _SPLIT_STREAM)
-
-
-def calibration_seed(dataset: str) -> int:
-    """The seed of the UPP protocol of the calibration bags of ``dataset``: of the experiment seed and the dataset only
-    (shared by every classifier, method and $\\tau$)."""
-    return _seed(dataset, _BAG_STREAM)
+# split_seed, calibration_seed, split_index, CalibrationBag and calibration_bags live in methods/tcal.py since WP-34
+# (the methods with tau selected inside the fit draw the same split and bags), imported above with the same behaviour
 
 
 def config_hash(n_bags: int, size: int = SAMPLE_SIZE) -> str:
@@ -164,80 +151,12 @@ def config_hash(n_bags: int, size: int = SAMPLE_SIZE) -> str:
 # --------------------------------------------------------------------------------------------------- split of V
 
 
-def split_index(val_y: np.ndarray, n_classes: int, dataset: str) -> tuple[np.ndarray, np.ndarray]:
-    """Indices into $V$ of $V_{\\text{fit}}$ and $V_{\\text{cal}}$, each in increasing order.
-
-    The instances of each class are permuted with one generator seeded by ``split_seed(dataset)`` (class by class, in
-    class order); the first $\\lfloor n_j/2\\rfloor$ go to $V_{\\text{cal}}$ and the others to $V_{\\text{fit}}$. Raises
-    ``ValueError`` if a class would have no instance in one of the halves.
-    """
-    val_y = np.asarray(val_y)
-    counts = np.bincount(val_y, minlength=n_classes)
-    if np.any(counts < 2):
-        raise ValueError(
-            f"{dataset}: every class needs at least 2 instances in V to be split; counts {counts.tolist()}"
-        )
-    rng = np.random.default_rng(split_seed(dataset))
-    fit, cal = [], []
-    for j in range(n_classes):
-        permuted = rng.permutation(np.flatnonzero(val_y == j))
-        n_cal = counts[j] // 2
-        cal.append(permuted[:n_cal])
-        fit.append(permuted[n_cal:])
-    return np.sort(np.concatenate(fit)), np.sort(np.concatenate(cal))
-
-
 def recalls(y: np.ndarray, pred: np.ndarray, n_classes: int) -> np.ndarray:
     """The recall of each class, the share of its instances predicted as itself (NaN for a class without instances)."""
     y, pred = np.asarray(y), np.asarray(pred)
     counts = np.bincount(y, minlength=n_classes).astype(float)
     correct = np.bincount(y[y == pred], minlength=n_classes).astype(float)
     return np.divide(correct, counts, out=np.full(n_classes, np.nan), where=counts > 0)
-
-
-# --------------------------------------------------------------------------------------------------- calibration bags
-
-
-@dataclass(frozen=True)
-class CalibrationBag:
-    bag_index: int
-    prevalence: np.ndarray  # of the bag
-    index: np.ndarray  # indices into V
-    true_ct: np.ndarray  # cap-ml layout, true classes on rows
-
-
-def calibration_bags(
-    dataset: str,
-    val_y: np.ndarray,
-    val_pred: np.ndarray,
-    cal_index: np.ndarray,
-    n_classes: int,
-    n_bags: int = N_BAGS,
-    size: int = SAMPLE_SIZE,
-) -> list[CalibrationBag]:
-    """The ``n_bags`` calibration bags of ``dataset``, drawn from $V_{\\text{cal}}$ (``cal_index``, indices into $V$) by
-    QuaPy's UPP with ``random_state=calibration_seed(dataset)``, as ``main`` draws its test bags from $U$; the realised
-    table comes from the labels and the predictions of $h$ on $V$. The bags depend on the labels of $V_{\\text{cal}}$
-    only, not on ``val_pred``."""
-    val_y, val_pred, cal_index = np.asarray(val_y), np.asarray(val_pred), np.asarray(cal_index)
-    # the instances of the collection are the indices into V, so that each sample carries them
-    cal = LabelledCollection(cal_index.reshape(-1, 1), val_y[cal_index], classes=np.arange(n_classes))
-    protocol = UPP(
-        cal, sample_size=size, repeats=n_bags, random_state=calibration_seed(dataset), return_type="labelled_collection"
-    )
-    # QuaPy's temp_seed writes the seed of the protocol into qp.environ["_R_SEED"] and does not restore it; the
-    # experiment seed must stay as it is (it seeds the next calibration seed and the methods built after the bags)
-    experiment_seed = qp.environ["_R_SEED"]
-    try:
-        samples = list(protocol())
-    finally:
-        qp.environ["_R_SEED"] = experiment_seed
-    bags = []
-    for b, sample in enumerate(samples):
-        index = np.asarray(sample.X).ravel().astype(int)
-        true_ct = contingency_table(val_y[index], val_pred[index], n_classes)
-        bags.append(CalibrationBag(b, np.asarray(sample.prevalence(), dtype=float), index, true_ct))
-    return bags
 
 
 # --------------------------------------------------------------------------------------------------- tasks

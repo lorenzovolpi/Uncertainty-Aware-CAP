@@ -53,7 +53,10 @@ distribution the prior on its side is the right-side one, the other the wrong-si
 ``BayCAP-KDEy-mlp-real``, whose results are invalidated and whose stored files of E5.5 stay on disk; E5.1 and E5.4 keep
 it) and ``SQS-B`` (``experiments/methods.py:sqs_b`` with ``prior``); ``SQS-H``, ``SQS-Hbs`` and ``PQ`` (SQS-S)
 take no prior on $\pi^Q$, are built as in ``main`` and run once per distribution (method names without a suffix), in the
-pool of the regular methods of ``main``. Results go to ``<OUT_DIR>/uncawe/binform_e55/<distribution>/``, with the
+pool of the regular methods of ``main``. Since WP-34, ``BayesCAP-Hf-real-tcal`` and ``BayCAP-KDEy-h-inst-cb-tcal``
+(``E55_TCAL_BASES``, $\tau$ selected inside the fit, ``methods/tcal.py``) also run with each prior, $\tau$ selected
+under that prior on UPP calibration bags; they are not in ``E55_PRIOR_BASES``, so the tables and plots of E5.5 do not
+show them. Results go to ``<OUT_DIR>/uncawe/binform_e55/<distribution>/``, with the
 columns ``bag_size``, ``requested_prev``, ``distribution``, ``bag_alpha`` and, for the methods with a prior,
 ``prior_alpha`` and the NUTS diagnostics and summaries. Every method targets the realised table of each bag and is
 scored against it (``true_cts``).
@@ -99,12 +102,15 @@ from uncawe.experiments.methods import (
     BOOTSTRAP_ITERS,
     SAMPLE_SIZE,
     SQS_B,
+    TCAL_VARIANTS,
     THREAD_LIMITS,
     gen_methods,
     kdey_method,
     sqs_b,
+    tcal_method,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
+from uncawe.experiments.per_metric import bag_runs, metric_columns, metric_run, prepare
 from uncawe.experiments.records import EvaluationContext, build_result_frame
 from uncawe.methods.baycap import BayCAP
 from uncawe.pretrain.data import PreTrainedClassifier, PretrainInfo, load_info_paths
@@ -166,10 +172,16 @@ E55_PRIORS = E54_PRIORS
 E55_KDEY_BASES = ("BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
 E55_PRIOR_BASES = ("BayesCAP-Hf-real", *E55_KDEY_BASES, SQS_B)
 E55_REFERENCES = ("SQS-H", "SQS-Hbs", "PQ")
+# WP-34 (user's decision of 2026-11-25): the two methods with tau selected inside the fit, with each prior on pi^Q and
+# tau selected under that prior (the calibration bags stay UPP); apart from E55_PRIOR_BASES, so that the tables and
+# plots of E5.5 are unchanged
+E55_TCAL_BASES = tuple(TCAL_VARIANTS)
 # name -> (base method, prior); the prior is None for the methods without a prior on pi^Q
-E55_METHODS = {f"{base}_{prior}": (base, prior) for base in E55_PRIOR_BASES for prior in E55_PRIORS} | {
-    name: (name, None) for name in E55_REFERENCES
-}
+E55_METHODS = (
+    {f"{base}_{prior}": (base, prior) for base in E55_PRIOR_BASES for prior in E55_PRIORS}
+    | {f"{base}_{prior}": (base, prior) for base in E55_TCAL_BASES for prior in E55_PRIORS}
+    | {name: (name, None) for name in E55_REFERENCES}
+)
 _E55_PREVS_STREAMS = {"centre": 4, "edge": 5}
 
 qp.environ["SAMPLE_SIZE"] = SAMPLE_SIZE
@@ -508,6 +520,14 @@ def _e51_task(info_path: str, method_name: str, size: int) -> list[ExperimentOut
     )
 
 
+def _bag_diagnostics(method) -> dict | None:
+    """The NUTS diagnostics and posterior summaries of a bag, for the methods that sample with NUTS (those with
+    ``last_nuts_diagnostics``)."""
+    if hasattr(method, "last_nuts_diagnostics"):
+        return method.last_nuts_diagnostics() | method.last_posterior_summaries()
+    return None
+
+
 def _prior_task(
     p: PretrainInfo,
     method_name: str,
@@ -541,34 +561,28 @@ def _prior_task(
     )
 
     try:
-        method = build_method()
-        nuts = hasattr(method, "last_nuts_diagnostics")
+        method = prepare(build_method(), p.d_info.name)
         started = time()
         method = method.fit(validation, validation_posteriors)
         t_train = time() - started
 
-        # as in main: the time of the NUTS diagnostics and posterior summaries is left out of the test time
-        started, t_diagnostics = time(), 0.0
-        estim_ct_ranges, diagnostics = [], []
-        for sample in test_samples:
-            estim_ct_ranges.append(method.predict_ct_range(sample.collection.X, sample.posteriors))
-            if not nuts:
-                continue
-            started_diagnostics = time()
-            diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
-            t_diagnostics += time() - started_diagnostics
-        t_test_ave = (time() - started - t_diagnostics) / context.size
-        estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
+        # as in main: the time of the NUTS diagnostics and posterior summaries is left out of the test time; the
+        # methods of WP-34 predict once per deployed fit (experiments/per_metric.py)
+        runs = bag_runs(
+            method,
+            lambda: ((sample.collection.X, sample.posteriors) for sample in test_samples),
+            context.size,
+            _bag_diagnostics,
+        )
     except Exception as error:
         print_exception(error)
         return [EXP.ERROR(error, p, "ct", method_name)]
 
-    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]} if diagnostics else {}
-    extra_columns |= {
+    static = {
         "bag_size": [size] * context.size,
         "requested_prev": [prev.tolist() for prev in requested_prevs],
     }
-    extra_columns |= {name: [value] * context.size for name, value in static_columns.items()}
+    static |= {name: [value] * context.size for name, value in static_columns.items()}
 
     results = []
     for acc_name, acc_fn in gen_acc_measure(n_classes > 2):
@@ -576,8 +590,10 @@ def _prior_task(
             results.append(EXP.EXISTS(p, acc_name, method_name))
             continue
 
-        method.switch(acc_fn)
-        intervals = [method.ci_from_cts(cts) for cts in estim_ct_ranges]
+        run = metric_run(method, runs, acc_name)
+        run.method.switch(acc_fn)
+        intervals = [run.method.ci_from_cts(cts) for cts in run.estim_ct_ranges]
+        extra_columns = run.diagnostic_columns() | static | metric_columns(method, acc_name, context.size)
         frame = build_result_frame(
             context,
             method_name=method_name,
@@ -585,12 +601,12 @@ def _prior_task(
             acc_fn=acc_fn,
             estim_acc_ranges=[interval.samples for interval in intervals],
             estim_accs=[interval.point_estimate for interval in intervals],
-            estim_cts=estim_cts,
+            estim_cts=run.estim_cts,
             t_train=t_train,
-            t_test_ave=t_test_ave,
+            t_test_ave=run.t_test_ave,
             extra_columns=extra_columns,
         )
-        results.append(EXP.SUCCESS(p, acc_name, method_name, df=frame, t_train=t_train, t_test_ave=t_test_ave))
+        results.append(EXP.SUCCESS(p, acc_name, method_name, df=frame, t_train=t_train, t_test_ave=run.t_test_ave))
     return results
 
 
@@ -825,6 +841,9 @@ def e55_method(method_name: str, n_classes: int):
     base, kind = E55_METHODS[method_name]
     if kind is None:
         return dict(gen_methods())[base]
+    if base in TCAL_VARIANTS:
+        _, acc = next(gen_acc_measure(True))
+        return tcal_method(acc, base, prior=e54_prior(kind, n_classes))
     return _prior_method(base, e54_prior(kind, n_classes))
 
 
@@ -879,9 +898,9 @@ def _e55_task(info_path: str, method_name: str, distribution: str) -> list[Exper
 
 
 def _e55_method_order(method_name: str) -> int:
-    """BayCAP-Hf, BayCAP-KDEy and SQS-B, then the methods without a prior."""
+    """BayCAP-Hf, BayCAP-KDEy and SQS-B, then the methods of WP-34, then the methods without a prior."""
     base = E55_METHODS[method_name][0]
-    return (*E55_PRIOR_BASES, *E55_REFERENCES).index(base)
+    return (*E55_PRIOR_BASES, *E55_TCAL_BASES, *E55_REFERENCES).index(base)
 
 
 def e55_tasks(

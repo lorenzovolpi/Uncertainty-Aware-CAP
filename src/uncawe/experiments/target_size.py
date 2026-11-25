@@ -9,7 +9,9 @@ input and a fixed $\hat C$), both with the realised pushforward, built as in ``m
 (``experiments/methods.py``). Both target the realised table of the target bag and are scored against it
 (``true_cts``). $h$ is never retrained and the split $L/V$ of the pretrain files is unchanged.
 
-**E4.4 (WP-28).** The methods ``E44_METHODS``: ``BayesCAP-Hf-real``, the BayCAP-KDEy methods and ``SQS-H``,
+**E4.4 (WP-28).** The methods ``E44_METHODS``: ``BayesCAP-Hf-real``, the BayCAP-KDEy methods, since WP-34 the methods
+with $\tau$ selected inside the fit (``BayesCAP-Hf-real-tcal``, ``BayCAP-KDEy-h-inst-cb-tcal``, ``methods/tcal.py``, on
+calibration bags of $|U|$ instances from half of the $V$ of the task, $\tau=1$ where it cannot be split), and ``SQS-H``,
 ``SQS-Hbs``, ``PQ`` (SQS-S) and ``SQS-B``, built as in ``main`` except that the SQS methods draw bags of ``sample_size``
 $=|U|$ instances from $V$ (``make_method``). The BayCAP-KDEy methods are ``BayCAP-KDEy-h-inst`` and
 ``BayCAP-KDEy-h-inst-cb`` (the per-instance pushforward with the input classifier $h$, E3.4 and E3.5) since card WP-33
@@ -93,14 +95,17 @@ from uncawe.experiments.methods import (
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
     SAMPLE_SIZE,
+    TCAL_VARIANTS,
     THREAD_LIMITS,
     baycap_method,
     kdey_method,
     sqs_b,
     sqs_h,
     sqs_s,
+    tcal_method,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
+from uncawe.experiments.per_metric import bag_runs, metric_columns, metric_run, prepare
 from uncawe.experiments.records import EvaluationContext, build_result_frame
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_quantifier import QuantifierBayCAP
@@ -118,7 +123,10 @@ METHODS = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
 # Since WP-33 (user's decision of 2026-11-24) BayCAP-KDEy is the pair of per-instance methods of E3.4 and E3.5, in
 # place of BayCAP-KDEy-mlp-real (invalidated), whose stored cells of E4.4 stay on disk but are no longer run or shown
 E44_KDEY_METHODS = ("BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
-E44_METHODS = ("BayesCAP-Hf-real", *E44_KDEY_METHODS, "SQS-H", "SQS-Hbs", "PQ", "SQS-B")
+# WP-34 (user's decision of 2026-11-25): the two methods with tau selected inside the fit, on calibration bags of the
+# size of the target bags and, in E4.4b, on the subsampled V of each level (fallback to tau=1 where V cannot be split)
+E44_TCAL_METHODS = tuple(TCAL_VARIANTS)
+E44_METHODS = ("BayesCAP-Hf-real", *E44_KDEY_METHODS, *E44_TCAL_METHODS, "SQS-H", "SQS-Hbs", "PQ", "SQS-B")
 # every method the study can run: those of E4.2 and of E4.4
 STUDY_METHODS = tuple(dict.fromkeys((*METHODS, *E44_METHODS)))
 E44_CLASSIFIERS = ("LR",)
@@ -352,6 +360,9 @@ def make_method(method_name: str, size: int = SAMPLE_SIZE):
         return baycap_method(acc, method_name)
     if method_name in ("BayCAP-KDEy-mlp-real", *E44_KDEY_METHODS):
         return kdey_method(acc, method_name)
+    if method_name in TCAL_VARIANTS:
+        # WP-34: the calibration bags have the size of the target bags (user's decision of 2026-11-25)
+        return tcal_method(acc, method_name, cal_bag_size=size)
     if method_name == "SQS-H":
         return sqs_h(acc, bootstrap=False, sample_size=size)
     if method_name == "SQS-Hbs":
@@ -366,6 +377,13 @@ def make_method(method_name: str, size: int = SAMPLE_SIZE):
 def _samples_with_nuts(method) -> bool:
     """The methods that store the NUTS diagnostics and posterior summaries of each bag, as in ``main``."""
     return isinstance(method, (BayCAP, QuantifierBayCAP, SQSB))
+
+
+def _bag_diagnostics(method) -> dict | None:
+    """The NUTS diagnostics and posterior summaries of a bag, for the methods that sample with NUTS."""
+    if _samples_with_nuts(method):
+        return method.last_nuts_diagnostics() | method.last_posterior_summaries()
+    return None
 
 
 def protocol(task: Task) -> list[ExperimentOutcome]:
@@ -413,29 +431,25 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
     )
 
     try:
-        method = make_method(task.method_name, task.size)
+        method = prepare(make_method(task.method_name, task.size), p.d_info.name)
         started = time()
         method = method.fit(validation, validation_posteriors)
         t_train = time() - started
 
-        # as in main: the time of the NUTS diagnostics and posterior summaries is left out of the test time
-        started, t_diagnostics = time(), 0.0
-        estim_ct_ranges, diagnostics = [], []
-        for bag in bags:
-            estim_ct_ranges.append(method.predict_ct_range(dataset.U.X[bag.index], pool_posteriors[bag.index]))
-            if _samples_with_nuts(method):
-                started_diagnostics = time()
-                diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
-                t_diagnostics += time() - started_diagnostics
-        t_test_ave = (time() - started - t_diagnostics) / context.size
-        estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
+        # as in main: the time of the NUTS diagnostics and posterior summaries is left out of the test time; the
+        # methods of WP-34 predict once per deployed fit (experiments/per_metric.py)
+        runs = bag_runs(
+            method,
+            lambda: ((dataset.U.X[bag.index], pool_posteriors[bag.index]) for bag in bags),
+            context.size,
+            _bag_diagnostics,
+        )
     except Exception as error:
         print_exception(error)
         return [EXP.ERROR(error, p, "ct", task.method_name, experiment=task.folder)]
 
     size = context.size
-    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]} if diagnostics else {}
-    extra_columns |= {
+    static_columns = {
         "bag_size": [task.size] * size,
         "v_level": [task.level] * size,
         "v_fraction": [ALL_LEVELS[task.level]] * size,
@@ -455,8 +469,10 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
         if os.path.exists(_result_path(p, task, acc_name)):
             results.append(EXP.EXISTS(p, acc_name, task.method_name, experiment=task.folder))
             continue
-        method.switch(acc_fn)
-        intervals = [method.ci_from_cts(cts) for cts in estim_ct_ranges]
+        run = metric_run(method, runs, acc_name)
+        run.method.switch(acc_fn)
+        intervals = [run.method.ci_from_cts(cts) for cts in run.estim_ct_ranges]
+        extra_columns = run.diagnostic_columns() | static_columns | metric_columns(method, acc_name, size)
         frame = build_result_frame(
             context,
             method_name=task.method_name,
@@ -464,9 +480,9 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
             acc_fn=acc_fn,
             estim_acc_ranges=[interval.samples for interval in intervals],
             estim_accs=[interval.point_estimate for interval in intervals],
-            estim_cts=estim_cts,
+            estim_cts=run.estim_cts,
             t_train=t_train,
-            t_test_ave=t_test_ave,
+            t_test_ave=run.t_test_ave,
             extra_columns=extra_columns,
         )
         results.append(
@@ -476,7 +492,7 @@ def _run_task(task: Task) -> list[ExperimentOutcome]:
                 task.method_name,
                 df=frame,
                 t_train=t_train,
-                t_test_ave=t_test_ave,
+                t_test_ave=run.t_test_ave,
                 experiment=task.folder,
             )
         )

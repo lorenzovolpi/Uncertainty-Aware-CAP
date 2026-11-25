@@ -1,7 +1,12 @@
 r"""The methods of E5.3 with the temperature chosen per pair on calibration bags, as columns of the main and rank tables
 (work-plan card WP-33).
 
-``<base>-tcal`` (``tables/common.py:TCAL_METHODS``, one per base of ``TEMPERED_BASES``) is not a stored method: on each
+Since WP-34, ``BayesCAP-Hf-real-tcal`` and ``BayCAP-KDEy-h-inst-cb-tcal`` are stored methods of ``main`` (the selection
+inside the fit, ``methods/tcal.py``); their assembled columns here are ``<base>-tcal-asm``, kept to check the stored
+methods against them, and ``BayCAP-KDEy-h-inst-tcal`` keeps its name.
+
+``<base>-tcal`` or ``<base>-tcal-asm`` (``tables/common.py:TCAL_METHODS``, one per base of ``TEMPERED_BASES``) is not
+a stored method: on each
 pair and metric it is the stored test run of ``main`` (E5.2) of ``<base>`` at $\tau_{\text{cal}}$, the temperature with
 the lowest mean Winkler score of that metric on the $50$ calibration bags drawn from $V_{\text{cal}}$ by
 ``experiments/tau_select.py`` (``tables/tau_select.py:cal_taus``, ties to the $\tau$ closest to $1$). It uses only the

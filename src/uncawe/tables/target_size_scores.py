@@ -84,6 +84,9 @@ SHORT_LABELS = {
     "BayCAP-KDEy-h-inst": "BayCAP-KDEy",
     "BayCAP-KDEy-h-inst-cb": "BayCAP-KDEy-cb",
     "BayCAP-KDEy-mlp-real": "BayCAP-KDEy-mlp-real",
+    # WP-34
+    "BayesCAP-Hf-real-tcal": "BayCAP-Hf-tcal",
+    "BayCAP-KDEy-h-inst-cb-tcal": "BayCAP-KDEy-cb-tcal",
     "PQ": "SQS-S",
 }
 SCORE_LABELS = {"ae": "AE", "winkler": "$W$", "coverage": "coverage", "amplitude": "amplitude"}

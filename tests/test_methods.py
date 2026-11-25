@@ -19,6 +19,7 @@ from uncawe.experiments.methods import (
     SAMPLE_SIZE,
     SQS_B,
     SQS_B_QUANTIFIER,
+    TCAL_VARIANTS,
     TEMPERED_VARIANTS,
     cal_method,
     gen_methods,
@@ -28,6 +29,7 @@ from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
 from uncawe.methods.sqs_b import SQSB
+from uncawe.methods.tcal import CalibratedTemperature
 from uncawe.plots.amplitude_vs_coverage import PLOT_METHODS as AVC_METHODS
 from uncawe.plots.common import DEFAULT_METHODS, METHOD_COLORS, METHOD_PLOT_LABELS
 from uncawe.tables import main as main_tables
@@ -143,11 +145,13 @@ class BayCAPFactoryTest(unittest.TestCase):
             | set(TEMPERED_VARIANTS)
             | set(PLACEMENT_VARIANTS)
             | set(LOO_VARIANTS)
-            | set(CAL_VARIANTS),
+            | set(CAL_VARIANTS)
+            | set(TCAL_VARIANTS),
         )
         for name in get_method_names():
             self.assertEqual(
-                name in BAYES_POOL_METHODS, isinstance(self.methods[name], (BayCAP, BayCAPKDEy, BayCAPMAPLS, SQSB))
+                name in BAYES_POOL_METHODS,
+                isinstance(self.methods[name], (BayCAP, BayCAPKDEy, BayCAPMAPLS, SQSB, CalibratedTemperature)),
             )
 
     def test_factory_names_match_method_class(self):
