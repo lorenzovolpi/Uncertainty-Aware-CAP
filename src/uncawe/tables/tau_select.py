@@ -45,7 +45,8 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 from uncawe import env
-from uncawe.experiments.methods import INVALIDATED_TEMPERED_BASES, TEMPERED_BASES
+from uncawe.experiments.methods import INVALIDATED_TEMPERED_BASES, KEEP_BASE, KEEP_CALIBRATION_BASE
+from uncawe.experiments.methods import TABLE_TEMPERED_BASES as TEMPERED_BASES
 from uncawe.experiments.metrics import get_acc_names
 from uncawe.experiments.tau_select import EXPERIMENT
 from uncawe.tables import eb_prior
@@ -108,14 +109,23 @@ def calibration_rows(frames: dict[float, pd.DataFrame], acc_name: str, base: str
     return rows.merge(_pair_validation(frames[REFERENCE_TAU]), on=KEYS, how="left")
 
 
+# the base of tau_select whose calibration runs are those of a base of the tables (WP-34)
+CALIBRATION_BASES = {KEEP_BASE: KEEP_CALIBRATION_BASE}
+
+
 def calibration_table(
     acc_names: list[str] | None = None, root: str | None = None, bases=TEMPERED_BASES
 ) -> pd.DataFrame:
     """One row per metric, method (of ``bases``) and pair of the calibration runs stored at the five temperatures."""
     parts = []
     for acc_name in acc_names or get_acc_names():
-        for base, frames in tt.load_all(acc_name, root, EXPERIMENT, bases).items():
-            parts.append(calibration_rows(frames, acc_name, base))
+        # the -keep variant (WP-34) has no calibration runs of its own: they are those of BayCAP-KDEy-h-inst-cb, whose
+        # bandwidth is selected on V_fit as that of -keep (CALIBRATION_BASES)
+        sources = {base: CALIBRATION_BASES.get(base, base) for base in bases}
+        loaded = tt.load_all(acc_name, root, EXPERIMENT, tuple(dict.fromkeys(sources.values())))
+        for base, source in sources.items():
+            if source in loaded:
+                parts.append(calibration_rows(loaded[source], acc_name, base))
     if not parts:
         raise RuntimeError(f"No pair of {EXPERIMENT} has stored results for the five temperatures of a method.")
     return tt.ordered(pd.concat(parts, ignore_index=True))

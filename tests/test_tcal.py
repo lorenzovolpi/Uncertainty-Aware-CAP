@@ -3,6 +3,7 @@ the bags of ``tau_select``, the selection rule, the deployed fits and their band
 and the per-metric evaluation of ``main``."""
 
 import os
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -287,6 +288,46 @@ class BandwidthAndFallbackTest(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(columns["cal_winkler"])))
         self.assertEqual(columns["v_fit_size"], 0)
 
+    def test_fixed_tau_reuses_the_bandwidth_of_v_fit_without_calibration(self):
+        _FakeBase.log = []
+        method = _method(selects=True, truth=self.truth)
+        method = tcal.CalibratedTemperature(
+            method.base_factory, metrics=_metrics, fixed_tau=4.0, bandwidth="reuse"
+        ).set_dataset("toy")
+        method.fit(self.val, self.post)
+        self.assertEqual([e for e in _FakeBase.log if e[0] == "predict"], [])
+        n_fit = method.v_fit_size_
+        self.assertEqual(set(method.tau_cal_.values()), {4.0})
+        self.assertEqual(list(method.deployed()), [(4.0, True)])
+        deployed = method.deployed_for("macro-F1")
+        self.assertEqual((deployed.temperature, deployed.bandwidth), (4.0, 1.0 / n_fit))
+        columns = method.metric_columns("macro-F1")
+        self.assertEqual((columns["tau_cal"], columns["tau_fallback"]), (4.0, False))
+        self.assertEqual((columns["cal_n_bags"], columns["cal_bag_size"]), (0, 0))
+        self.assertAlmostEqual(columns["bandwidth_deployed"], 1.0 / n_fit)
+        # the fits: one on V_fit at tau (the selection of the bandwidth), one on V at tau with that bandwidth
+        fits = [e for e in _FakeBase.log if e[0] == "fit"]
+        self.assertEqual(fits, [("fit", 4.0, None, n_fit), ("fit", 4.0, 1.0 / n_fit, len(self.val.y))])
+
+    def test_fixed_tau_fallback_keeps_tau_and_selects_the_bandwidth_on_v(self):
+        val, post = _validation([40, 1, 30])
+        val = _indexed(val)
+        method = _method(selects=True, truth=_Truth(np.asarray(val.y), post.argmax(1), 3))
+        method = tcal.CalibratedTemperature(method.base_factory, metrics=_metrics, fixed_tau=2.0).set_dataset("toy")
+        method.fit(val, post)
+        self.assertEqual(set(method.tau_cal_.values()), {2.0})
+        self.assertEqual(set(method.fallback_.values()), {tcal.FALLBACK_SPLIT})
+        self.assertEqual(list(method.deployed()), [(2.0, False)])
+        self.assertIsNone(method.deployed_for("vanilla_accuracy").bandwidth)
+
+    def test_fixed_tau_needs_reuse(self):
+        with self.assertRaises(ValueError):
+            tcal.CalibratedTemperature(
+                lambda temperature, bandwidth=None: None, _metrics, fixed_tau=2.0, bandwidth="reselect"
+            )
+        with self.assertRaises(ValueError):
+            tcal.CalibratedTemperature(lambda temperature, bandwidth=None: None, _metrics, fixed_tau=0.0)
+
     def test_fallback_when_no_tau_has_a_score(self):
         class _Failed(_FakeBase):
             def ci_from_cts(self, cts):
@@ -315,7 +356,14 @@ class FactoryTest(unittest.TestCase):
         _, self.acc = next(gen_acc_measure(True))
 
     def test_names_pool_and_labels(self):
-        self.assertEqual(set(em.TCAL_VARIANTS), {"BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal"})
+        self.assertEqual(
+            em.TCAL_VARIANTS,
+            {
+                "BayesCAP-Hf-real-tcal": "BayesCAP-Hf-real",
+                "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy-h-inst-cb",
+                "BayCAP-KDEy-h-inst-cb-tcal-resel": "BayCAP-KDEy-h-inst-cb",
+            },
+        )
         self.assertEqual(set(em.TCAL_VARIANTS.values()), set(STORED_TCAL_BASES))
         self.assertTrue(set(em.TCAL_VARIANTS) <= em.BAYES_POOL_METHODS)
         self.assertTrue(set(em.TCAL_VARIANTS) <= set(em.get_method_names()))
@@ -325,7 +373,34 @@ class FactoryTest(unittest.TestCase):
             self.assertIsInstance(methods[name], tcal.CalibratedTemperature)
             self.assertEqual(methods[name].taus, tcal.TAUS)
             self.assertEqual(methods[name].cal_bag_size, 1000)
-            self.assertEqual(methods[name].bandwidth, "reuse")
+            self.assertIsNone(methods[name].fixed_tau)
+            self.assertEqual(methods[name].bandwidth, em.TCAL_BANDWIDTHS[name])
+        self.assertEqual(methods["BayCAP-KDEy-h-inst-cb-tcal-keep"].bandwidth, "reuse")
+        self.assertEqual(methods["BayCAP-KDEy-h-inst-cb-tcal-resel"].bandwidth, "reselect")
+
+    def test_keep_grid(self):
+        self.assertEqual(
+            em.KEEP_VARIANTS,
+            {
+                "BayCAP-KDEy-h-inst-cb-keep": 1.0,
+                "BayCAP-KDEy-h-inst-cb-keep-t0.5": 0.5,
+                "BayCAP-KDEy-h-inst-cb-keep-t2": 2.0,
+                "BayCAP-KDEy-h-inst-cb-keep-t4": 4.0,
+                "BayCAP-KDEy-h-inst-cb-keep-t8": 8.0,
+            },
+        )
+        self.assertTrue(set(em.KEEP_VARIANTS) <= em.BAYES_POOL_METHODS)
+        self.assertEqual(em.TABLE_TEMPERED_BASES, (*em.TEMPERED_BASES, em.KEEP_BASE))
+        methods = dict(em.gen_methods())
+        for name, tau in em.KEEP_VARIANTS.items():
+            method = methods[name]
+            self.assertEqual((method.fixed_tau, method.taus, method.bandwidth), (tau, (tau,), "reuse"))
+            # the base at tau is the tempered method of E5.2 (with its bandwidth fixed in the deployed fit)
+            stored = dict(em.gen_methods())[em.KEEP_CALIBRATION_BASE] if tau == 1.0 else None
+            if stored is None:
+                stored = em.tempered_method(self.acc, f"{em.KEEP_CALIBRATION_BASE}-t{tau:g}")
+            self.assertEqual(_attributes(method.base_factory(temperature=tau)), _attributes(stored))
+            self.assertEqual(tt.method_name(em.KEEP_BASE, tau), name)
 
     def test_bases_are_the_tempered_methods_of_e52(self):
         for name, base in em.TCAL_VARIANTS.items():
@@ -340,7 +415,7 @@ class FactoryTest(unittest.TestCase):
             self.assertEqual(_attributes(factory(temperature=1.0)), _attributes(reference))
 
     def test_kdey_base_with_a_fixed_bandwidth(self):
-        factory = em.tcal_method(self.acc, "BayCAP-KDEy-h-inst-cb-tcal").base_factory
+        factory = em.tcal_method(self.acc, "BayCAP-KDEy-h-inst-cb-tcal-keep").base_factory
         selected, fixed = factory(temperature=2.0), factory(temperature=2.0, bandwidth=0.3)
         self.assertIsInstance(fixed, BayCAPKDEy)
         self.assertEqual(fixed.bandwidth, 0.3)
@@ -369,8 +444,46 @@ class FactoryTest(unittest.TestCase):
                 method = e55_method(name, 3)
                 self.assertIsInstance(method, tcal.CalibratedTemperature)
                 self.assertEqual(method.cal_bag_size, 1000)
+                self.assertEqual(method.bandwidth, em.TCAL_BANDWIDTHS[base])
         order = [E55_METHODS[n][0] for n in sorted(E55_METHODS, key=_e55_method_order)]
         self.assertLess(order.index(E55_TCAL_BASES[0]), order.index("SQS-H"))
+
+
+# --------------------------------------------------------------------------------------------------- tables of -keep
+
+
+class KeepTablesTest(unittest.TestCase):
+    """The tables of E5.2 and E5.3 for the -keep variant: its test runs are the grid of -keep in main, its calibration
+    runs those of BayCAP-KDEy-h-inst-cb in tau_select."""
+
+    @staticmethod
+    def _store(root, base, method_base, experiment, calibration):
+        from test_tau_select import _frames
+
+        for tau, df in _frames(base, calibration).items():
+            for (dataset, classifier), part in df.groupby(["dataset", "classifier"]):
+                folder = os.path.join(root, experiment, "classic", "vanilla_accuracy", dataset, classifier)
+                os.makedirs(folder, exist_ok=True)
+                name = tt.method_name(method_base, tau)
+                part = part.assign(
+                    method=name, true_cts=part["true_cts"].map(np.ravel), estim_cts=part["estim_cts"].map(np.ravel)
+                )
+                part.to_parquet(os.path.join(folder, f"{name}.parquet"))
+
+    def test_keep_reads_the_calibration_of_cb(self):
+        from uncawe.tables import tau_select as tables
+
+        cb, keep = em.KEEP_CALIBRATION_BASE, em.KEEP_BASE
+        with tempfile.TemporaryDirectory() as root:
+            self._store(root, cb, cb, ts.EXPERIMENT, True)
+            self._store(root, cb, cb, "main", False)
+            self._store(root, cb, keep, "main", False)
+            out = tables.compute(["vanilla_accuracy"], root=root)
+        pairs = out["pairs"].set_index(["method", "dataset", "classifier"])
+        self.assertEqual(list(dict.fromkeys(out["pairs"]["method"])), [cb, keep])
+        np.testing.assert_array_equal(pairs.loc[keep, "tau_cal"].to_numpy(), pairs.loc[cb, "tau_cal"].to_numpy())
+        self.assertEqual(list(dict.fromkeys(out["calibration"]["method"])), [cb, keep])
+        self.assertIn(keep, tt.METHOD_LABELS)
 
 
 # --------------------------------------------------------------------------------------------------- evaluation

@@ -54,10 +54,12 @@ METHOD_COLORS = {
     # the methods of WP-34 (tau selected per metric inside the fit), and the columns of E5.3 assembled from the stored
     # runs (tables/tcal_methods.py, card WP-33; -asm where WP-34 stores the method), in the same colour
     "BayesCAP-Hf-real-tcal": "#8C6D31",
-    "BayCAP-KDEy-h-inst-cb-tcal": "#A1D99B",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "#A1D99B",
+    "BayCAP-KDEy-h-inst-cb-tcal-resel": "#74C476",
+    "BayCAP-KDEy-h-inst-cb-keep": "#238B45",
     "BayesCAP-Hf-real-tcal-asm": "#8C6D31",
     "BayCAP-KDEy-h-inst-tcal": "#00441B",
-    "BayCAP-KDEy-h-inst-cb-tcal-asm": "#A1D99B",
+    "BayCAP-KDEy-h-inst-cb-tcal-asm": "#74C476",
     "DoC": "#54A24B",
     "QuAcc_NxN": "#72B7B2",
     "B-CBPE": "#FF0000",
@@ -107,7 +109,9 @@ METHOD_PLOT_LABELS = {
     "BayCAP-KDEy-mlp-real-cal-tcal": "BayCAP-KDEy-mlp-real-cal-tcal",
     # WP-34, and E5.3 assembled (tables/tcal_methods.py, card WP-33)
     "BayesCAP-Hf-real-tcal": "BayCAP-Hf-tcal",
-    "BayCAP-KDEy-h-inst-cb-tcal": "BayCAP-KDEy-cb-tcal",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy-cb-tcal-keep",
+    "BayCAP-KDEy-h-inst-cb-tcal-resel": "BayCAP-KDEy-cb-tcal-resel",
+    "BayCAP-KDEy-h-inst-cb-keep": "BayCAP-KDEy-cb-keep",
     "BayesCAP-Hf-real-tcal-asm": "BayCAP-Hf-tcal-asm",
     "BayCAP-KDEy-h-inst-tcal": "BayCAP-KDEy-tcal",
     "BayCAP-KDEy-h-inst-cb-tcal-asm": "BayCAP-KDEy-cb-tcal-asm",

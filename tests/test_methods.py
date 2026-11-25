@@ -12,6 +12,7 @@ from uncawe.experiments.methods import (
     CAL_VARIANTS,
     FIXED_C_VARIANTS,
     KDEY_HF_VARIANTS,
+    KEEP_VARIANTS,
     LOO_VARIANTS,
     METHOD_CLASS,
     PLACEMENT_VARIANTS,
@@ -146,7 +147,8 @@ class BayCAPFactoryTest(unittest.TestCase):
             | set(PLACEMENT_VARIANTS)
             | set(LOO_VARIANTS)
             | set(CAL_VARIANTS)
-            | set(TCAL_VARIANTS),
+            | set(TCAL_VARIANTS)
+            | set(KEEP_VARIANTS),
         )
         for name in get_method_names():
             self.assertEqual(

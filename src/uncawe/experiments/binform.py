@@ -53,7 +53,7 @@ distribution the prior on its side is the right-side one, the other the wrong-si
 ``BayCAP-KDEy-mlp-real``, whose results are invalidated and whose stored files of E5.5 stay on disk; E5.1 and E5.4 keep
 it) and ``SQS-B`` (``experiments/methods.py:sqs_b`` with ``prior``); ``SQS-H``, ``SQS-Hbs`` and ``PQ`` (SQS-S)
 take no prior on $\pi^Q$, are built as in ``main`` and run once per distribution (method names without a suffix), in the
-pool of the regular methods of ``main``. Since WP-34, ``BayesCAP-Hf-real-tcal`` and ``BayCAP-KDEy-h-inst-cb-tcal``
+pool of the regular methods of ``main``. Since WP-34, the methods of ``experiments/methods.py:TCAL_VARIANTS``
 (``E55_TCAL_BASES``, $\tau$ selected inside the fit, ``methods/tcal.py``) also run with each prior, $\tau$ selected
 under that prior on UPP calibration bags; they are not in ``E55_PRIOR_BASES``, so the tables and plots of E5.5 do not
 show them. Results go to ``<OUT_DIR>/uncawe/binform_e55/<distribution>/``, with the

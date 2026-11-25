@@ -47,7 +47,10 @@ METHOD_LATEX_LABELS = {
     "O-LEAP": "LEAP",
     # the methods of WP-34 (experiments/methods.py:TCAL_VARIANTS): tau selected per pair and metric inside the fit
     "BayesCAP-Hf-real-tcal": "\\bcaphf{}-tcal",
-    "BayCAP-KDEy-h-inst-cb-tcal": "\\bcapkdey{}-cb-tcal",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "\\bcapkdey{}-cb-tcal-keep",
+    "BayCAP-KDEy-h-inst-cb-tcal-resel": "\\bcapkdey{}-cb-tcal-resel",
+    # the test grid of the -keep variant (WP-34): the base at each tau with the bandwidth of V_fit
+    "BayCAP-KDEy-h-inst-cb-keep": "\\bcapkdey{}-cb-keep",
     # E5.3 with the temperature chosen per pair on calibration bags, assembled from the stored runs (tables/tcal_methods.py,
     # card WP-33); -asm where WP-34 stores the method with that name
     "BayesCAP-Hf-real-tcal-asm": "\\bcaphf{}-tcal-asm",

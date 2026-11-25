@@ -44,13 +44,13 @@ from uncawe.plots.common import (
 from uncawe.tables.tempering import (
     REFERENCE_TAU,
     TAUS,
-    TEMPERED_BASES,
     WIDENING_METHOD,
     WIDENING_METRIC,
     csv_path,
     k_groups,
     tau_label,
 )
+from uncawe.tables.tempering import TABLE_TEMPERED_BASES as TEMPERED_BASES
 
 PLOT_NAME = "tempering"
 FIGURES = ("lines", "lines_k", "widening")
