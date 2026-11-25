@@ -53,8 +53,8 @@ distribution the prior on its side is the right-side one, the other the wrong-si
 ``BayCAP-KDEy-mlp-real``, whose results are invalidated and whose stored files of E5.5 stay on disk; E5.1 and E5.4 keep
 it) and ``SQS-B`` (``experiments/methods.py:sqs_b`` with ``prior``); ``SQS-H``, ``SQS-Hbs`` and ``PQ`` (SQS-S)
 take no prior on $\pi^Q$, are built as in ``main`` and run once per distribution (method names without a suffix), in the
-pool of the regular methods of ``main``. Since WP-34, the methods of ``experiments/methods.py:TCAL_VARIANTS``
-(``E55_TCAL_BASES``, $\tau$ selected inside the fit, ``methods/tcal.py``) also run with each prior, $\tau$ selected
+pool of the regular methods of ``main``. Since WP-34, the methods of ``experiments/methods.py:TCAL_VARIANTS`` whose
+base is in E5.5 (``E55_TCAL_BASES``, $\tau$ selected inside the fit, ``methods/tcal.py``) also run with each prior, $\tau$ selected
 under that prior on UPP calibration bags; they are not in ``E55_PRIOR_BASES``, so the tables and plots of E5.5 do not
 show them. Results go to ``<OUT_DIR>/uncawe/binform_e55/<distribution>/``, with the
 columns ``bag_size``, ``requested_prev``, ``distribution``, ``bag_alpha`` and, for the methods with a prior,
@@ -174,8 +174,8 @@ E55_PRIOR_BASES = ("BayesCAP-Hf-real", *E55_KDEY_BASES, SQS_B)
 E55_REFERENCES = ("SQS-H", "SQS-Hbs", "PQ")
 # WP-34 (user's decision of 2026-11-25): the two methods with tau selected inside the fit, with each prior on pi^Q and
 # tau selected under that prior (the calibration bags stay UPP); apart from E55_PRIOR_BASES, so that the tables and
-# plots of E5.5 are unchanged
-E55_TCAL_BASES = tuple(TCAL_VARIANTS)
+# plots of E5.5 are unchanged; not BayesCAP-tcal and BayesCAP-real-tcal, whose bases are not in E5.5
+E55_TCAL_BASES = ("BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal-keep", "BayCAP-KDEy-h-inst-cb-tcal-resel")
 # name -> (base method, prior); the prior is None for the methods without a prior on pi^Q
 E55_METHODS = (
     {f"{base}_{prior}": (base, prior) for base in E55_PRIOR_BASES for prior in E55_PRIORS}

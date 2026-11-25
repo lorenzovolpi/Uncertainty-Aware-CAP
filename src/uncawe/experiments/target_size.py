@@ -10,7 +10,8 @@ input and a fixed $\hat C$), both with the realised pushforward, built as in ``m
 (``true_cts``). $h$ is never retrained and the split $L/V$ of the pretrain files is unchanged.
 
 **E4.4 (WP-28).** The methods ``E44_METHODS``: ``BayesCAP-Hf-real``, the BayCAP-KDEy methods, since WP-34 the methods
-with $\tau$ selected inside the fit (``experiments/methods.py:TCAL_VARIANTS``, ``methods/tcal.py``, on
+with $\tau$ selected inside the fit (``E44_TCAL_METHODS``: those of ``experiments/methods.py:TCAL_VARIANTS`` whose
+base is in E4.4; ``methods/tcal.py``, on
 calibration bags of $|U|$ instances from half of the $V$ of the task, $\tau=1$ where it cannot be split), and ``SQS-H``,
 ``SQS-Hbs``, ``PQ`` (SQS-S) and ``SQS-B``, built as in ``main`` except that the SQS methods draw bags of ``sample_size``
 $=|U|$ instances from $V$ (``make_method``). The BayCAP-KDEy methods are ``BayCAP-KDEy-h-inst`` and
@@ -125,7 +126,8 @@ METHODS = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real")
 E44_KDEY_METHODS = ("BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
 # WP-34 (user's decision of 2026-11-25): the two methods with tau selected inside the fit, on calibration bags of the
 # size of the target bags and, in E4.4b, on the subsampled V of each level (fallback to tau=1 where V cannot be split)
-E44_TCAL_METHODS = tuple(TCAL_VARIANTS)
+# (not BayesCAP-tcal and BayesCAP-real-tcal, whose bases are not in E4.4)
+E44_TCAL_METHODS = ("BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal-keep", "BayCAP-KDEy-h-inst-cb-tcal-resel")
 E44_METHODS = ("BayesCAP-Hf-real", *E44_KDEY_METHODS, *E44_TCAL_METHODS, "SQS-H", "SQS-Hbs", "PQ", "SQS-B")
 # every method the study can run: those of E4.2 and of E4.4
 STUDY_METHODS = tuple(dict.fromkeys((*METHODS, *E44_METHODS)))

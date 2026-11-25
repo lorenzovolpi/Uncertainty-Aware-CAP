@@ -153,26 +153,38 @@ SQS_B_QUANTIFIER = "BayCAP-KDEy-mlp-real"
 # TEMPERED_BASES: BayesCAP-Hf-real and the two per-instance BayCAP-KDEy methods of E3.4 and E3.5 (the likelihood of the
 # bag divided by tau, the per-instance weights untempered, with -cb the bandwidth selected in the fit as untempered);
 # BayCAP-KDEy-mlp-real, whose results are invalidated (2026-11-24), keeps its tempered methods in the factory
-# (INVALIDATED_TEMPERED_BASES), so that its stored results keep their names, but no study runs or tabulates them
+# (INVALIDATED_TEMPERED_BASES), so that its stored results keep their names, but no study runs or tabulates them. Since
+# WP-34 (user's decision of 2026-11-25) also BayesCAP and BayesCAP-real (BayCAP with the uniform prior on C, population
+# and realised table, both likelihood terms divided by tau), the bases of BayesCAP-tcal and BayesCAP-real-tcal; their
+# tempered methods are named as the others (BayesCAP-real-t<tau> was a method of WP-35, PLACEMENT_VARIANTS, the same
+# method, never run)
 TEMPERATURE_LEVELS = (0.5, 2.0, 4.0, 8.0)
 # the grid of E5.3 (experiments/tau_select.py:TAUS) and of the methods of WP-34
 TAU_GRID = tuple(sorted((1.0, *TEMPERATURE_LEVELS)))
-TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+TEMPERED_BASES = ("BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
 INVALIDATED_TEMPERED_BASES = ("BayCAP-KDEy-mlp-real",)
-# in the order of WP-20 first, then the bases added by WP-33
-ALL_TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+# the bases of WP-34 first, then those of WP-20, then those added by WP-33
+ALL_TEMPERED_BASES = (
+    "BayesCAP",
+    "BayesCAP-real",
+    "BayesCAP-Hf-real",
+    "BayCAP-KDEy-mlp-real",
+    "BayCAP-KDEy-h-inst",
+    "BayCAP-KDEy-h-inst-cb",
+)
 TEMPERED_VARIANTS = {f"{base}-t{tau:g}": (base, tau) for base in ALL_TEMPERED_BASES for tau in TEMPERATURE_LEVELS}
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, (base, _) in TEMPERED_VARIANTS.items()}
 # the methods of card WP-35: where the temperature acts with the realised step (methods/baycap.py:TEMPERINGS), for
 # BayesCAP-real, BayesCAP-Hf-real and BayCAP-KDEy-h-inst-cb (user's choice of 2026-11-25), at the temperatures of E5.2:
 # <base>-t<tau>-complete (the per-instance complete-data likelihood of the bag, with the latent true classes, raised to
-# 1/tau) and <base>-t<tau>-obs (its term of the observation only), and BayesCAP-real-t<tau> (tempering="marginal", as
-# the methods of E5.2, absent so far); everything else, seeds included, as the untempered method. Apart from
+# 1/tau) and <base>-t<tau>-obs (its term of the observation only); everything else, seeds included, as the untempered
+# method. BayesCAP-real-t<tau> (tempering="marginal"), a method of WP-35 until 2026-11-25, is now in TEMPERED_VARIANTS
+# (WP-34), with the same configuration and seeds. Apart from
 # TEMPERED_VARIANTS, so that E5.2, E5.3 and their tables are unchanged; outside the main tables, ranks and default plots
 # (tables/main.py); name -> (untempered method, tau, tempering)
 PLACEMENT_BASES = ("BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst-cb")
 PLACEMENT_SUFFIXES = {"complete": "complete", "observation": "obs"}
-PLACEMENT_VARIANTS = {f"BayesCAP-real-t{tau:g}": ("BayesCAP-real", tau, "marginal") for tau in TEMPERATURE_LEVELS} | {
+PLACEMENT_VARIANTS = {
     f"{base}-t{tau:g}-{suffix}": (base, tau, tempering)
     for base in PLACEMENT_BASES
     for tau in TEMPERATURE_LEVELS
@@ -202,15 +214,20 @@ METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in CAL_VARIANTS.items()
 # deployed fit reuses the bandwidth selected on V_fit (-keep) or selects it again on the full V (-resel; the method of
 # the tables of E5.3), the two sharing the calibration (user's decision of 2026-11-25). Outside the main tables, ranks
 # and default plots (tables/main.py); before WP-34, the main and rank tables assembled columns from the stored runs of
-# E5.2 and E5.3 (tables/tcal_methods.py, now <base>-tcal-asm)
+# E5.2 and E5.3 (tables/tcal_methods.py, now <base>-tcal-asm). BayesCAP-tcal and BayesCAP-real-tcal added on 2026-11-25
+# (user's decision), run in main only, not in E4.4 and E5.5, where their bases are absent
 TCAL_VARIANTS = {
+    "BayesCAP-tcal": "BayesCAP",
+    "BayesCAP-real-tcal": "BayesCAP-real",
     "BayesCAP-Hf-real-tcal": "BayesCAP-Hf-real",
     "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy-h-inst-cb",
     "BayCAP-KDEy-h-inst-cb-tcal-resel": "BayCAP-KDEy-h-inst-cb",
 }
 # the bandwidth of the deployed fit of each method of TCAL_VARIANTS (methods/tcal.py:BANDWIDTH_OPTIONS; no effect on
-# BayCAP-Hf, which selects no bandwidth)
+# the BayCAP methods, which select no bandwidth)
 TCAL_BANDWIDTHS = {
+    "BayesCAP-tcal": "reuse",
+    "BayesCAP-real-tcal": "reuse",
     "BayesCAP-Hf-real-tcal": "reuse",
     "BayCAP-KDEy-h-inst-cb-tcal-keep": "reuse",
     "BayCAP-KDEy-h-inst-cb-tcal-resel": "reselect",
