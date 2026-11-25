@@ -1,13 +1,18 @@
 r"""Coverage against amplitude of the intervals, one facet per method: each point is a pair (dataset, classifier), the
 mean over its target bags; each score is against the realised table of the bag (``true_cts``).
 
-The shading is a KDE of the points of each facet (``seaborn.kdeplot``). By default it has seaborn's ten levels, the
-outer one holding 95% of the density. ``--kde-mass`` draws instead the regions that hold the given shares of the
-density (e.g. ``0.5 0.7 0.99``), ``--kde-bw-adjust`` scales the bandwidth of Scott's rule. ``--summary-box`` writes in
-each facet the means over the pairs shown of the Winkler score, amplitude and coverage; ``--exclude dataset:classifier``
-leaves pairs out of the facets, of the KDE and of the box. ``--zoom`` draws both axes on scales that enlarge the region
-around the nominal values (amplitude $0.05$, coverage $0.95$), $u=\log_{10}(1+A/a_0)$ and
-$v=-\log_{10}(1+(1-C)/m_0)$, with the KDE computed on the transformed coordinates.
+The shading is a KDE of the points of each facet (``seaborn.kdeplot``): the regions that hold the shares
+``--kde-mass`` of the density (default ``0.5 0.7 0.99``), with the bandwidth of Scott's rule scaled by
+``--kde-bw-adjust`` (default ``0.75``); user's decision of 2026-11-25, which replaced seaborn's ten levels. Each facet
+has a box with the means over the pairs shown of the Winkler score, amplitude and coverage (``--no-summary-box`` to
+drop it). ``--exclude dataset:classifier`` leaves pairs out of the facets, of the KDE and of the box (default
+``poker_hand:LR``, whose intervals are wider than the x range on several methods; ``--exclude`` with no value keeps
+every pair).
+
+Two views (``--views``, default both): ``linear``, the axes of the paper, and ``zoom``, both axes on scales that enlarge
+the region around the nominal values (amplitude $0.05$, coverage $0.95$), $u=\log_{10}(1+A/a_0)$ and
+$v=-\log_{10}(1+(1-C)/m_0)$, with the KDE computed on the transformed coordinates; the zoomed figure has the suffix
+``_zoom``.
 """
 
 import os
@@ -49,7 +54,12 @@ PLOT_NAME = "amplitude_vs_coverage"
 # without BayesCAP (BayCAP-pop), which the main tables show since 2026-11-23 (user's decision of 2026-11-24); SQS-B
 # left MAIN_METHODS on 2026-11-24
 PLOT_METHODS = [method for method in MAIN_METHODS if method != "BayesCAP"]
-# --zoom: amplitude and miscoverage below these values are drawn almost linearly, above them logarithmically
+# the KDE regions and bandwidth, the box and the excluded pairs of the default figures (user's decision of 2026-11-25)
+DEFAULT_KDE_MASS = [0.5, 0.7, 0.99]
+DEFAULT_KDE_BW_ADJUST = 0.75
+DEFAULT_EXCLUDE = ["poker_hand:LR"]
+VIEWS = ("linear", "zoom")
+# zoom: amplitude and miscoverage below these values are drawn almost linearly, above them logarithmically
 ZOOM_AMPLITUDE = 0.01
 ZOOM_MISCOVERAGE = 0.02
 ZOOM_X_TICKS = [0, 0.01, 0.05, 0.2, 0.5]
@@ -66,11 +76,9 @@ def zoom_y(coverage):
     return -np.log10(1 + (1 - np.asarray(coverage, dtype=float)) / ZOOM_MISCOVERAGE)
 
 
-def kde_levels(masses: list[float] | None):
+def kde_levels(masses: list[float]):
     """seaborn levels (iso-proportions of the density, from the lowest) of the regions holding ``masses``."""
-    if not masses:
-        return None
-    if not all(0 < m < 1 for m in masses):
+    if not masses or not all(0 < m < 1 for m in masses):
         raise ValueError(f"--kde-mass values must be in (0, 1), got {masses}")
     return sorted(1 - m for m in masses) + [1.0]
 
@@ -92,10 +100,12 @@ def _plot_dir() -> str:
     return plot_dir(PLOT_NAME)
 
 
-def _plot_stem(domain: str, acc_name: str, add_stem: str | None) -> str:
+def _plot_stem(domain: str, acc_name: str, add_stem: str | None, zoom: bool = False) -> str:
     filename = f"{safe_name(domain)}_{safe_name(acc_name)}"
     if add_stem is not None:
         filename += f"_{add_stem}"
+    if zoom:
+        filename += "_zoom"
     return os.path.join(_plot_dir(), filename)
 
 
@@ -330,7 +340,7 @@ def _plot(
 
     fig.tight_layout()
     fig.subplots_adjust(top=0.96, right=0.88, hspace=0.15)
-    stem = _plot_stem(domain, ACC_NAME, add_stem)
+    stem = _plot_stem(domain, ACC_NAME, add_stem, zoom)
     for fmt in formats:
         fig.savefig(f"{stem}.{fmt}", dpi=dpi if fmt.lower() == "png" else None)
     plt.close(fig)
@@ -341,27 +351,25 @@ def generate_plots(args):
     if df.empty:
         raise RuntimeError("No aggregated coverage/amplitude rows available for plotting.")
 
-    kde_kws = {"bw_adjust": args.kde_bw_adjust}
-    levels = kde_levels(args.kde_mass)
-    if levels is not None:
-        kde_kws["levels"] = levels
-    _plot(
-        df,
-        args.domain,
-        args.methods,
-        args.alpha,
-        args.x_scale,
-        args.formats,
-        args.dpi,
-        args.add_stem,
-        kde_kws=kde_kws,
-        summary_box=args.summary_box,
-        zoom=args.zoom,
-    )
-    print(f"plot generated: {args.domain}/{ACC_NAME}")
+    kde_kws = {"bw_adjust": args.kde_bw_adjust, "levels": kde_levels(args.kde_mass)}
+    for view in args.views:
+        _plot(
+            df,
+            args.domain,
+            args.methods,
+            args.alpha,
+            args.x_scale,
+            args.formats,
+            args.dpi,
+            args.add_stem,
+            kde_kws=kde_kws,
+            summary_box=args.summary_box,
+            zoom=view == "zoom",
+        )
+        print(f"plot generated: {args.domain}/{ACC_NAME} ({view})")
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = ArgumentParser(description="Generate amplitude vs coverage plots from main experiment results.")
     parser.add_argument("--domain", default=DEFAULT_DOMAIN)
     parser.add_argument("--datasets", nargs="*", default=None)
@@ -373,18 +381,27 @@ def parse_args():
         "--kde-mass",
         nargs="+",
         type=float,
-        default=None,
-        help="Shares of density held by the KDE regions, e.g. 0.5 0.7 0.99",
+        default=DEFAULT_KDE_MASS,
+        help="Shares of density held by the KDE regions",
     )
-    parser.add_argument("--kde-bw-adjust", type=float, default=1.0, help="Factor on the bandwidth of Scott's rule")
-    parser.add_argument("--summary-box", action="store_true", help="Means of W, A, C over the pairs shown, per facet")
-    parser.add_argument("--exclude", nargs="*", default=None, help="Pairs dataset:classifier to leave out")
-    parser.add_argument("--zoom", action="store_true", help="Axes that enlarge the region around (0.05, 0.95)")
+    parser.add_argument(
+        "--kde-bw-adjust", type=float, default=DEFAULT_KDE_BW_ADJUST, help="Factor on the bandwidth of Scott's rule"
+    )
+    parser.add_argument(
+        "--summary-box",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Means of W, A, C over the pairs shown, per facet",
+    )
+    parser.add_argument(
+        "--exclude", nargs="*", default=DEFAULT_EXCLUDE, help="Pairs dataset:classifier to leave out (none: keep all)"
+    )
+    parser.add_argument("--views", nargs="+", choices=VIEWS, default=list(VIEWS))
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     parser.add_argument("--pdf", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--add-stem", default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     args.formats = ["png"]
     if args.svg:
         args.formats.append("svg")

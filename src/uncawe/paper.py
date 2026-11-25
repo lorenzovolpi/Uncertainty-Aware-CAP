@@ -96,7 +96,14 @@ ARTEFACTS = (
     ),
     # tau chosen per pair on calibration bags (E5.3), compact table: one tabular per accuracy measure
     *(Artefact("tables", f"tables/tau_select/tabular/tau_select_compact_{acc}.tex", TAU_SELECT) for acc in ACC_NAMES),
+    # coverage vs amplitude: linear axes and axes zoomed on the nominal values (user's decision of 2026-11-25)
     Artefact("figures", "plots/main/amplitude_vs_coverage/classic_vanilla_accuracy", AVC, name="amplitude_vs_coverage"),
+    Artefact(
+        "figures",
+        "plots/main/amplitude_vs_coverage/classic_vanilla_accuracy_zoom",
+        AVC,
+        name="amplitude_vs_coverage_zoom",
+    ),
     Artefact("figures", "plots/main/shift_profile/shift_profile_by_k_classic_vanilla_accuracy", SHIFT_PROFILE),
     *(
         Artefact(

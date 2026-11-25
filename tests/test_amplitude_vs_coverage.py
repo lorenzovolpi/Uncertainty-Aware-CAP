@@ -44,8 +44,9 @@ class KdeLevelsTest(unittest.TestCase):
     def test_masses_become_iso_proportions_from_the_lowest(self):
         np.testing.assert_allclose(avc.kde_levels([0.5, 0.7, 0.99]), [0.01, 0.3, 0.5, 1.0])
 
-    def test_no_masses_keep_the_seaborn_default(self):
-        self.assertIsNone(avc.kde_levels(None))
+    def test_no_masses_are_rejected(self):
+        with self.assertRaises(ValueError):
+            avc.kde_levels([])
 
     def test_masses_outside_the_unit_interval_are_rejected(self):
         with self.assertRaises(ValueError):
@@ -118,13 +119,37 @@ class SummaryBoxTest(unittest.TestCase):
                     summary_box=True,
                     zoom=True,
                 )
-            self.assertTrue(os.path.exists(os.path.join(tmp, "classic_vanilla_accuracy_test.png")))
+            self.assertTrue(os.path.exists(os.path.join(tmp, "classic_vanilla_accuracy_test_zoom.png")))
             axes = [ax for ax in captured["fig"].axes if ax.get_title()]
             self.assertEqual(len(axes), len(METHODS))
             for ax, method in zip(axes, METHODS):
                 texts = [t.get_text() for t in ax.texts]
                 self.assertIn(avc.summary_text(df[df["method"] == method]), texts)
                 np.testing.assert_allclose(ax.get_xticks(), avc.zoom_x(avc.ZOOM_X_TICKS))
+
+
+class DefaultsTest(unittest.TestCase):
+    def test_defaults_are_the_paper_figures(self):
+        args = avc.parse_args([])
+        self.assertEqual(args.kde_mass, [0.5, 0.7, 0.99])
+        self.assertEqual(args.kde_bw_adjust, 0.75)
+        self.assertTrue(args.summary_box)
+        self.assertEqual(args.exclude, ["poker_hand:LR"])
+        self.assertEqual(args.views, ["linear", "zoom"])
+
+    def test_empty_exclude_keeps_every_pair(self):
+        args = avc.parse_args(["--exclude", "--no-summary-box", "--views", "linear"])
+        self.assertEqual(args.exclude, [])
+        self.assertFalse(args.summary_box)
+        df = synthetic_pairs()
+        self.assertEqual(len(avc.exclude_pairs(df, args.exclude)), len(df))
+
+    def test_zoomed_figure_has_its_own_stem(self):
+        with mock.patch.object(avc, "_plot_dir", return_value="d"):
+            self.assertEqual(avc._plot_stem("classic", "vanilla_accuracy", None), "d/classic_vanilla_accuracy")
+            self.assertEqual(
+                avc._plot_stem("classic", "vanilla_accuracy", None, zoom=True), "d/classic_vanilla_accuracy_zoom"
+            )
 
 
 if __name__ == "__main__":

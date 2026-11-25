@@ -20,7 +20,7 @@ This document lists the tables and figures that the extended version of the pape
 - `figures/`: each figure as pdf and png;
 - `macros.tex`: the macros of the method names (`tables/common.py:METHOD_LATEX_MACROS`, e.g. `\bcappop`, `\bcapkdey`, `\sqshbs`), which the tabulars use; the paper inputs it in its preamble.
 
-The two subfolders are emptied at every collection, so they hold exactly the artefacts of the list; a missing source stops the collection before anything is copied. Files keep the name of their source, except the coverage vs amplitude figure, renamed `amplitude_vs_coverage`.
+The two subfolders are emptied at every collection, so they hold exactly the artefacts of the list; a missing source stops the collection before anything is copied. Files keep the name of their source, except the two coverage vs amplitude figures, renamed `amplitude_vs_coverage` and `amplitude_vs_coverage_zoom`.
 
 ## Tables
 
@@ -36,7 +36,7 @@ Every table and figure scores the realised table of each bag (`true_cts`), as `m
 
 | Artefact | Files in `paper/figures/` (pdf, png) | Command | Source |
 |---|---|---|---|
-| Coverage vs amplitude, one facet per method of the main table without SQS-B and BayCAP-pop (vanilla accuracy) | `amplitude_vs_coverage` | `make run-plot-avc` | `plots/main/amplitude_vs_coverage/classic_vanilla_accuracy` |
+| Coverage vs amplitude, one facet per method of the main table without SQS-B and BayCAP-pop (vanilla accuracy): per pair the mean coverage and amplitude over its bags, the KDE regions holding $50\%$, $70\%$ and $99\%$ of the pairs (bandwidth $0.75\times$ Scott's rule), a box with the means over the pairs of $\mathcal W$, amplitude and coverage; `poker_hand` with LR left out (user's decision of 2026-11-25); linear axes, and axes zoomed on amplitude $0.05$ and coverage $0.95$ | `amplitude_vs_coverage`, `amplitude_vs_coverage_zoom` | `make run-plot-avc` (both) | `plots/main/amplitude_vs_coverage/classic_vanilla_accuracy`, `classic_vanilla_accuracy_zoom` |
 | Shift profile by group of $K$: relative AE and $\mathcal W$ by within-pair shift decile (vanilla accuracy) | `shift_profile_by_k_classic_vanilla_accuracy` | `make run-plot-shift-profile ARGS="--figures by_k"` | `plots/main/shift_profile/` |
 | E5.5, side priors: per-pair violins at the edge and at the centre of the simplex, all pairs (vanilla accuracy) | `binform_side_prior_pair_violins_edge_all_vanilla_accuracy`, `binform_side_prior_pair_violins_centre_all_vanilla_accuracy` | `make run-plot-binform-side-prior ARGS="--figures pair-violins --groups all --metrics vanilla_accuracy"` | `plots/binform_side_prior/` |
 | E6.2, allocation $\rho$ of SQS-S: AE and $\mathcal W$ against $\rho$ (vanilla accuracy) | `pq_rho_ae_w_vanilla_accuracy` | `make run-plot-pq-rho ARGS="--metrics vanilla_accuracy"` | `plots/pq_rho/` |

@@ -36,6 +36,7 @@ class TestManifest(unittest.TestCase):
         names = [a.paper_name() for a in paper.ARTEFACTS]
         self.assertEqual(sum(a.kind == "tables" for a in paper.ARTEFACTS), 3 + 6 + 3)
         self.assertIn("amplitude_vs_coverage", names)
+        self.assertIn("amplitude_vs_coverage_zoom", names)
         self.assertIn("main_classic_macro-F1_rank_winkler.tex", names)
         self.assertIn("tau_select_compact_macro-K.tex", names)
         figure = next(a for a in paper.ARTEFACTS if a.name == "amplitude_vs_coverage")
