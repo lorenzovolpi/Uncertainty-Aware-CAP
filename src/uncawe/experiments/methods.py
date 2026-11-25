@@ -1,6 +1,7 @@
 """Define experiment method factories and their shared hyperparameters."""
 
 from collections.abc import Iterator
+from functools import partial
 
 import quapy as qp
 from cap.models.confidence import (
@@ -23,6 +24,7 @@ from uncawe.methods.baycap_kdey import CAL, INSTANCE, BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
 from uncawe.methods.bayes_kdey import LOGLOSS, LOO
 from uncawe.methods.sqs_b import SQSB
+from uncawe.methods.tcal import CAL_BAG_SIZE, CalibratedTemperature
 
 BAYES_WARMUPS = 500
 BAYES_N_JOBS = 16
@@ -149,6 +151,8 @@ SQS_B_QUANTIFIER = "BayCAP-KDEy-mlp-real"
 # BayCAP-KDEy-mlp-real, whose results are invalidated (2026-11-24), keeps its tempered methods in the factory
 # (INVALIDATED_TEMPERED_BASES), so that its stored results keep their names, but no study runs or tabulates them
 TEMPERATURE_LEVELS = (0.5, 2.0, 4.0, 8.0)
+# the grid of E5.3 (experiments/tau_select.py:TAUS) and of the methods of WP-34
+TAU_GRID = tuple(sorted((1.0, *TEMPERATURE_LEVELS)))
 TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
 INVALIDATED_TEMPERED_BASES = ("BayCAP-KDEy-mlp-real",)
 # in the order of WP-20 first, then the bases added by WP-33
@@ -188,6 +192,14 @@ CAL_VARIANTS = {"BayCAP-KDEy-mlp-real-cal": SQS_B_QUANTIFIER, "BayCAP-KDEy-mlp-r
 # the methods of CAL_VARIANTS that also select the temperature (E7.2b)
 CAL_TEMPERATURE_VARIANTS = frozenset({"BayCAP-KDEy-mlp-real-cal-tcal"})
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in CAL_VARIANTS.items()}
+# the methods of card WP-34: the bases of E5.3 with the temperature selected per pair and metric inside the fit, on 50
+# calibration bags drawn from half of V, over the grid of E5.2 and E5.3 (methods/tcal.py:CalibratedTemperature), every
+# fit built as the tempered method of E5.2 (same settings and seeds); for BayCAP-KDEy-h-inst-cb the deployed fit reuses
+# the bandwidth selected on V_fit (user's decision of 2026-11-25); name -> base. Outside the main tables, ranks and
+# default plots (tables/main.py); before WP-34, the main and rank tables assembled columns with these names from the
+# stored runs of E5.2 and E5.3 (tables/tcal_methods.py, now <name>-asm)
+TCAL_VARIANTS = {f"{base}-tcal": base for base in ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst-cb")}
+METHOD_CLASS |= {name: CalibratedTemperature for name in TCAL_VARIANTS}
 # Average Confidence of E8.1 of docs/ext8_average_confidence.md (card WP-29): the largest posterior recalibrated per bag
 # by LasCal, the Poisson-binomial distribution of the correct predictions and its central interval
 # (methods/ac.py:AC), on every dataset, vanilla accuracy only. Outside the main tables, ranks and default plots
@@ -205,6 +217,7 @@ BAYES_POOL_METHODS = (
     | frozenset(PLACEMENT_VARIANTS)
     | frozenset(LOO_VARIANTS)
     | frozenset(CAL_VARIANTS)
+    | frozenset(TCAL_VARIANTS)
 )
 
 
@@ -353,10 +366,11 @@ def cal_method(acc, name: str, nuts_check: bool = False) -> BayCAPKDEy:
     )
 
 
-def baycap_method(acc, name: str, temperature: float = 1.0, tempering: str = "marginal") -> BayCAP:
+def baycap_method(acc, name: str, temperature: float = 1.0, tempering: str = "marginal", prior="uniform") -> BayCAP:
     """The BayCAP method ``name`` of ``BAYCAP_VARIANTS``, with the NUTS settings and default seed of BayCAP, its
-    options (``BAYCAP_OPTIONS``), the posterior temperature ``temperature`` ($1$ except in E5.2 and WP-35) and the
-    placement ``tempering`` of the temperature (``"marginal"`` except in WP-35)."""
+    options (``BAYCAP_OPTIONS``), the posterior temperature ``temperature`` ($1$ except in E5.2 and WP-35), the
+    placement ``tempering`` of the temperature (``"marginal"`` except in WP-35) and the prior ``prior`` on $\\pi$
+    (uniform except in E5.1, E5.4 and E5.5)."""
     estimand, c_prior = BAYCAP_VARIANTS[name]
     return BayCAP(
         acc,
@@ -366,7 +380,44 @@ def baycap_method(acc, name: str, temperature: float = 1.0, tempering: str = "ma
         num_warmup=BAYES_WARMUPS,
         temperature=temperature,
         tempering=tempering,
+        prior=prior,
         **BAYCAP_OPTIONS.get(name, {}),
+    )
+
+
+def tcal_base(acc, base: str, temperature: float = 1.0, bandwidth: float | None = None, prior="uniform"):
+    """The base ``base`` of ``TCAL_VARIANTS`` at the temperature ``temperature``, built as the tempered method of E5.2
+    (``tempered_method``) with the prior ``prior`` on $\\pi$; for ``BayCAP-KDEy-h-inst-cb``, ``bandwidth`` fixes the
+    bandwidth of BayesKDEy in place of its selection in the fit (``None``: selected, ``bandwidth="logloss"``)."""
+    if base in BAYCAP_VARIANTS:
+        if bandwidth is not None:
+            raise ValueError(f"{base} has no bandwidth")
+        return baycap_method(acc, base, temperature=temperature, prior=prior)
+    if base not in LOGLOSS_VARIANTS:
+        raise ValueError(f"No base {base} of the -tcal methods; the bases are {sorted(set(TCAL_VARIANTS.values()))}")
+    if bandwidth is None:
+        return logloss_method(acc, base, temperature=temperature, prior=prior)
+    return fixed_c_method(
+        acc,
+        INSTANCE_VARIANTS[LOGLOSS_VARIANTS[base]],
+        estimand=INSTANCE,
+        bandwidth=float(bandwidth),
+        temperature=temperature,
+        prior=prior,
+    )
+
+
+def tcal_method(acc, name: str, prior="uniform", cal_bag_size: int = CAL_BAG_SIZE) -> CalibratedTemperature:
+    """The method ``name`` of WP-34 (``TCAL_VARIANTS``): its base with $\\tau$ selected per metric inside the fit over
+    ``TAU_GRID`` (the grid of E5.3), on $50$ calibration bags of ``cal_bag_size`` instances ($1000$; the size of the
+    target bags in E4.4a), with the prior ``prior`` on $\\pi$ (uniform except in E5.5); the deployed fit of the KDEy
+    base reuses the bandwidth selected on $V_{\\text{fit}}$."""
+    return CalibratedTemperature(
+        partial(tcal_base, acc, TCAL_VARIANTS[name], prior=prior),
+        metrics=gen_acc_measure,
+        taus=TAU_GRID,
+        cal_bag_size=cal_bag_size,
+        bandwidth="reuse",
     )
 
 
@@ -443,6 +494,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
         yield name, loo_method(acc, name)
     for name in CAL_VARIANTS:
         yield name, cal_method(acc, name)
+    for name in TCAL_VARIANTS:
+        yield name, tcal_method(acc, name)
 
 
 def get_method_names() -> list[str]:

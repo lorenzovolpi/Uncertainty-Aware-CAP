@@ -54,6 +54,7 @@ from uncawe.experiments.methods import (
     get_method_names,
 )
 from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
+from uncawe.experiments.per_metric import bag_runs, is_contingency_method, metric_columns, metric_run, prepare
 from uncawe.experiments.records import EvaluationContext, build_result_frame
 from uncawe.experiments.task_order import TaskKey, default_reference_experiments, sort_longest_first
 from uncawe.methods.ac import AC
@@ -133,6 +134,16 @@ def _stores_allocation(method) -> bool:
     return isinstance(method, PrediQuant) and method.rho is not None
 
 
+def _bag_diagnostics(method) -> dict | None:
+    """The per-bag columns of ``method`` after a prediction: the NUTS diagnostics and posterior summaries of the
+    methods that sample with NUTS, the allocation columns of the methods of E6.2, ``None`` for the others."""
+    if isinstance(method, (BayCAP, QuantifierBayCAP, SQSB)):
+        return method.last_nuts_diagnostics() | method.last_posterior_summaries()
+    if _stores_allocation(method):
+        return allocation_columns(method)
+    return None
+
+
 def _evaluate_contingency_method(
     p: PretrainInfo,
     method_name: str,
@@ -145,31 +156,25 @@ def _evaluate_contingency_method(
 ) -> list[ExperimentOutcome]:
     try:
         started = time()
-        method = method.fit(validation, validation_posteriors)
+        method = prepare(method, p.d_info.name).fit(validation, validation_posteriors)
         t_train = time() - started
 
         # the time of the NUTS diagnostics of BayCAP (E2.4 of docs/ext2_baycap.md), of the posterior summaries of its
         # hierarchical prior (E2.7) and of the summaries of BayCAPKDEy and BayCAPMAPLS (E3.1 and E3.2 of
         # docs/ext3_posterior_propagation.md), of SQS-B (E3.3) and of the columns of the methods of E6.2
-        # (docs/ext6_sqs_s_design.md) is left out of the test time
-        started, t_diagnostics = time(), 0.0
-        estim_ct_ranges, diagnostics = [], []
-        for sample, posteriors in zip(dataset.test_prot(), dataset.test_prot_posteriors):
-            estim_ct_ranges.append(method.predict_ct_range(sample.X, posteriors))
-            if isinstance(method, (BayCAP, QuantifierBayCAP, SQSB)):
-                started_diagnostics = time()
-                diagnostics.append(method.last_nuts_diagnostics() | method.last_posterior_summaries())
-                t_diagnostics += time() - started_diagnostics
-            elif _stores_allocation(method):
-                started_diagnostics = time()
-                diagnostics.append(allocation_columns(method))
-                t_diagnostics += time() - started_diagnostics
-        t_test_ave = (time() - started - t_diagnostics) / dataset.test_prot.total()
-        estim_cts = [np.nan if cts is np.nan else cts.mean(axis=0) for cts in estim_ct_ranges]
+        # (docs/ext6_sqs_s_design.md) is left out of the test time; the methods of WP-34 predict once per deployed fit
+        # (experiments/per_metric.py)
+        runs = bag_runs(
+            method,
+            lambda: (
+                (sample.X, posteriors) for sample, posteriors in zip(dataset.test_prot(), dataset.test_prot_posteriors)
+            ),
+            dataset.test_prot.total(),
+            _bag_diagnostics,
+        )
     except Exception as error:
         print_exception(error)
         return [EXP.ERROR(error, p, "ct", method_name)]
-    extra_columns = {name: [d[name] for d in diagnostics] for name in diagnostics[0]} if diagnostics else None
 
     results = []
     for acc_name, acc_fn in gen_acc_measure(p.d_info.n_classes > 2):
@@ -177,10 +182,14 @@ def _evaluate_contingency_method(
             results.append(EXP.EXISTS(p, acc_name, method_name))
             continue
 
-        method.switch(acc_fn)
-        intervals = [method.ci_from_cts(cts) for cts in estim_ct_ranges]
+        run = metric_run(method, runs, acc_name)
+        run.method.switch(acc_fn)
+        intervals = [run.method.ci_from_cts(cts) for cts in run.estim_ct_ranges]
         estim_acc_ranges = [interval.samples for interval in intervals]
         estim_accs = [interval.point_estimate for interval in intervals]
+        extra_columns = run.diagnostic_columns() | metric_columns(method, acc_name, context.size)
+        t_test_ave = run.t_test_ave
+        estim_cts = run.estim_cts
         frame = build_result_frame(
             context,
             method_name=method_name,
@@ -191,7 +200,7 @@ def _evaluate_contingency_method(
             estim_cts=estim_cts,
             t_train=t_train,
             t_test_ave=t_test_ave,
-            extra_columns=extra_columns,
+            extra_columns=extra_columns or None,
         )
         results.append(
             EXP.SUCCESS(
@@ -292,7 +301,7 @@ def _exp_task(
         return [EXP.EXISTS(p, "all", method_name)]
 
     dataset, validation, validation_posteriors, context = _prepare_evaluation(p, method)
-    if isinstance(method, CAPContingencyTable):
+    if isinstance(method, CAPContingencyTable) or is_contingency_method(method):
         return _evaluate_contingency_method(
             p,
             method_name,

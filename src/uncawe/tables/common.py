@@ -45,13 +45,23 @@ METHOD_LATEX_LABELS = {
     "BayCAP-KDEy-mlp-real-cal": "\\bcapkdey{}-cal",
     "BayCAP-KDEy-mlp-real-cal-tcal": "\\bcapkdey{}-cal-tcal",
     "O-LEAP": "LEAP",
-    # E5.3 with the temperature chosen per pair on calibration bags (tables/tcal_methods.py, card WP-33)
+    # the methods of WP-34 (experiments/methods.py:TCAL_VARIANTS): tau selected per pair and metric inside the fit
     "BayesCAP-Hf-real-tcal": "\\bcaphf{}-tcal",
-    "BayCAP-KDEy-h-inst-tcal": "\\bcapkdey{}-tcal",
     "BayCAP-KDEy-h-inst-cb-tcal": "\\bcapkdey{}-cb-tcal",
+    # E5.3 with the temperature chosen per pair on calibration bags, assembled from the stored runs (tables/tcal_methods.py,
+    # card WP-33); -asm where WP-34 stores the method with that name
+    "BayesCAP-Hf-real-tcal-asm": "\\bcaphf{}-tcal-asm",
+    "BayCAP-KDEy-h-inst-tcal": "\\bcapkdey{}-tcal",
+    "BayCAP-KDEy-h-inst-cb-tcal-asm": "\\bcapkdey{}-cb-tcal-asm",
 }
 
 
+# the bases whose -tcal method is stored since WP-34 (experiments/methods.py:TCAL_VARIANTS, checked by the tests)
+STORED_TCAL_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst-cb")
 # the methods of E5.3 with the temperature chosen per pair on calibration bags, built by tables/tcal_methods.py from the
-# stored runs (not stored methods): ``<base>-tcal`` -> ``<base>``, for the bases of E5.3 (TEMPERED_BASES)
-TCAL_METHODS = {f"{base}-tcal": base for base in ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")}
+# stored runs (not stored methods): ``<base>-tcal`` -> ``<base>``, for the bases of E5.3 (TEMPERED_BASES); since WP-34,
+# ``<base>-tcal-asm`` for the bases whose ``<base>-tcal`` is a stored method, kept to check it against the assembled one
+TCAL_METHODS = {
+    f"{base}-tcal-asm" if base in STORED_TCAL_BASES else f"{base}-tcal": base
+    for base in ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+}

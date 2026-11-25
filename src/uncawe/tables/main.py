@@ -10,6 +10,7 @@ from scipy.stats import wilcoxon
 
 import uncawe.env as env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
+from uncawe.experiments.methods import TCAL_VARIANTS
 from uncawe.main import EXPERIMENT
 from uncawe.methods.ac import CentralPoissonInterval
 from uncawe.pretrain.dataset import sort_datasets_by_size
@@ -112,10 +113,14 @@ WTL_REFERENCE = "O-LEAP"
 
 
 def ordered_method_names() -> list[str]:
-    """The stored methods (``get_method_names``), each followed by its ``-tcal`` method (``TCAL_METHODS``), if any."""
+    """The stored methods (``get_method_names``), each followed by its ``-tcal`` method, stored (WP-34,
+    ``TCAL_VARIANTS``) or assembled (``TCAL_METHODS``), if any."""
     names = []
     for method in get_method_names():
+        if method in TCAL_VARIANTS:
+            continue
         names.append(method)
+        names.extend(name for name, base in TCAL_VARIANTS.items() if base == method)
         names.extend(name for name, base in TCAL_METHODS.items() if base == method)
     return names
 

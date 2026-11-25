@@ -44,6 +44,9 @@ METHOD_COLORS = {
     "BayCAP-KDEy-h-inst-cb": "#e377c2",
     # the former BayCAP-KDEy (invalidated), no longer among E44_METHODS (card WP-33)
     "BayCAP-KDEy-mlp-real": "#7f7f7f",
+    # WP-34
+    "BayesCAP-Hf-real-tcal": "#17becf",
+    "BayCAP-KDEy-h-inst-cb-tcal": "#bcbd22",
     "SQS-H": "#2ca02c",
     "SQS-Hbs": "#ff7f0e",
     "PQ": "#9467bd",
