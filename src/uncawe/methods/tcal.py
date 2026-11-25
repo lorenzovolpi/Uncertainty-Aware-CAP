@@ -21,6 +21,12 @@ With a base that selects its bandwidth in the fit (``BayCAP-KDEy-h-inst-cb``, ``
 selected on $V_{\text{fit}}$ at every $\tau$ (the same value, the selection does not depend on $\tau$), and the deployed
 fits reuse it (``bandwidth="reuse"``, the default) or select it again on the full $V$ (``bandwidth="reselect"``).
 
+With ``fixed_tau`` the method selects no temperature: it is the base at that $\tau$ fitted on the full $V$, with the
+bandwidth selected on $V_{\text{fit}}$ (``bandwidth="reuse"``); no calibration bag is drawn. These are the methods of the
+test grid of ``BayCAP-KDEy-h-inst-cb-tcal-keep`` (E5.2 and E5.3 with the bandwidth of $V_{\text{fit}}$). Where $V$
+cannot be split, the bandwidth is selected on the full $V$ (``tau_fallback``, reason ``split``) and $\tau$ stays the
+fixed one.
+
 The method has no prediction of its own: the experiments predict with the deployed fit of each metric
 (``deployed_for``) and store the per-bag columns of ``metric_columns``. If $V$ cannot be split (a class with fewer than
 $2$ instances), or if no $\tau$ gives a finite calibration score for a metric, that metric falls back to $\tau=1$ (the
@@ -201,6 +207,8 @@ class CalibratedTemperature:
     :param confidence: the level of the intervals scored.
     :param clear_caches: clear the caches of JAX after the calibration runs of each $\\tau$ (each bag compiles its own
         sampler; the results do not change).
+    :param fixed_tau: if given, no selection: the base at this $\\tau$ with the bandwidth of $V_{\\text{fit}}$ (see the
+        module); ``taus``, ``n_bags`` and ``cal_bag_size`` are then not used.
     """
 
     def __init__(
@@ -213,9 +221,16 @@ class CalibratedTemperature:
         bandwidth: Literal["reuse", "reselect"] = "reuse",
         confidence: float = CONFIDENCE,
         clear_caches: bool = True,
+        fixed_tau: float | None = None,
     ):
         if bandwidth not in BANDWIDTH_OPTIONS:
             raise ValueError(f"bandwidth must be one of {BANDWIDTH_OPTIONS}; found {bandwidth!r}")
+        if fixed_tau is not None:
+            if not float(fixed_tau) > 0:
+                raise ValueError(f"fixed_tau must be positive; found {fixed_tau!r}")
+            if bandwidth != "reuse":
+                raise ValueError('fixed_tau keeps the bandwidth of V_fit: it needs bandwidth="reuse"')
+            taus = (float(fixed_tau),)
         taus = tuple(sorted(float(t) for t in taus))
         if not taus or any(not t > 0 for t in taus) or len(set(taus)) != len(taus):
             raise ValueError(f"taus must be distinct positive numbers; found {taus}")
@@ -229,6 +244,7 @@ class CalibratedTemperature:
         self.bandwidth = bandwidth
         self.confidence = confidence
         self.clear_caches = clear_caches
+        self.fixed_tau = None if fixed_tau is None else float(fixed_tau)
         self.dataset = None
 
     def set_dataset(self, name: str) -> "CalibratedTemperature":
@@ -283,6 +299,20 @@ class CalibratedTemperature:
             raise RuntimeError(f"the bandwidth selected on V_fit differs between the temperatures: {bandwidths}")
         return scores, float(bandwidths[0])
 
+    def _bandwidth_of_v_fit(self, val: LabelledCollection, posteriors: np.ndarray):
+        """For ``fixed_tau``: the scores (NaN, no calibration bag) and the bandwidth selected by the base on
+        $V_{\\text{fit}}$ (a fit without NUTS); ``None`` if $V$ cannot be split."""
+        val_y = np.asarray(val.y)
+        try:
+            fit_index, cal_index = split_index(val_y, len(val.classes_), self.dataset)
+        except ValueError:
+            return None
+        self.v_fit_size_, self.v_cal_size_ = int(fit_index.size), int(cal_index.size)
+        v_fit = LabelledCollection(val.X[fit_index], val_y[fit_index], classes=val.classes_)
+        method = self.base_factory(temperature=self.fixed_tau).fit(v_fit, posteriors[fit_index])
+        scores = {name: {_key(self.fixed_tau): np.nan} for name in self.metric_names_}
+        return scores, self._selected_bandwidth(method)
+
     def fit(self, val: LabelledCollection, posteriors: np.ndarray) -> "CalibratedTemperature":
         if self.dataset is None:
             raise RuntimeError("set_dataset must be called before fit: the dataset seeds the split of V and the bags")
@@ -290,12 +320,21 @@ class CalibratedTemperature:
         metrics = list(self.metrics(len(val.classes_) > 2))
         self.metric_names_ = [name for name, _ in metrics]
         self.v_fit_size_ = self.v_cal_size_ = 0
-        calibration = self._calibrate(val, posteriors, metrics)
+        if self.fixed_tau is not None:
+            calibration = self._bandwidth_of_v_fit(val, posteriors)
+        else:
+            calibration = self._calibrate(val, posteriors, metrics)
         if calibration is None:
+            # the fallback: tau=1 (or the fixed tau), the base with its bandwidth selected on the full V
+            fallback_tau = REFERENCE_TAU if self.fixed_tau is None else self.fixed_tau
             self.cal_scores_ = {name: {_key(t): np.nan for t in self.taus} for name in self.metric_names_}
             self.bandwidth_fit_ = np.nan
-            self.tau_cal_ = {name: REFERENCE_TAU for name in self.metric_names_}
+            self.tau_cal_ = {name: fallback_tau for name in self.metric_names_}
             self.fallback_ = {name: FALLBACK_SPLIT for name in self.metric_names_}
+        elif self.fixed_tau is not None:
+            self.cal_scores_, self.bandwidth_fit_ = calibration
+            self.tau_cal_ = {name: self.fixed_tau for name in self.metric_names_}
+            self.fallback_ = {name: "" for name in self.metric_names_}
         else:
             self.cal_scores_, self.bandwidth_fit_ = calibration
             self.tau_cal_, self.fallback_ = {}, {}
@@ -355,8 +394,8 @@ class CalibratedTemperature:
             "tau_fallback_reason": self.fallback_[acc_name],
             "cal_taus": list(self.taus),
             "cal_winkler": [self.cal_scores_[acc_name][_key(t)] for t in self.taus],
-            "cal_n_bags": self.n_bags,
-            "cal_bag_size": self.cal_bag_size,
+            "cal_n_bags": 0 if self.fixed_tau is not None else self.n_bags,
+            "cal_bag_size": 0 if self.fixed_tau is not None else self.cal_bag_size,
             "v_fit_size": self.v_fit_size_,
             "v_cal_size": self.v_cal_size_,
             "split_seed": split_seed(self.dataset),

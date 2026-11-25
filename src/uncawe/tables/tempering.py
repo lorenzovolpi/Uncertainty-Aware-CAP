@@ -51,8 +51,10 @@ from uncawe import env
 from uncawe.experiments.main import EXPERIMENT
 from uncawe.experiments.methods import (
     INVALIDATED_TEMPERED_BASES,
+    KEEP_BASE,
+    KEEP_VARIANTS,
+    TABLE_TEMPERED_BASES,
     TEMPERATURE_LEVELS,
-    TEMPERED_BASES,
     TEMPERED_VARIANTS,
 )
 from uncawe.experiments.metrics import acc_from_ct, get_acc_names
@@ -77,12 +79,18 @@ WIDENING_METRIC = "vanilla_accuracy"
 K_GROUPS = hierarchical.K_GROUPS
 
 
+# the stored methods of a base at tau != 1: the tempered methods of E5.2 and the test grid of the -keep variant (WP-34)
+TEMPERED_NAMES = TEMPERED_VARIANTS | {
+    name: (KEEP_BASE, tau) for name, tau in KEEP_VARIANTS.items() if tau != REFERENCE_TAU
+}
+
+
 def method_name(base: str, tau: float) -> str:
     """The stored method of ``base`` at temperature ``tau``: ``base`` itself at $\\tau=1$."""
     if tau == REFERENCE_TAU:
         return base
     name = f"{base}-t{tau:g}"
-    if TEMPERED_VARIANTS.get(name) != (base, tau):
+    if TEMPERED_NAMES.get(name) != (base, tau):
         raise ValueError(f"{name} is not a tempered method of E5.2")
     return name
 
@@ -111,7 +119,7 @@ def load_method(method: str, acc_name: str, root: str | None = None, experiment:
 
 
 def load_all(
-    acc_name: str, root: str | None = None, experiment: str = EXPERIMENT, bases=TEMPERED_BASES
+    acc_name: str, root: str | None = None, experiment: str = EXPERIMENT, bases=TABLE_TEMPERED_BASES
 ) -> dict[str, dict[float, pd.DataFrame]]:
     """``base method -> {tau: rows}`` of ``experiment`` for the methods of ``bases``, restricted to the pairs stored for
     the five temperatures; the methods without any such pair are left out."""
@@ -242,7 +250,10 @@ def pair_rows(frames: dict[float, pd.DataFrame], acc_name: str, base: str) -> li
 
 
 def pair_table(
-    acc_names: list[str] | None = None, root: str | None = None, experiment: str = EXPERIMENT, bases=TEMPERED_BASES
+    acc_names: list[str] | None = None,
+    root: str | None = None,
+    experiment: str = EXPERIMENT,
+    bases=TABLE_TEMPERED_BASES,
 ) -> pd.DataFrame:
     """One row per metric, base method (of ``bases``) and pair of ``experiment`` (default ``main``), ordered by those
     keys, then by $K$, dataset and classifier (as in ``CLASSIFIER_ORDER``)."""
@@ -259,7 +270,7 @@ def ordered(table: pd.DataFrame) -> pd.DataFrame:
     table = table.copy()
     table["_acc"] = table["acc_name"].map(get_acc_names().index)
     # the bases of the studies first, then the former BayCAP-KDEy (only in tables built from its stored results)
-    table["_method"] = table["method"].map((*TEMPERED_BASES, *INVALIDATED_TEMPERED_BASES).index)
+    table["_method"] = table["method"].map((*TABLE_TEMPERED_BASES, *INVALIDATED_TEMPERED_BASES).index)
     table["_clf"] = table["classifier"].map(lambda c: CLASSIFIER_ORDER.index(c) if c in CLASSIFIER_ORDER else 99)
     table = table.sort_values(["_acc", "_method", "n_classes", "dataset", "_clf"])
     return table.drop(columns=["_acc", "_method", "_clf"]).reset_index(drop=True)
@@ -466,6 +477,8 @@ METHOD_LABELS = {
     "BayesCAP-Hf-real": "\\bcaphf",
     "BayCAP-KDEy-h-inst": "\\bcapkdey",
     "BayCAP-KDEy-h-inst-cb": "\\bcapkdey{}-cb",
+    # WP-34: BayCAP-KDEy-h-inst-cb with the bandwidth of V_fit
+    "BayCAP-KDEy-h-inst-cb-keep": "\\bcapkdey{}-cb-keep",
     "BayCAP-KDEy-mlp-real": "\\bcap{}-KDEy-mlp-real",
 }
 K_LABELS = {"all": "all", "K=2": "$K=2$", "3<=K<=7": "$3\\le K\\le7$", "K>=8": "$K\\ge8$"}

@@ -18,7 +18,7 @@ from uncawe.tables import tempering as tt
 from uncawe.tables.common import METHOD_LATEX_LABELS, TCAL_METHODS
 
 BASE = "BayCAP-KDEy-h-inst-cb"
-# the assembled column of the base, -asm since WP-34 stores BayCAP-KDEy-h-inst-cb-tcal as a method
+# the assembled column of the base, -asm since WP-34 stores its -tcal methods (-keep, -resel)
 TCAL = f"{BASE}-tcal-asm"
 HF_TCAL = "BayesCAP-Hf-real-tcal-asm"
 
@@ -48,10 +48,11 @@ class TcalMethodsTest(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         for name, base in TCAL_METHODS.items():
             # after the base, and after the stored -tcal method of the base (WP-34)
-            offset = 2 if base in TCAL_VARIANTS.values() else 1
+            offset = 1 + list(TCAL_VARIANTS.values()).count(base)
             self.assertEqual(names.index(name), names.index(base) + offset)
         for name, base in TCAL_VARIANTS.items():
-            self.assertEqual(names.index(name), names.index(base) + 1)
+            stored = [n for n, b in TCAL_VARIANTS.items() if b == base]
+            self.assertEqual(names.index(name), names.index(base) + 1 + stored.index(name))
         shown = main_tables.table_method_names((TCAL, HF_TCAL, "BayesCAP-Hf-real-tcal"))
         self.assertIn(TCAL, shown)
         self.assertEqual(shown.index("BayesCAP-Hf-real-tcal"), shown.index("BayesCAP-Hf-real") + 1)

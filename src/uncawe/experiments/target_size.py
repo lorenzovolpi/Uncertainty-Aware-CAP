@@ -10,7 +10,7 @@ input and a fixed $\hat C$), both with the realised pushforward, built as in ``m
 (``true_cts``). $h$ is never retrained and the split $L/V$ of the pretrain files is unchanged.
 
 **E4.4 (WP-28).** The methods ``E44_METHODS``: ``BayesCAP-Hf-real``, the BayCAP-KDEy methods, since WP-34 the methods
-with $\tau$ selected inside the fit (``BayesCAP-Hf-real-tcal``, ``BayCAP-KDEy-h-inst-cb-tcal``, ``methods/tcal.py``, on
+with $\tau$ selected inside the fit (``experiments/methods.py:TCAL_VARIANTS``, ``methods/tcal.py``, on
 calibration bags of $|U|$ instances from half of the $V$ of the task, $\tau=1$ where it cannot be split), and ``SQS-H``,
 ``SQS-Hbs``, ``PQ`` (SQS-S) and ``SQS-B``, built as in ``main`` except that the SQS methods draw bags of ``sample_size``
 $=|U|$ instances from $V$ (``make_method``). The BayCAP-KDEy methods are ``BayCAP-KDEy-h-inst`` and

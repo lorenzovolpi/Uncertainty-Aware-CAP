@@ -40,7 +40,8 @@ from uncawe.plots.common import (
     style_scatter_axes,
 )
 from uncawe.tables.tau_select import TAUS, csv_path
-from uncawe.tables.tempering import TEMPERED_BASES, tau_label
+from uncawe.tables.tempering import TABLE_TEMPERED_BASES as TEMPERED_BASES
+from uncawe.tables.tempering import tau_label
 
 PLOT_NAME = "tau_select"
 FIGURES = ("sigma", "gain")

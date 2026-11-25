@@ -46,7 +46,8 @@ METHOD_COLORS = {
     "BayCAP-KDEy-mlp-real": "#7f7f7f",
     # WP-34
     "BayesCAP-Hf-real-tcal": "#17becf",
-    "BayCAP-KDEy-h-inst-cb-tcal": "#bcbd22",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "#bcbd22",
+    "BayCAP-KDEy-h-inst-cb-tcal-resel": "#dbdb8d",
     "SQS-H": "#2ca02c",
     "SQS-Hbs": "#ff7f0e",
     "PQ": "#9467bd",

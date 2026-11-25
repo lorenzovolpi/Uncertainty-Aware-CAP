@@ -194,12 +194,34 @@ CAL_TEMPERATURE_VARIANTS = frozenset({"BayCAP-KDEy-mlp-real-cal-tcal"})
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in CAL_VARIANTS.items()}
 # the methods of card WP-34: the bases of E5.3 with the temperature selected per pair and metric inside the fit, on 50
 # calibration bags drawn from half of V, over the grid of E5.2 and E5.3 (methods/tcal.py:CalibratedTemperature), every
-# fit built as the tempered method of E5.2 (same settings and seeds); for BayCAP-KDEy-h-inst-cb the deployed fit reuses
-# the bandwidth selected on V_fit (user's decision of 2026-11-25); name -> base. Outside the main tables, ranks and
-# default plots (tables/main.py); before WP-34, the main and rank tables assembled columns with these names from the
-# stored runs of E5.2 and E5.3 (tables/tcal_methods.py, now <name>-asm)
-TCAL_VARIANTS = {f"{base}-tcal": base for base in ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst-cb")}
+# fit built as the tempered method of E5.2 (same settings and seeds); name -> base. For BayCAP-KDEy-h-inst-cb the
+# deployed fit reuses the bandwidth selected on V_fit (-keep) or selects it again on the full V (-resel; the method of
+# the tables of E5.3), the two sharing the calibration (user's decision of 2026-11-25). Outside the main tables, ranks
+# and default plots (tables/main.py); before WP-34, the main and rank tables assembled columns from the stored runs of
+# E5.2 and E5.3 (tables/tcal_methods.py, now <base>-tcal-asm)
+TCAL_VARIANTS = {
+    "BayesCAP-Hf-real-tcal": "BayesCAP-Hf-real",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy-h-inst-cb",
+    "BayCAP-KDEy-h-inst-cb-tcal-resel": "BayCAP-KDEy-h-inst-cb",
+}
+# the bandwidth of the deployed fit of each method of TCAL_VARIANTS (methods/tcal.py:BANDWIDTH_OPTIONS; no effect on
+# BayCAP-Hf, which selects no bandwidth)
+TCAL_BANDWIDTHS = {
+    "BayesCAP-Hf-real-tcal": "reuse",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "reuse",
+    "BayCAP-KDEy-h-inst-cb-tcal-resel": "reselect",
+}
+# the test grid of BayCAP-KDEy-h-inst-cb-tcal-keep (WP-34, user's decision of 2026-11-25): BayCAP-KDEy-h-inst-cb at each
+# tau of the grid of E5.2, fitted on the full V with the bandwidth selected on V_fit (methods/tcal.py, fixed_tau), so
+# that E5.2 and E5.3 can be computed for the -keep variant (its calibration runs are those of BayCAP-KDEy-h-inst-cb in
+# tau_select, KEEP_CALIBRATION_BASE); named as TEMPERED_VARIANTS, the base itself at tau=1; name -> tau
+KEEP_BASE = "BayCAP-KDEy-h-inst-cb-keep"
+KEEP_CALIBRATION_BASE = "BayCAP-KDEy-h-inst-cb"
+KEEP_VARIANTS = {KEEP_BASE: 1.0} | {f"{KEEP_BASE}-t{tau:g}": tau for tau in TEMPERATURE_LEVELS}
+# the bases of the tables and plots of E5.2 and E5.3: those of the studies and the -keep grid
+TABLE_TEMPERED_BASES = (*TEMPERED_BASES, KEEP_BASE)
 METHOD_CLASS |= {name: CalibratedTemperature for name in TCAL_VARIANTS}
+METHOD_CLASS |= {name: CalibratedTemperature for name in KEEP_VARIANTS}
 # Average Confidence of E8.1 of docs/ext8_average_confidence.md (card WP-29): the largest posterior recalibrated per bag
 # by LasCal, the Poisson-binomial distribution of the correct predictions and its central interval
 # (methods/ac.py:AC), on every dataset, vanilla accuracy only. Outside the main tables, ranks and default plots
@@ -218,6 +240,7 @@ BAYES_POOL_METHODS = (
     | frozenset(LOO_VARIANTS)
     | frozenset(CAL_VARIANTS)
     | frozenset(TCAL_VARIANTS)
+    | frozenset(KEEP_VARIANTS)
 )
 
 
@@ -411,13 +434,24 @@ def tcal_method(acc, name: str, prior="uniform", cal_bag_size: int = CAL_BAG_SIZ
     """The method ``name`` of WP-34 (``TCAL_VARIANTS``): its base with $\\tau$ selected per metric inside the fit over
     ``TAU_GRID`` (the grid of E5.3), on $50$ calibration bags of ``cal_bag_size`` instances ($1000$; the size of the
     target bags in E4.4a), with the prior ``prior`` on $\\pi$ (uniform except in E5.5); the deployed fit of the KDEy
-    base reuses the bandwidth selected on $V_{\\text{fit}}$."""
+    base reuses the bandwidth selected on $V_{\\text{fit}}$ or selects it again on $V$ (``TCAL_BANDWIDTHS``)."""
     return CalibratedTemperature(
         partial(tcal_base, acc, TCAL_VARIANTS[name], prior=prior),
         metrics=gen_acc_measure,
         taus=TAU_GRID,
         cal_bag_size=cal_bag_size,
+        bandwidth=TCAL_BANDWIDTHS[name],
+    )
+
+
+def keep_method(acc, name: str) -> CalibratedTemperature:
+    """The method ``name`` of the test grid of ``-keep`` (``KEEP_VARIANTS``): ``BayCAP-KDEy-h-inst-cb`` at the
+    temperature of ``name``, fitted on the full $V$ with the bandwidth selected on $V_{\\text{fit}}$."""
+    return CalibratedTemperature(
+        partial(tcal_base, acc, KEEP_CALIBRATION_BASE),
+        metrics=gen_acc_measure,
         bandwidth="reuse",
+        fixed_tau=KEEP_VARIANTS[name],
     )
 
 
@@ -496,6 +530,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
         yield name, cal_method(acc, name)
     for name in TCAL_VARIANTS:
         yield name, tcal_method(acc, name)
+    for name in KEEP_VARIANTS:
+        yield name, keep_method(acc, name)
 
 
 def get_method_names() -> list[str]:

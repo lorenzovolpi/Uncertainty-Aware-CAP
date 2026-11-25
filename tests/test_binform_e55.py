@@ -103,7 +103,7 @@ class MethodsTest(unittest.TestCase):
         # the methods of WP-34 with each prior, after those of E5.5
         tcal = [
             f"{b}_{p}"
-            for b in ("BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal")
+            for b in ("BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal-keep", "BayCAP-KDEy-h-inst-cb-tcal-resel")
             for p in ("uniform", "centre", "edge")
         ]
         self.assertEqual(list(binform.E55_METHODS), [*expected, *tcal, "SQS-H", "SQS-Hbs", "PQ"])
