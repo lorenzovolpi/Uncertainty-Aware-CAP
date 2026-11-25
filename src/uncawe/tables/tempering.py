@@ -3,12 +3,13 @@ r"""Tempering of BayCAP-Hf and BayCAP-KDEy on the protocol of ``main`` (work-pla
 
 E5.2 runs ``BayesCAP-Hf-real`` (BayCAP-Hf, both likelihood terms divided by $\tau$) and, since WP-33,
 ``BayCAP-KDEy-h-inst`` and ``BayCAP-KDEy-h-inst-cb`` (BayCAP-KDEy with the input classifier $h$, a fixed $\hat C$ and the
-per-instance pushforward, the likelihood of the bag divided by $\tau$, the weights untempered)
+per-instance pushforward, the likelihood of the bag divided by $\tau$, the weights untempered) and, since WP-34,
+``BayesCAP`` and ``BayesCAP-real`` (BayCAP with the uniform prior on $C$, population and realised pushforward)
 (``experiments/methods.py:TEMPERED_BASES``; until WP-33 ``BayCAP-KDEy-mlp-real``, whose results are invalidated; the
 predicted widening below is computed for it only, ``WIDENING_METHOD``, since §T.6 derives it for the cell pushforward) at the temperatures
 $\tau\in\{0.5,1,2,4,8\}$ on the $75$ pairs of ``main`` (``experiments/methods.py:TEMPERED_VARIANTS``; $\tau=1$ is the
-stored untempered method). Both methods target the realised table of each bag and are scored against it
-(``true_cts``); the scores use the target labels, so they are analyses. The pairs are those where the five temperatures
+stored untempered method). The methods target the realised table of each bag, ``BayesCAP`` the population table
+$C\operatorname{diag}(\pi)$, and all are scored against the realised table (``true_cts``); the scores use the target labels, so they are analyses. The pairs are those where the five temperatures
 of a method are stored, so the table also works on the pilot.
 
 Per pair (``pair_table``, one row per metric, method and pair, every column in the CSV), for each $\tau$: the means over
@@ -474,6 +475,9 @@ def oracle_distribution(selected: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 # BayCAP-KDEy is BayCAP-KDEy-h-inst since E3.4 (card WP-31); the former one keeps its own label (card WP-33)
 METHOD_LABELS = {
+    # WP-34: the bases of BayesCAP-tcal and BayesCAP-real-tcal
+    "BayesCAP": "\\bcappop",
+    "BayesCAP-real": "\\bcapsample",
     "BayesCAP-Hf-real": "\\bcaphf",
     "BayCAP-KDEy-h-inst": "\\bcapkdey",
     "BayCAP-KDEy-h-inst-cb": "\\bcapkdey{}-cb",

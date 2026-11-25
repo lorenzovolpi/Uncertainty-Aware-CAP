@@ -1,7 +1,8 @@
 r"""The methods of E5.3 with the temperature chosen per pair on calibration bags, as columns of the main and rank tables
 (work-plan card WP-33).
 
-Since WP-34, ``BayesCAP-Hf-real-tcal`` and ``BayCAP-KDEy-h-inst-cb-tcal-resel`` are stored methods of ``main`` (the
+Since WP-34, ``BayesCAP-tcal``, ``BayesCAP-real-tcal``, ``BayesCAP-Hf-real-tcal`` and
+``BayCAP-KDEy-h-inst-cb-tcal-resel`` are stored methods of ``main`` (the
 selection inside the fit, ``methods/tcal.py``); their assembled columns here are ``<base>-tcal-asm``, kept to check the
 stored methods against them until they match (user's decision of 2026-11-25), and ``BayCAP-KDEy-h-inst-tcal`` keeps its
 name.
@@ -11,8 +12,9 @@ a stored method: on each pair and metric it is the stored test run of ``main`` (
 the lowest mean Winkler score of that metric on the $50$ calibration bags drawn from $V_{\text{cal}}$ by
 ``experiments/tau_select.py`` (``tables/tau_select.py:cal_taus``, ties to the $\tau$ closest to $1$). It uses only the
 labels of $V$, so it is a method, not a reference. The fits on the calibration bags are on $V_{\text{fit}}$, those of
-the test runs on the full $V$, as in E5.3. The intervals target the realised table of the target bag and are scored
-against it (``true_cts``), as every method of ``main``. A pair without calibration runs, or without the test run at its
+the test runs on the full $V$, as in E5.3. The intervals target the table of its base (the realised table of the
+target bag, or $C\operatorname{diag}(\pi)$ for ``BayesCAP``) and are scored against the realised table (``true_cts``), as
+every method of ``main``. A pair without calibration runs, or without the test run at its
 $\tau_{\text{cal}}$, is left out for that method.
 """
 

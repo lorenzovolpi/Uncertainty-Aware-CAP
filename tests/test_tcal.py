@@ -27,8 +27,9 @@ from uncawe.experiments.records import EvaluationContext
 from uncawe.methods import tcal
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import BayCAPKDEy
+from uncawe.plots.common import METHOD_COLORS, METHOD_PLOT_LABELS
 from uncawe.tables import tempering as tt
-from uncawe.tables.common import STORED_TCAL_BASES, TCAL_METHODS
+from uncawe.tables.common import METHOD_LATEX_LABELS, STORED_TCAL_BASES, TCAL_METHODS
 
 qp.environ.setdefault("_R_SEED", 0)
 
@@ -359,6 +360,8 @@ class FactoryTest(unittest.TestCase):
         self.assertEqual(
             em.TCAL_VARIANTS,
             {
+                "BayesCAP-tcal": "BayesCAP",
+                "BayesCAP-real-tcal": "BayesCAP-real",
                 "BayesCAP-Hf-real-tcal": "BayesCAP-Hf-real",
                 "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy-h-inst-cb",
                 "BayCAP-KDEy-h-inst-cb-tcal-resel": "BayCAP-KDEy-h-inst-cb",
@@ -376,7 +379,21 @@ class FactoryTest(unittest.TestCase):
             self.assertIsNone(methods[name].fixed_tau)
             self.assertEqual(methods[name].bandwidth, em.TCAL_BANDWIDTHS[name])
         self.assertEqual(methods["BayCAP-KDEy-h-inst-cb-tcal-keep"].bandwidth, "reuse")
+        # the two BayCAP bases with the uniform prior on C (added on 2026-11-25): population and realised pushforward
+        self.assertEqual(methods["BayesCAP-tcal"].base_factory(temperature=2.0).estimand, "population")
+        self.assertEqual(methods["BayesCAP-real-tcal"].base_factory(temperature=2.0).estimand, "realised")
         self.assertEqual(methods["BayCAP-KDEy-h-inst-cb-tcal-resel"].bandwidth, "reselect")
+
+    def test_labels_and_colours(self):
+        for name in (*em.TCAL_VARIANTS, *TCAL_METHODS):
+            with self.subTest(method=name):
+                self.assertIn(name, METHOD_LATEX_LABELS)
+                self.assertIn(name, METHOD_PLOT_LABELS)
+                self.assertIn(name, METHOD_COLORS)
+        for base in em.TABLE_TEMPERED_BASES:
+            self.assertIn(base, tt.METHOD_LABELS)
+        self.assertEqual(METHOD_PLOT_LABELS["BayesCAP-tcal"], "BayCAP-pop-tcal")
+        self.assertEqual(METHOD_PLOT_LABELS["BayesCAP-real-tcal"], "BayCAP-sample-tcal")
 
     def test_keep_grid(self):
         self.assertEqual(
@@ -432,11 +449,17 @@ class FactoryTest(unittest.TestCase):
         np.testing.assert_array_equal(base.prior, [3.0, 3.0])
 
     def test_target_size_and_binform(self):
-        self.assertTrue(set(em.TCAL_VARIANTS) <= set(target_size.E44_METHODS))
-        for name in em.TCAL_VARIANTS:
+        # only the methods whose base is in E4.4 and E5.5 (not BayesCAP-tcal and BayesCAP-real-tcal, user's decision of
+        # 2026-11-25)
+        in_studies = set(em.TCAL_VARIANTS) - {"BayesCAP-tcal", "BayesCAP-real-tcal"}
+        self.assertEqual(set(target_size.E44_TCAL_METHODS), in_studies)
+        self.assertTrue(in_studies <= set(target_size.E44_METHODS))
+        self.assertFalse({"BayesCAP", "BayesCAP-real"} & set(target_size.E44_METHODS))
+        for name in in_studies:
             method = target_size.make_method(name, 300)
             self.assertEqual(method.cal_bag_size, 300)
-        self.assertEqual(set(E55_TCAL_BASES), set(em.TCAL_VARIANTS))
+        self.assertEqual(set(E55_TCAL_BASES), in_studies)
+        self.assertFalse({"BayesCAP", "BayesCAP-real"} & {base for base, _ in E55_METHODS.values()})
         for base in E55_TCAL_BASES:
             for prior in ("uniform", "centre", "edge"):
                 name = f"{base}_{prior}"

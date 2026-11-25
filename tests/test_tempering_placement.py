@@ -234,7 +234,8 @@ class FactoryTest(unittest.TestCase):
 
     def test_names(self):
         taus = experiment_methods.TEMPERATURE_LEVELS
-        expected = {f"BayesCAP-real-t{t:g}" for t in taus} | {
+        # BayesCAP-real-t<tau> ("marginal") moved to TEMPERED_VARIANTS (WP-34), with the same configuration
+        expected = {
             f"{base}-t{t:g}-{suffix}"
             for base in ("BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst-cb")
             for t in taus
@@ -243,6 +244,11 @@ class FactoryTest(unittest.TestCase):
         self.assertEqual(set(experiment_methods.PLACEMENT_VARIANTS), expected)
         self.assertFalse(set(experiment_methods.PLACEMENT_VARIANTS) & set(experiment_methods.TEMPERED_VARIANTS))
         self.assertTrue(set(experiment_methods.PLACEMENT_VARIANTS) <= experiment_methods.BAYES_POOL_METHODS)
+        for t in taus:
+            name = f"BayesCAP-real-t{t:g}"
+            self.assertEqual(experiment_methods.TEMPERED_VARIANTS[name], ("BayesCAP-real", t))
+            method = self.methods[name]
+            self.assertEqual((method.temperature, method.tempering, method.estimand), (t, "marginal", "realised"))
 
     def test_configuration(self):
         settings = {

@@ -6,9 +6,13 @@ domain; the methods ``BayesCAP-Hf-real`` (BayCAP with the Hf prior on $C$, both 
 since WP-33, ``BayCAP-KDEy-h-inst`` and ``BayCAP-KDEy-h-inst-cb`` (BayesKDEy with the input classifier $h$, a fixed
 $\hat C$ and the per-instance pushforward, the likelihood of the bag divided by $\tau$ and the weights untempered; with
 ``-cb`` the bandwidth selected in the fit on $V_{\text{fit}}$) (``experiments/methods.py:TEMPERED_BASES``; until WP-33
-``BayCAP-KDEy-mlp-real``, with the cell pushforward, whose results are invalidated), all with a realised pushforward, built as in ``main`` and E5.2 (``experiments/methods.py``), at
-$\tau\in\{0.5,1,2,4,8\}$ (``TAUS``). Both target the realised table of each calibration bag and are scored against it
-(``true_cts``, computed from the labels of $V_{\text{cal}}$). $h$ is never retrained and the split $L/V$ of the pretrain
+``BayCAP-KDEy-mlp-real``, with the cell pushforward, whose results are invalidated), all with a realised pushforward,
+and, since WP-34, ``BayesCAP`` and ``BayesCAP-real`` (BayCAP with the uniform prior on $C$, both likelihood terms divided
+by $\tau$; ``BayesCAP`` with the population pushforward, the bases of ``BayesCAP-tcal`` and ``BayesCAP-real-tcal``),
+built as in ``main`` and E5.2 (``experiments/methods.py``), at $\tau\in\{0.5,1,2,4,8\}$ (``TAUS``). The realised
+methods target the realised table of each calibration bag, ``BayesCAP`` the population table
+$C\operatorname{diag}(\pi)$; all are scored against the realised table of the bag (``true_cts``, computed from the
+labels of $V_{\text{cal}}$), as in ``main``. $h$ is never retrained and the split $L/V$ of the pretrain
 files is unchanged.
 
 Purpose: the per-bag measures on the calibration bags, from which ``tables/tau_select.py`` chooses $\tau_{\text{cal}}$
@@ -66,6 +70,7 @@ from quapy.data import LabelledCollection
 from uncawe.experiments.datasets import get_filtered_datasets
 from uncawe.experiments.execution import ExperimentOutcome, run_tasks, shutdown_parallel_workers
 from uncawe.experiments.methods import (
+    BAYCAP_VARIANTS,
     BAYES_ENV,
     BAYES_N_JOBS,
     BAYES_WARMUPS,
@@ -122,7 +127,7 @@ def make_method(base: str, tau: float):
     """``base`` at the temperature ``tau``, built as in ``main`` and E5.2 (same settings and seed)."""
     method_name(base, tau)
     _, acc = next(gen_acc_measure(True))
-    if base == "BayesCAP-Hf-real":
+    if base in BAYCAP_VARIANTS:
         return baycap_method(acc, base, temperature=tau)
     return kdey_method(acc, base, temperature=tau)
 

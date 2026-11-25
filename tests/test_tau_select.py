@@ -157,8 +157,11 @@ class MethodsAndTasksTest(unittest.TestCase):
                 self.assertEqual(ts.method_name(base, tau), tt.method_name(base, tau))
         with self.assertRaises(ValueError):
             ts.method_name("BayesCAP-Hf-real", 3.0)
+        # the bases of BayesCAP-tcal and BayesCAP-real-tcal (WP-34)
+        self.assertEqual(ts.method_name("BayesCAP", 2.0), "BayesCAP-t2")
+        self.assertEqual(ts.method_name("BayesCAP-real", 1.0), "BayesCAP-real")
         with self.assertRaises(ValueError):
-            ts.method_name("BayesCAP-real", 1.0)
+            ts.method_name("BayesCAP-EB-real", 1.0)
 
     def test_methods_are_those_of_main_at_tau(self):
         hf = ts.make_method("BayesCAP-Hf-real", 2.0)
@@ -168,6 +171,10 @@ class MethodsAndTasksTest(unittest.TestCase):
         self.assertIsInstance(kdey, BayCAPKDEy)
         self.assertEqual((kdey.temperature, kdey.input_classifier, kdey.estimand), (0.5, "h", "realised-instance"))
         self.assertEqual(kdey.bandwidth, 0.1)
+        for base, estimand in (("BayesCAP", "population"), ("BayesCAP-real", "realised")):
+            method = ts.make_method(base, 8.0)
+            self.assertIsInstance(method, BayCAP)
+            self.assertEqual((method.temperature, method.c_prior, method.estimand), (8.0, "uniform", estimand))
         cb = ts.make_method("BayCAP-KDEy-h-inst-cb", 4.0)
         self.assertEqual((cb.temperature, cb.input_classifier, cb.estimand), (4.0, "h", "realised-instance"))
         self.assertEqual(cb.bandwidth, "logloss")
@@ -199,7 +206,7 @@ class MethodsAndTasksTest(unittest.TestCase):
             todo = ts.tasks()
             self.assertEqual(len(todo), len(TEMPERED_BASES) * len(ts.TAUS) - 1)
             self.assertNotIn("BayesCAP-Hf-real-t2", [task.method_name for task in todo])
-            self.assertEqual(todo[0].base, "BayesCAP-Hf-real")
+            self.assertEqual(todo[0].base, TEMPERED_BASES[0])
             self.assertTrue(all(task.n_bags == ts.N_BAGS for task in todo))
             self.assertEqual(len(ts.tasks(methods=["BayCAP-KDEy-h-inst-cb"], taus=[1.0])), 1)
             with self.assertRaises(ValueError):

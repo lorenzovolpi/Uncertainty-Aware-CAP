@@ -166,9 +166,19 @@ class TemperedMethodsTest(unittest.TestCase):
 
     def test_names_and_levels(self):
         self.assertEqual(TEMPERATURE_LEVELS, (0.5, 2.0, 4.0, 8.0))
-        self.assertEqual(TEMPERED_BASES, ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb"))
+        self.assertEqual(
+            TEMPERED_BASES,
+            ("BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb"),
+        )
         # the former BayCAP-KDEy keeps its tempered methods in the factory, so that its stored results keep their names
-        bases = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+        bases = (
+            "BayesCAP",
+            "BayesCAP-real",
+            "BayesCAP-Hf-real",
+            "BayCAP-KDEy-mlp-real",
+            "BayCAP-KDEy-h-inst",
+            "BayCAP-KDEy-h-inst-cb",
+        )
         expected = [f"{base}-t{tau}" for base in bases for tau in ("0.5", "2", "4", "8")]
         self.assertEqual(list(TEMPERED_VARIANTS), expected)
 
