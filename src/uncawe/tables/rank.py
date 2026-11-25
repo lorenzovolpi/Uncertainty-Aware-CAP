@@ -18,8 +18,8 @@ LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
 # the rank tables rank the methods of the main tables (tables/main.py:MAIN_METHODS, since 2026-11-09) except those
 # listed here; L-CBPE, which runs only on binary datasets, stays listed although the main tables no longer show it, and
 # AC (E8.1 of docs/ext8_average_confidence.md, card WP-29), a baseline compared with L-CBPE in a table of its own, is
-# listed with it (user's decision of 2026-11-20)
-RANK_ONLY_EXCLUDED = {"L-CBPE", "AC"}
+# listed with it (user's decision of 2026-11-20); AC-LSB and L-CBPE-LSB (E8.3, card WP-32) as AC and L-CBPE
+RANK_ONLY_EXCLUDED = {"L-CBPE", "AC", "AC-LSB", "L-CBPE-LSB"}
 RANK_ONLY_INCLUDED: set[str] = set()
 EXCLUDED_METHODS = (RANK_ONLY_EXCLUDED | main_tables.EXCLUDED_METHODS) - RANK_ONLY_INCLUDED
 BEST_RGB = (138, 154, 91)

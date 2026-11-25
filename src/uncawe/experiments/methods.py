@@ -4,7 +4,9 @@ from collections.abc import Iterator
 from functools import partial
 
 import quapy as qp
+from cap.calibration import LSBinning
 from cap.models.confidence import (
+    AC,
     CBPE,
     RQBS,
     BootstrapCTCAP,
@@ -18,7 +20,6 @@ from quapy.method.aggregative import PACC, KDEyML
 from sklearn.neural_network import MLPClassifier as MLP
 
 from uncawe.experiments.metrics import gen_acc_measure
-from uncawe.methods.ac import AC
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_kdey import CAL, INSTANCE, BayCAPKDEy
 from uncawe.methods.baycap_mapls import BayCAPMAPLS
@@ -59,6 +60,9 @@ METHOD_CLASS = {
     "L-CBPE": CBPE,
     # AC of E8.1 of docs/ext8_average_confidence.md (card WP-29), see AC_METHOD below
     "AC": AC,
+    # AC and CBPE with label-shift binning of E8.3 (card WP-32), see AC_LSB_METHOD below
+    "AC-LSB": AC,
+    "L-CBPE-LSB": CBPE,
     "SQS-H": RQBS,
     "SQS-Hbs": RQBS,
     # SQS-B of E3.3 (card WP-18), see SQS_B below
@@ -224,9 +228,17 @@ METHOD_CLASS |= {name: CalibratedTemperature for name in TCAL_VARIANTS}
 METHOD_CLASS |= {name: CalibratedTemperature for name in KEEP_VARIANTS}
 # Average Confidence of E8.1 of docs/ext8_average_confidence.md (card WP-29): the largest posterior recalibrated per bag
 # by LasCal, the Poisson-binomial distribution of the correct predictions and its central interval
-# (methods/ac.py:AC), on every dataset, vanilla accuracy only. Outside the main tables, ranks and default plots
-# (tables/main.py, tables/rank.py), compared with L-CBPE in tables/average_confidence.py
+# (cap.models.confidence.AC of cap-ml with its default LasCalPerBag; methods/ac.py of uncawe until WP-32), on every
+# dataset, vanilla accuracy only. Outside the main tables, ranks and default plots (tables/main.py, tables/rank.py),
+# compared with L-CBPE in tables/average_confidence.py
 AC_METHOD = "AC"
+# E8.3 (card WP-32): AC and L-CBPE with cap-ml's label-shift binning (cap.calibration.LSBinning, BBSE-soft, the number
+# of bins selected on V) in place of LasCal; the confidence of an instance is the calibrated posterior of the class
+# predicted by h (not folded at 0.5 for L-CBPE-LSB). AC-LSB on every dataset, L-CBPE-LSB on the binary ones (NaN
+# elsewhere, as L-CBPE), vanilla accuracy only. Outside the main tables, ranks and default plots, as AC and L-CBPE;
+# compared with them in tables/ac_lsb.py
+AC_LSB_METHOD = "AC-LSB"
+L_CBPE_LSB_METHOD = "L-CBPE-LSB"
 # the methods run by main in the BayCAP pool, with BAYES_N_JOBS workers and BAYES_ENV
 BAYES_POOL_METHODS = (
     frozenset(BAYCAP_VARIANTS)
@@ -486,6 +498,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     yield "O-LEAP", BootstrapCTCAP(O_LEAP(acc, kdey()), num_samples=BOOTSTRAP_ITERS)
     yield "L-CBPE", CBPE(acc_name, calib_method="lascal")
     yield AC_METHOD, AC(acc_name, confidence_level=CONFIDENCE_LEVEL)
+    yield AC_LSB_METHOD, AC(acc_name, calibrator=LSBinning(), confidence_level=CONFIDENCE_LEVEL)
+    yield L_CBPE_LSB_METHOD, CBPE(acc_name, calib_method="lsb")
     # SQS-H as in the paper (one estimate of the target prevalence) and with a bootstrap of the prevalence (one bag per
     # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
     yield "SQS-H", sqs_h(acc, bootstrap=False)

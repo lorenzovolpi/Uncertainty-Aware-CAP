@@ -13,12 +13,12 @@ This extension adds baselines to the project, against which the methods under st
 | Item | Status |
 |---|---|
 | `L-CBPE`: `cap-ml`'s `CBPE(calib_method="lascal")`, AC with LasCal and the highest-density interval of the Poisson-binomial distribution, binary datasets only (`experiments/methods.py`) | [implemented], run and stored in `main` (binary datasets); excluded from the main tables, the rank table and the coverage vs amplitude plot |
-| `AC`: AC with LasCal and the central interval of the Poisson-binomial distribution, any number of classes, vanilla accuracy only (`methods/ac.py`) | [implemented] (card WP-29, merged `b17b9b0`, [[work_plan]] §II.31), run and stored in `main` (75 pairs, 2026-11-20) |
+| `AC`: AC with LasCal and the central interval of the Poisson-binomial distribution, any number of classes, vanilla accuracy only (`cap-ml`'s `cap.models.confidence.AC` since WP-32; `methods/ac.py` before) | [implemented] (card WP-29, merged `b17b9b0`, [[work_plan]] §II.31), run and stored in `main` (75 pairs, 2026-11-20) |
 | E8.1 (`AC` against `L-CBPE` in a separate table, `tables/average_confidence.py`) | [implemented], card WP-29 (done), run (no pilot, user's decision) and analysed (below) |
 | `cap-ml`'s `ContTableTransferCAP`: the table of $h$ on $V$ rescaled by the prevalences of a quantifier | in `cap-ml`, not used by `uncawe` |
 | E8.2 (`CTT-KDEy`, `CTT-EMQ`, `CTT-ACC`, `CTT-PACC` and the reference `CTT-oracle`, point estimates, in an experiment module of their own) | [proposed] (user's decision of 2026-11-23); code on branch `wp-30/ctt` (`experiments/ctt.py`, `tables/ctt.py`, `plots/ctt.py`), card WP-30 (In progress), not run |
-| `cap-ml`'s `AC` (moved from `methods/ac.py`, with a calibrator argument), `LasCalPerBag`, `LSBinning`, `CBPE(calib_method="lsb")` | in `cap-ml` `eefa550` (version 0.1.1.15), not yet pinned by `uncawe` |
-| E8.3 (`AC-LSB` and `L-CBPE-LSB` against the stored `AC` and `L-CBPE`, in `main`) | [proposed] (user's decision of 2026-11-24), card WP-32 (Scheduled), no code in `uncawe` |
+| `cap-ml`'s `AC` (moved from `methods/ac.py`, with a calibrator argument), `LasCalPerBag`, `LSBinning`, `CBPE(calib_method="lsb")` | in `cap-ml` `eefa550` (version 0.1.1.15), pinned by `uncawe` on branch `wp-32/ac-lsb` |
+| E8.3 (`AC-LSB` and `L-CBPE-LSB` against the stored `AC` and `L-CBPE`, in `main`) | [proposed] (user's decision of 2026-11-24), card WP-32 (In progress); code on branch `wp-32/ac-lsb` (factory entries, `tables/ac_lsb.py`, `plots/ac_lsb.py`), not run |
 
 # Experiments
 
@@ -371,11 +371,11 @@ Components in `uncawe`:
 - **Pin bump** of `cap-ml` from `93ae246` to `eefa550` (`pyproject.toml`, `uv lock`). Between the two commits `cap-ml` changes only the calibration package, `cap/models/confidence.py` (`AC`, `CentralPoissonInterval`, the two `CBPE` changes), their tests, the README and the version.
 - **`AC` from `cap-ml`:** `experiments/methods.py`, `experiments/main.py` and `tables/main.py` import `AC` and `CentralPoissonInterval` from `cap.models.confidence`; the per-bag columns come from `last_calibration_columns()` (for LasCal still `lascal_temperature` and `lascal_fallback`); `methods/ac.py` is removed and its entry leaves [[work_plan]] §II.12, with the `cap-ml` commit.
 - **`main`:** factory entries `AC-LSB` (`AC(calibrator=LSBinning())`, every dataset) and `L-CBPE-LSB` (`CBPE(acc_name, calib_method="lsb")`, binary datasets, NaN elsewhere, as `L-CBPE`); per bag, the columns of `LSBinning.last_columns()` (`lsb_nbins`, `lsb_nbins_eff`, `lsb_grid_fallback`, `lsb_prevalence`, `lsb_n_degenerate`, `lsb_argmax_changed`); both in `tables/main.py:PMF_INTERVALS` (central and highest-density), outside the main tables, the rank tables and the coverage vs amplitude plot, as `AC` and `L-CBPE`.
-- **Table and plot modules** for the comparison table, the diagnostics table and the plot of E8.3, following [[work_plan]] Part V.
+- **Table and plot modules:** `tables/ac_lsb.py` (the comparison table, a table of the paired differences, and the diagnostics table with the check of `AC-LSB` against `L-CBPE-LSB`) and `plots/ac_lsb.py` (the signed error against the shift of the bag, with $\pi^V$ rebuilt from the stored `val_prev`, rounded to $4$ decimals), following [[work_plan]] Part V.
 
 Tests (in `uncawe`; those of the calibrators and of `AC` are in `cap-ml`, `tests/test_ac.py` and `tests/test_ls_binning.py`):
 
-- `cap-ml`'s `AC` with LasCal gives, bit for bit, the probability mass function, temperature, fallback flag and interval of the former `methods/ac.py` on seeded synthetic bags (checked before the removal; 80 bags with $K\in\{2,3,5,10\}$ in a one-off check of 2026-11-24);
+- `cap-ml`'s `AC` with LasCal gives, bit for bit, the probability mass function, temperature, fallback flag and interval of the former `methods/ac.py` on seeded synthetic bags (80 bags with $K\in\{2,3,5,10\}$ in a one-off check of 2026-11-24; in the suite, $20$ bags and a fallback, against a frozen copy of `methods/ac.py`, `tests/_reference_ac.py`);
 - the factory entries, the per-bag columns stored by `main` for vanilla accuracy only, and the NaN of `L-CBPE-LSB` on multiclass data;
 - the tables on synthetic results.
 

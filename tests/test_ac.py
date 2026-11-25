@@ -1,4 +1,9 @@
-"""Tests of AC (methods/ac.py, E8.1 of docs/ext8_average_confidence.md, card WP-29) and of its E8.1 tables."""
+"""Tests of AC in uncawe (E8.1 of docs/ext8_average_confidence.md, card WP-29) and of its E8.1 tables.
+
+Since WP-32 the method is ``cap-ml``'s ``cap.models.confidence.AC`` with its default ``LasCalPerBag``; the unit tests of
+the method, of LasCal and of the central interval moved with it to ``cap-ml`` (``tests/test_ac.py``). This module
+checks that it reproduces the former ``methods/ac.py`` (frozen in ``tests/_reference_ac.py``) bit for bit, and its use
+in ``main`` and in the tables."""
 
 import os
 
@@ -6,17 +11,18 @@ import os
 # GPU JAX would otherwise start on it, where the NUTS draws of the later test modules are not reproducible
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
-import itertools
 import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import _reference_ac as reference
 import numpy as np
 import pandas as pd
-from cap.calib import LasCal
+from cap.calibration import LasCalPerBag
+from cap.calibration import lascal as cap_lascal
 from cap.error import vanilla_acc
-from cap.models.confidence import CBPE, PoissonConfidenceInterval
+from cap.models.confidence import AC, CentralPoissonInterval, PoissonConfidenceInterval, poisson_binomial_pmf
 from quapy.data import LabelledCollection
 from scipy.special import softmax
 
@@ -24,15 +30,6 @@ from uncawe.experiments import main
 from uncawe.experiments.methods import AC_METHOD, gen_methods, get_method_names
 from uncawe.experiments.metrics import get_selection_acc
 from uncawe.experiments.records import EvaluationContext
-from uncawe.methods import ac as ac_module
-from uncawe.methods.ac import (
-    AC,
-    CentralPoissonInterval,
-    central_bounds,
-    lascal_calibrate,
-    poisson_binomial_pmf,
-    recover_temperature,
-)
 from uncawe.tables import average_confidence as tables
 from uncawe.tables import main as main_tables
 from uncawe.tables import rank
@@ -57,123 +54,44 @@ def _data(n_classes: int, seed: int = 0, n_val: int = 400, n_bag: int = 300):
     return val, val_post, bag_post, y_bag
 
 
-def _brute_force_pmf(s: np.ndarray) -> np.ndarray:
-    """$P(K=k)=\\sum_{|A|=k}\\prod_{i\\in A}s_i\\prod_{j\\notin A}(1-s_j)$ by enumerating the $2^n$ outcomes."""
-    pmf = np.zeros(len(s) + 1)
-    for outcome in itertools.product((0, 1), repeat=len(s)):
-        outcome = np.asarray(outcome)
-        pmf[outcome.sum()] += np.prod(np.where(outcome == 1, s, 1 - s))
-    return pmf
+class ReferenceTest(unittest.TestCase):
+    """cap-ml's AC with LasCalPerBag reproduces the former methods/ac.py bit for bit (WP-32)."""
 
+    def _assert_same(self, new: AC, old: "reference.AC", bag_post: np.ndarray):
+        new_pmf, old_pmf = new.predict_range(None, bag_post), old.predict_range(None, bag_post)
+        np.testing.assert_array_equal(new_pmf, old_pmf)
+        old_columns, new_columns = old.last_lascal_columns(), new.last_calibration_columns()
+        self.assertEqual(set(new_columns), set(old_columns))
+        self.assertEqual(new_columns["lascal_fallback"], old_columns["lascal_fallback"])
+        np.testing.assert_array_equal(new_columns["lascal_temperature"], old_columns["lascal_temperature"])
+        new_ci, old_ci = new.ci_from_accs(new_pmf), old.ci_from_accs(old_pmf)
+        self.assertEqual(
+            (new_ci.low, new_ci.high, new_ci.point_estimate), (old_ci.low, old_ci.high, old_ci.point_estimate)
+        )
 
-class CentralIntervalTest(unittest.TestCase):
-    def test_pmf_matches_brute_force(self):
-        s = np.random.default_rng(1).uniform(0.05, 0.99, size=8)
-        np.testing.assert_allclose(poisson_binomial_pmf(s), _brute_force_pmf(s), atol=1e-12)
+    def test_same_results_on_seeded_bags(self):
+        # 20 bags, 5 per number of classes, each with its own validation set and prevalence of the bag (a one-off check
+        # on 80 bags passed on 2026-11-24; each LasCal call takes seconds)
+        for n_classes in (2, 3, 5, 10):
+            for seed in range(5):
+                val, val_post, bag_post, _ = _data(n_classes, seed=100 * n_classes + seed, n_bag=200)
+                new = AC().switch_and_fit(vanilla_acc, val, val_post)
+                old = reference.AC().switch_and_fit(vanilla_acc, val, val_post)
+                self.assertIsInstance(new.calibrator, LasCalPerBag)
+                with self.subTest(n_classes=n_classes, seed=seed):
+                    self._assert_same(new, old, bag_post)
 
-    def test_bounds_are_the_quantiles_of_the_brute_force_distribution(self):
-        rng = np.random.default_rng(2)
-        for _ in range(20):
-            s = rng.uniform(0.3, 1.0, size=10)
-            pmf = _brute_force_pmf(s)
-            cdf = np.cumsum(pmf)
-            for alpha in (0.05, 0.1, 0.3):
-                k_low = min(k for k in range(11) if cdf[k] >= alpha / 2 - 1e-12)
-                k_up = min(k for k in range(11) if cdf[k] >= 1 - alpha / 2 - 1e-12)
-                interval = CentralPoissonInterval(poisson_binomial_pmf(s), confidence_level=1 - alpha)
-                self.assertEqual((interval.low, interval.high), (k_low / 10, k_up / 10))
-                # the interval holds at least 1 - alpha of the probability
-                self.assertGreaterEqual(pmf[k_low : k_up + 1].sum(), 1 - alpha - 1e-12)
-
-    def test_point_estimate_is_the_mean_confidence(self):
-        s = np.random.default_rng(3).uniform(0.5, 1.0, size=500)
-        interval = CentralPoissonInterval(poisson_binomial_pmf(s))
-        self.assertAlmostEqual(interval.point_estimate, s.mean(), places=10)
-        np.testing.assert_allclose(interval.samples, poisson_binomial_pmf(s))
-
-    def test_coverage_on_confidences_calibrated_by_construction(self):
-        # labels drawn from Bernoulli(s_i): the realised accuracy follows the Poisson-binomial distribution exactly, so
-        # the central interval covers it with probability at least 0.95 (slightly more, since K is discrete)
-        rng = np.random.default_rng(4)
-        s = rng.beta(8, 2, size=400)
-        interval = CentralPoissonInterval(poisson_binomial_pmf(s))
-        accs = (rng.uniform(size=(4000, len(s))) < s).mean(axis=1)
-        coverage = np.mean([interval.coverage(a) for a in accs])
-        self.assertGreater(coverage, 0.94)
-        self.assertLess(coverage, 0.97)
-
-    def test_scalar_nan_gives_nan(self):
-        for value in (np.nan, float("nan"), np.float64("nan")):
-            interval = CentralPoissonInterval(value)
-            self.assertTrue(np.isnan(interval.point_estimate))
-            self.assertTrue(np.isnan(interval.amplitude()))
-            self.assertTrue(np.isnan(interval.coverage(0.5)))
-
-    def test_central_bounds_tolerate_rounding_of_the_fft(self):
-        pmf = np.array([-1e-17, 0.5, 0.5 + 1e-15])
-        self.assertEqual(central_bounds(pmf, 0.05), (1, 2))
-
-
-class LasCalTest(unittest.TestCase):
-    def test_binary_ac_equals_l_cbpe(self):
-        val, val_post, bag_post, _ = _data(2)
-        ac = AC(confidence_level=0.95).switch_and_fit(vanilla_acc, val, val_post)
-        cbpe = CBPE("vanilla_accuracy", calib_method="lascal").fit(val, val_post)
-
-        confidences = ac.calibrated_confidences(bag_post)
-        np.testing.assert_array_equal(confidences, LasCal()(val_post, val.y)(bag_post).max(axis=1))
-        pmf, cbpe_pmf = ac.predict_range(None, bag_post), cbpe.predict_range(None, bag_post)
-        np.testing.assert_array_equal(pmf, cbpe_pmf)
-        self.assertAlmostEqual(ac.predict(None, bag_post), cbpe.predict(None, bag_post), places=12)
-        self.assertFalse(ac.last_lascal_columns()["lascal_fallback"])
-
-    def test_temperature_keeps_the_argmax(self):
-        val, val_post, bag_post, _ = _data(3, seed=5)
-        calibrated, temperature, fallback = lascal_calibrate(val_post, val.y, bag_post)
-        self.assertFalse(fallback)
-        self.assertTrue(0.1 - 1e-6 <= temperature <= 20.0 + 1e-6)
-        np.testing.assert_array_equal(calibrated.argmax(axis=1), bag_post.argmax(axis=1))
-        np.testing.assert_allclose(calibrated, softmax(np.log(bag_post) / temperature, axis=1), atol=1e-6)
-        # and for any temperature of the grid
-        for theta in (0.1, 0.5, 3.0, 20.0):
-            scaled = softmax(np.log(bag_post) / theta, axis=1)
-            np.testing.assert_array_equal(scaled.argmax(axis=1), bag_post.argmax(axis=1))
-
-    def test_lascal_is_deterministic(self):
-        val, val_post, bag_post, _ = _data(3, seed=6)
-        first, second = lascal_calibrate(val_post, val.y, bag_post), lascal_calibrate(val_post, val.y, bag_post)
-        np.testing.assert_array_equal(first[0], second[0])
-        self.assertEqual(first[1:], second[1:])
-
-    def test_fallback_on_an_exception(self):
+    def test_same_fallback(self):
         val, val_post, bag_post, _ = _data(3, seed=7)
-        ac = AC().fit(val, val_post)
-        with patch.object(ac_module.Calibrator, "calibrate", side_effect=RuntimeError("lascal failed")):
-            confidences = ac.calibrated_confidences(bag_post)
-        np.testing.assert_array_equal(confidences, bag_post.max(axis=1))
-        columns = ac.last_lascal_columns()
-        self.assertTrue(columns["lascal_fallback"])
-        self.assertTrue(np.isnan(columns["lascal_temperature"]))
-
-    def test_fallback_when_no_temperature_is_selected(self):
-        # every loss NaN: lascal keeps its initial temperature -1 and returns the logits divided by -1
-        val, val_post, bag_post, _ = _data(3, seed=8)
-
-        def no_temperature(method_name, source_agg, target_agg, train_agg):
-            return {"target": {"y_logits": target_agg["y_logits"] / -1, "y_true": None}}
-
-        with patch.object(ac_module.Calibrator, "calibrate", side_effect=no_temperature):
-            calibrated, temperature, fallback = lascal_calibrate(val_post, val.y, bag_post)
-        self.assertTrue(fallback)
-        self.assertTrue(np.isnan(temperature))
-        np.testing.assert_array_equal(calibrated, bag_post)
-
-    def test_recover_temperature(self):
-        logits = np.log(np.array([[0.2, 0.8], [1.0, 1e-300], [0.5, 0.5]]))
-        logits[1, 1] = -np.inf
-        self.assertAlmostEqual(recover_temperature(logits, logits / 2.5), 2.5)
-        self.assertTrue(np.isnan(recover_temperature(logits, logits * np.array([1.0, 2.0]))))
-        self.assertTrue(np.isnan(recover_temperature(np.zeros((2, 2)), np.zeros((2, 2)))))
+        new = AC().switch_and_fit(vanilla_acc, val, val_post)
+        old = reference.AC().switch_and_fit(vanilla_acc, val, val_post)
+        failure = RuntimeError("lascal failed")
+        with (
+            patch.object(cap_lascal.Calibrator, "calibrate", side_effect=failure),
+            patch.object(reference.Calibrator, "calibrate", side_effect=failure),
+        ):
+            self._assert_same(new, old, bag_post)
+        self.assertTrue(new.last_calibration_columns()["lascal_fallback"])
 
 
 class ACMetricTest(unittest.TestCase):
@@ -184,7 +102,7 @@ class ACMetricTest(unittest.TestCase):
             ac.switch_and_fit(get_selection_acc(name, True), val, val_post)
             self.assertIsNone(ac.acc_name)
             self.assertTrue(np.isnan(ac.predict_range(None, bag_post)))
-            self.assertIsNone(ac.last_lascal_columns())
+            self.assertIsNone(ac.last_calibration_columns())
             self.assertTrue(np.isnan(ac.ci_from_accs(np.nan).point_estimate))
         ac.switch_and_fit(get_selection_acc("vanilla_accuracy", True), val, val_post)
         self.assertEqual(ac.acc_name, "vanilla_accuracy")
@@ -224,7 +142,7 @@ class MainProtocolTest(unittest.TestCase):
         def fake_lascal(val_posteriors, val_y, posteriors):
             return posteriors, next(temperatures), False
 
-        with patch("uncawe.methods.ac.lascal_calibrate", side_effect=fake_lascal):
+        with patch("cap.calibration.lascal.lascal_calibrate", side_effect=fake_lascal):
             main._evaluate_direct_method(pretrain, AC_METHOD, AC(), dataset, val, np.full((4, 2), 0.5), context)
 
         self.assertEqual(build.call_count, 3)
