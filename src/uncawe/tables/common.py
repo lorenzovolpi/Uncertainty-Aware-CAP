@@ -45,4 +45,13 @@ METHOD_LATEX_LABELS = {
     "BayCAP-KDEy-mlp-real-cal": "\\bcapkdey{}-cal",
     "BayCAP-KDEy-mlp-real-cal-tcal": "\\bcapkdey{}-cal-tcal",
     "O-LEAP": "LEAP",
+    # E5.3 with the temperature chosen per pair on calibration bags (tables/tcal_methods.py, card WP-33)
+    "BayesCAP-Hf-real-tcal": "\\bcaphf{}-tcal",
+    "BayCAP-KDEy-h-inst-tcal": "\\bcapkdey{}-tcal",
+    "BayCAP-KDEy-h-inst-cb-tcal": "\\bcapkdey{}-cb-tcal",
 }
+
+
+# the methods of E5.3 with the temperature chosen per pair on calibration bags, built by tables/tcal_methods.py from the
+# stored runs (not stored methods): ``<base>-tcal`` -> ``<base>``, for the bases of E5.3 (TEMPERED_BASES)
+TCAL_METHODS = {f"{base}-tcal": base for base in ("BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")}
