@@ -140,6 +140,8 @@ EXP_plot-shift-profile := python -m uncawe.plots.shift_profile --domain classic
 # then make pull PULL_DIRS=paper
 EXP_paper            := python -m uncawe.paper --generate --collect
 EXP_test             := python -m unittest discover -s tests
+# toy of Ext. 3/5: where tau acts in BayCAP-KDEy-h-inst and the selection of E5.3 (--reps, --jobs in ARGS)
+EXP_toy-tau-placement := python scripts/toys/ext5_tau_placement.py
 EXP_bench-bayes-jobs := python scripts/bench/bayes_n_jobs.py
 EXP_bench-xla-stored := python scripts/bench/xla_vs_stored.py
 
