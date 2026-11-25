@@ -10,7 +10,6 @@ import uncawe.env as env
 from uncawe.config import acc_from_ct, get_acc_names, get_method_names
 from uncawe.experiments.methods import FIXED_C_VARIANTS, KDEY_HF_VARIANTS
 from uncawe.main import EXPERIMENT
-from uncawe.results import Results
 from uncawe.tables import main as main_tables
 from uncawe.tables.common import METHOD_LATEX_MACROS
 
@@ -48,7 +47,12 @@ def _selected_metrics(pargs) -> tuple[str, ...]:
 def _methods(include: tuple[str, ...] = ()) -> list[str]:
     """The methods of the rank tables: those of ``main`` without ``EXCLUDED_METHODS``, plus the excluded ones named in
     ``include`` (e.g. the eight methods of E3.1, ``--include-e31``, and the two of E3.2, ``--include-e32``)."""
-    return [method for method in get_method_names() if method not in EXCLUDED_METHODS or method in include]
+    names = main_tables.ordered_method_names()
+    return [
+        method
+        for method in names
+        if (method in get_method_names() and method not in EXCLUDED_METHODS) or method in include
+    ]
 
 
 # output subfolder of the rank tables with included methods, so that the tables of the paper are not overwritten
@@ -333,13 +337,7 @@ def _prepare_results(acc_name: str, domain: str, methods: list[str]) -> pd.DataF
     if not classifiers:
         return pd.DataFrame()
 
-    results = Results.load(
-        base_dir=main_base_dir,
-        acc_name=acc_name,
-        domain=domain,
-        filter_classifiers=classifiers,
-        filter_methods=methods,
-    )
+    results = main_tables.load_results(main_base_dir, acc_name, domain, classifiers, methods)
     return (
         results.apply_to_column("true_cts", lambda ct: acc_from_ct(acc_name, ct), new_col="true_accs")
         .apply_to_column(["method", "true_accs", "estim_acc_ranges"], main_tables.get_acc_winkler, new_col="winkler")
@@ -361,7 +359,7 @@ def _included(pargs) -> tuple[str, ...]:
         include += tuple(FIXED_C_VARIANTS)
     if getattr(pargs, "include_e32", False):
         include += tuple(method for method in KDEY_HF_VARIANTS if method not in include)
-    unknown = [method for method in include if method not in get_method_names()]
+    unknown = [method for method in include if method not in main_tables.ordered_method_names()]
     if unknown:
         raise ValueError(f"Unknown methods: {', '.join(unknown)}")
     return include

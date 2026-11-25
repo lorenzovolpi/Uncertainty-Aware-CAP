@@ -14,7 +14,7 @@ from uncawe.main import EXPERIMENT
 from uncawe.methods.ac import CentralPoissonInterval
 from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
-from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_MACROS
+from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_MACROS, TCAL_METHODS
 from uncawe.util import decorate_dataset
 
 # METRICS = ("acc_err", "coverage", "amplitude", "winkler")
@@ -111,12 +111,33 @@ BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP")
 WTL_REFERENCE = "O-LEAP"
 
 
+def ordered_method_names() -> list[str]:
+    """The stored methods (``get_method_names``), each followed by its ``-tcal`` method (``TCAL_METHODS``), if any."""
+    names = []
+    for method in get_method_names():
+        names.append(method)
+        names.extend(name for name, base in TCAL_METHODS.items() if base == method)
+    return names
+
+
 def table_method_names(include: tuple[str, ...] = ()) -> list[str]:
-    """The methods of the main tables, plus the stored methods in ``include`` (e.g. ``BayCAP-KDEy-h-real``, user's
-    decision of 2026-11-24), in the order of ``get_method_names``, so that an included method sits next to its
-    siblings."""
-    names = get_method_names()
-    return [method for method in names if method in MAIN_METHODS or method in include]
+    """The methods of the main tables, plus the methods in ``include`` (stored methods, e.g. ``BayCAP-KDEy-h-real``,
+    user's decision of 2026-11-24, or the ``-tcal`` methods of ``tables/tcal_methods.py``), in the order of
+    :func:`ordered_method_names`, so that an included method sits next to its siblings."""
+    return [method for method in ordered_method_names() if method in MAIN_METHODS or method in include]
+
+
+def load_results(base_dir: str, acc: str, domain: str, classifiers: list[str], methods: list[str]) -> Results:
+    """The stored rows of ``methods`` in ``base_dir``, plus those that make up the ``-tcal`` methods of ``methods``."""
+    results = Results.load(
+        base_dir=base_dir, acc_name=acc, domain=domain, filter_classifiers=classifiers, filter_methods=methods
+    )
+    if not any(method in TCAL_METHODS for method in methods):
+        return results
+    # imported here: tables/tcal_methods.py reads the tables of E5.3, which import this module
+    from uncawe.tables.tcal_methods import with_tcal
+
+    return with_tcal(results, base_dir, acc, domain, classifiers, methods)
 
 
 # output subfolder of the main tables with included methods (--include), so that the main tables are not overwritten
@@ -946,7 +967,7 @@ def _selected_metrics(pargs) -> tuple[str, ...]:
 
 def _included(pargs) -> tuple[str, ...]:
     include = tuple(getattr(pargs, "include", None) or ())
-    unknown = [method for method in include if method not in get_method_names()]
+    unknown = [method for method in include if method not in ordered_method_names()]
     if unknown:
         raise ValueError(f"Unknown methods: {', '.join(unknown)}")
     return include
@@ -964,13 +985,7 @@ def load_table_frame(
 ) -> tuple[pd.DataFrame, list[str]]:
     """The per-bag scores of the main-table methods (AE, coverage, amplitude and Winkler score of the realised
     accuracy, from ``true_cts``), with the display names of the datasets and their order."""
-    results = Results.load(
-        base_dir=main_base_dir,
-        acc_name=acc,
-        domain=domain,
-        filter_classifiers=classifiers,
-        filter_methods=table_method_names(include),
-    )
+    results = load_results(main_base_dir, acc, domain, classifiers, table_method_names(include))
     dataset_order = _ordered_dataset_names(results.df)
     df = (
         results.map_column_values("dataset", dataset_map)
@@ -1062,7 +1077,8 @@ if __name__ == "__main__":
         "--include",
         nargs="+",
         default=None,
-        help=f"Stored methods to show next to those of the main tables (output under main/{EXTENDED_DIR}/)",
+        help=f"Methods to show next to those of the main tables: stored methods or the -tcal methods of E5.3 "
+        f"({', '.join(TCAL_METHODS)}) (output under main/{EXTENDED_DIR}/)",
     )
     parser.add_argument(
         "--table-dir",

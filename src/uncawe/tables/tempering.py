@@ -111,12 +111,12 @@ def load_method(method: str, acc_name: str, root: str | None = None, experiment:
 
 
 def load_all(
-    acc_name: str, root: str | None = None, experiment: str = EXPERIMENT
+    acc_name: str, root: str | None = None, experiment: str = EXPERIMENT, bases=TEMPERED_BASES
 ) -> dict[str, dict[float, pd.DataFrame]]:
-    """``base method -> {tau: rows}`` of ``experiment``, restricted to the pairs stored for the five temperatures; the
-    methods without any such pair are left out."""
+    """``base method -> {tau: rows}`` of ``experiment`` for the methods of ``bases``, restricted to the pairs stored for
+    the five temperatures; the methods without any such pair are left out."""
     out = {}
-    for base in TEMPERED_BASES:
+    for base in bases:
         frames = {tau: load_method(method_name(base, tau), acc_name, root, experiment) for tau in TAUS}
         if any(df.empty for df in frames.values()):
             continue
@@ -242,13 +242,13 @@ def pair_rows(frames: dict[float, pd.DataFrame], acc_name: str, base: str) -> li
 
 
 def pair_table(
-    acc_names: list[str] | None = None, root: str | None = None, experiment: str = EXPERIMENT
+    acc_names: list[str] | None = None, root: str | None = None, experiment: str = EXPERIMENT, bases=TEMPERED_BASES
 ) -> pd.DataFrame:
-    """One row per metric, base method and pair of ``experiment`` (default ``main``), ordered by those keys, then by
-    $K$, dataset and classifier (as in ``CLASSIFIER_ORDER``)."""
+    """One row per metric, base method (of ``bases``) and pair of ``experiment`` (default ``main``), ordered by those
+    keys, then by $K$, dataset and classifier (as in ``CLASSIFIER_ORDER``)."""
     rows = []
     for acc_name in acc_names or get_acc_names():
-        for base, frames in load_all(acc_name, root, experiment).items():
+        for base, frames in load_all(acc_name, root, experiment, bases).items():
             rows.extend(pair_rows(frames, acc_name, base))
     if not rows:
         raise RuntimeError(f"No pair of {experiment} has stored results for the five temperatures of a method of E5.2.")
