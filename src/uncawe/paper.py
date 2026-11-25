@@ -69,6 +69,9 @@ class Artefact:
 MAIN = Command("tables-main", "python -m uncawe.tables.main --classic", ("--tables", "--no-std"))
 RANK = Command("tables-rank", "python -m uncawe.tables.rank --classic", ("--tables",))
 TAU_SELECT = Command("tables-tau-select", "python -m uncawe.tables.tau_select", ("--tables",))
+COVERAGE_AMPLITUDE = Command(
+    "tables-coverage-amplitude", "python -m uncawe.tables.coverage_amplitude --classic", ("--tables",)
+)
 AVC = Command("plot-avc", "python -m uncawe.plots.amplitude_vs_coverage --domain classic")
 SHIFT_PROFILE = Command(
     "plot-shift-profile", "python -m uncawe.plots.shift_profile --domain classic", ("--figures", "by_k")
@@ -80,7 +83,17 @@ BINFORM_SIDE_PRIOR = Command(
 )
 PQ_RHO = Command("plot-pq-rho", "python -m uncawe.plots.pq_rho", ("--metrics", "vanilla_accuracy"))
 TARGET_SIZE_SCORES = Command("plot-target-size-scores", "python -m uncawe.plots.target_size_scores")
-COMMANDS = (MAIN, RANK, TAU_SELECT, AVC, SHIFT_PROFILE, BINFORM_SIDE_PRIOR, PQ_RHO, TARGET_SIZE_SCORES)
+COMMANDS = (
+    MAIN,
+    RANK,
+    TAU_SELECT,
+    COVERAGE_AMPLITUDE,
+    AVC,
+    SHIFT_PROFILE,
+    BINFORM_SIDE_PRIOR,
+    PQ_RHO,
+    TARGET_SIZE_SCORES,
+)
 
 ACC_NAMES = tuple(get_acc_names())
 SCORES = ("acc_err", "winkler")
@@ -96,6 +109,15 @@ ARTEFACTS = (
     ),
     # tau chosen per pair on calibration bags (E5.3), compact table: one tabular per accuracy measure
     *(Artefact("tables", f"tables/tau_select/tabular/tau_select_compact_{acc}.tex", TAU_SELECT) for acc in ACC_NAMES),
+    # coverage and amplitude: one tabular per accuracy measure (user's decision of 2026-11-25)
+    *(
+        Artefact(
+            "tables",
+            f"tables/coverage_amplitude/tabular/main_classic_{acc}_coverage_amplitude.tex",
+            COVERAGE_AMPLITUDE,
+        )
+        for acc in ACC_NAMES
+    ),
     # coverage vs amplitude: linear axes and axes zoomed on the nominal values (user's decision of 2026-11-25)
     Artefact("figures", "plots/main/amplitude_vs_coverage/classic_vanilla_accuracy", AVC, name="amplitude_vs_coverage"),
     Artefact(
