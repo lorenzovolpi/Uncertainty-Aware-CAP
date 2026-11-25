@@ -19,6 +19,7 @@ from quapy.data import LabelledCollection
 from uncawe.experiments import target_size as ts
 from uncawe.experiments.methods import CONFIDENCE_LEVEL, SAMPLE_SIZE
 from uncawe.plots import target_size_scores as plots
+from uncawe.plots.common import dataset_bars
 from uncawe.tables import main as main_tables
 from uncawe.tables import target_size as e42_tables
 from uncawe.tables import target_size_scores as tables
@@ -423,9 +424,9 @@ class TestScores(unittest.TestCase):
                 self.assertTrue(os.path.exists(os.path.join(folder, f"{tables.stem(part)}_doc.tex")))
             args = plots.parse_args(["--no-svg", "--add-stem", "test"])
             with patch.object(plots.env, "root_dir", folder):
-                plots.generate_plots(args, summary=self.out["summary"])
+                plots.generate_plots(args, pairs=self.out["pairs"])
                 args = plots.parse_args(["--no-svg", "--without", "--figures", "v-scores"])
-                plots.generate_plots(args, summary=self.out["summary"])
+                plots.generate_plots(args, pairs=self.out["pairs"])
             for figure, stem in (
                 ("u_scores", "target_size_u-scores_test"),
                 ("v_scores", "target_size_v-scores_test"),
@@ -435,27 +436,48 @@ class TestScores(unittest.TestCase):
 
     def test_plot(self):
         for part in ("a", "b"):
-            fig = plots.plot_scores(self.out["summary"], part)
-            left, right = fig.axes[:2]
-            self.assertEqual(right.get_yscale(), "log")
-            self.assertEqual(left.get_xscale(), "log")
-            # one error-bar line per method, no band and no open marker
+            fig = plots.plot_scores(self.out["pairs"], part)
+            axes = fig.axes[:4]
+            self.assertEqual([ax.get_ylabel() for ax in axes], ["AE", "Winkler score $W$", "amplitude", "coverage"])
+            self.assertEqual([ax.get_yscale() for ax in axes], ["log", "log", "log", "linear"])
+            self.assertTrue(all(ax.get_xscale() == "log" for ax in axes))
+            # the nominal coverage line
+            self.assertIn(plots.NOMINAL_COVERAGE, [line.get_ydata()[0] for line in axes[3].get_lines()])
+            # one error-bar line per method, no open marker
+            left = axes[0]
             self.assertEqual(len(left.containers), 3)
-            self.assertEqual(len(left.collections), 3)  # the vertical bars of the three methods
             self.assertFalse(any(line.get_markerfacecolor() == "white" for line in left.get_lines()))
             # the methods are shifted sideways around each size, symmetrically
             xs = [np.asarray(container.lines[0].get_xdata(), dtype=float) for container in left.containers]
-            sizes = np.sort(self.out["summary"].query("part == @part")["x"].unique())
+            sizes = np.sort(plots.dataset_rows(self.out["pairs"], part)["x"].unique())
             self.assertTrue(np.allclose(np.sqrt(xs[0] * xs[-1]), sizes))
             self.assertTrue(np.allclose(xs[1], sizes))
             self.assertTrue((xs[0] < xs[1]).all() and (xs[1] < xs[2]).all())
             plt.close(fig)
         with self.assertRaises(RuntimeError):
-            plots.plot_scores(self.out["summary"].iloc[:0], "a")
+            plots.plot_scores(self.out["pairs"].iloc[:0], "a")
+
+    def test_points_and_bars_are_those_of_dataset_bars(self):
+        rows = plots.dataset_rows(self.out["pairs"], "a")
+        methods = sorted(set(rows["method"]))
+        fig = plots.plot_scores(self.out["pairs"], "a")
+        ordered = [m for m in plots.E44_METHODS if m in methods]
+        for ax, (score, log) in zip(
+            fig.axes[:4], (("ae", True), ("winkler", True), ("amplitude", True), ("coverage", False))
+        ):
+            bars = dataset_bars(rows, score, "x", ordered, log=log)
+            first = bars.loc[bars["method"] == ordered[0]].sort_values("x")
+            np.testing.assert_allclose(ax.containers[0].lines[0].get_ydata(), first["value"])
+        plt.close(fig)
+        # geometric mean of the AE over the datasets
+        part = rows.loc[(rows["method"] == ordered[0]) & (rows["x"] == rows["x"].min()), "ae"]
+        bars = dataset_bars(rows, "ae", "x", ordered)
+        value = bars.loc[(bars["method"] == ordered[0]) & (bars["x"] == rows["x"].min()), "value"].item()
+        self.assertAlmostEqual(value, float(np.exp(np.log(part).mean())))
 
     def test_excluded_methods_are_not_drawn(self):
-        methods = sorted(set(self.out["summary"]["method"]))
-        fig = plots.plot_scores(self.out["summary"], "a", exclude=methods[:1])
+        methods = sorted(set(self.out["pairs"]["method"]))
+        fig = plots.plot_scores(self.out["pairs"], "a", exclude=methods[:1])
         self.assertEqual(len(fig.axes[0].containers), len(methods) - 1)
         self.assertNotIn(
             plots.SHORT_LABELS.get(methods[0], methods[0]), [t.get_text() for t in fig.legends[0].get_texts()]

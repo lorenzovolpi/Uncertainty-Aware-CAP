@@ -45,7 +45,15 @@ from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
 
 from uncawe import env
 from uncawe.config import acc_from_ct, get_acc_names
-from uncawe.plots.common import DEFAULT_DOMAIN, EXPERIMENT, font_size, method_table_label, plot_dir, safe_name
+from uncawe.plots.common import (
+    DEFAULT_DOMAIN,
+    EXPERIMENT,
+    dataset_bars,
+    font_size,
+    method_table_label,
+    plot_dir,
+    safe_name,
+)
 from uncawe.results import Results
 from uncawe.tables.main import CLASSIFIER_FILTER, get_acc_winkler
 
@@ -128,24 +136,9 @@ def dataset_profile(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def geometric_summary(profile: pd.DataFrame, metric: str, methods: list[str]) -> pd.DataFrame:
-    r"""Per method and level of ``methods``: the geometric mean of ``metric`` over the datasets (``value``) and the ends
-    of the bar of $\pm1$ standard error over the datasets of the logarithms after removing each dataset's mean over
-    the methods and levels (``lower``, ``upper``). Every dataset must have every method and level, with positive
-    values."""
-    rows = profile.loc[profile["method"].isin(methods)]
-    logs = rows.pivot_table(index="dataset", columns=["method", "level"], values=metric, aggfunc="first")
-    if logs.isna().any().any():
-        raise ValueError(f"Some datasets lack a method or a level of {metric}.")
-    if (logs <= 0).any().any():
-        raise ValueError(f"Non-positive {metric}: the geometric mean is not defined.")
-    logs = np.log(logs)
-    n = len(logs)
-    centred = logs.sub(logs.mean(axis=1), axis=0)
-    mean = logs.mean()
-    se = centred.std(ddof=1) / np.sqrt(n) if n > 1 else centred.std() * 0.0
-    out = pd.DataFrame({"value": np.exp(mean), "lower": np.exp(mean - se), "upper": np.exp(mean + se)})
-    out["n_datasets"] = n
-    return out.reset_index()
+    """Per method and level of ``methods``: the geometric mean of ``metric`` over the datasets (``value``) and the ends
+    of its bar (``lower``, ``upper``), as in ``plots/common.py:dataset_bars``."""
+    return dataset_bars(profile, metric, "level", methods, log=True)
 
 
 def k_group_label(k_values) -> str:

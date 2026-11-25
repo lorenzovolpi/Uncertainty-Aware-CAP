@@ -421,3 +421,34 @@ def axis_limits(df: pd.DataFrame, x_col: str, y_col: str) -> tuple[tuple[float, 
     xlim = (0.0, float(max_x * 1.08 if max_x > 0 else 1.0))
     ylim = (0.0, float(max_y * 1.08 if max_y > 0 else 1.0))
     return xlim, ylim
+
+
+def dataset_bars(frame: pd.DataFrame, value: str, condition: str, methods: list[str], log: bool = True) -> pd.DataFrame:
+    r"""Per method of ``methods`` and value of ``condition``: the mean of ``value`` over the datasets and the ends of
+    the bar of $\pm1$ standard error over the datasets after removing each dataset's average level (user's decision of
+    2026-11-25, shift profile and E4.4 figures). ``frame`` has one row per method, dataset and condition.
+
+    With ``log`` (for positive scores on a logarithmic axis): $\ell_{d,j}=\log y_{d,j}$ for dataset $d$ and condition
+    $j$ (a method and a value of ``condition``), the point $\exp(\bar\ell_j)$ (geometric mean), $w_{d,j}=\ell_{d,j}-
+    \bar\ell_{d\cdot}$ with $\bar\ell_{d\cdot}$ the mean of dataset $d$ over all conditions,
+    $\mathrm{SE}_j=\operatorname{sd}_d(w_{d,j})/\sqrt n$, and the bar from $\exp(\bar\ell_j-\mathrm{SE}_j)$ to
+    $\exp(\bar\ell_j+\mathrm{SE}_j)$. Without ``log`` (e.g. the coverage, which can be $0$): the same on the values,
+    with the arithmetic mean. Every dataset must have every condition (and positive values with ``log``); with one
+    dataset the bars have zero width. Columns: ``method``, ``condition``, ``value``, ``lower``, ``upper``,
+    ``n_datasets``."""
+    rows = frame.loc[frame["method"].isin(methods)]
+    table = rows.pivot_table(index="dataset", columns=["method", condition], values=value, aggfunc="first")
+    if table.isna().any().any():
+        raise ValueError(f"Some datasets lack a method or a {condition} of {value}.")
+    if log:
+        if (table <= 0).any().any():
+            raise ValueError(f"Non-positive {value}: the geometric mean is not defined.")
+        table = np.log(table)
+    n = len(table)
+    centred = table.sub(table.mean(axis=1), axis=0)
+    mean = table.mean()
+    se = centred.std(ddof=1) / np.sqrt(n) if n > 1 else mean * 0.0
+    back = np.exp if log else (lambda values: values)
+    out = pd.DataFrame({"value": back(mean), "lower": back(mean - se), "upper": back(mean + se)})
+    out["n_datasets"] = n
+    return out.reset_index()
