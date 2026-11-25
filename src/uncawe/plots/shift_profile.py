@@ -12,7 +12,8 @@ Every value is scored against the realised table of each target bag (``true_cts`
 - **Relative value.** For each pair $p$, method and decile $b$, $m_{p,b}$ is the mean of the metric over the bags of
   the decile. It is divided by a reference common to all plotted methods of the pair, the mean of $m_{p,b}$ over the
   plotted methods and the deciles, so the difficulty of the pair cancels and the gaps between methods remain. The
-  reference depends on the set of plotted methods (``--methods``).
+  reference depends on the set of plotted methods (``--methods`` without ``--exclude-methods``; the paper leaves out
+  SQS-B).
 - **Aggregation.** The relative values are averaged over the classifiers of each dataset, then over the datasets. No
   error bars.
 
@@ -227,6 +228,9 @@ def parse_args(argv=None):
     parser.add_argument("--domain", default=DEFAULT_DOMAIN)
     parser.add_argument("--metrics", nargs="+", choices=get_acc_names(), default=["vanilla_accuracy"])
     parser.add_argument("--methods", nargs="+", default=list(DEFAULT_METHODS))
+    # the paper leaves SQS-B out (uncawe/paper.py, user's decision of 2026-11-25); the reference of the relative values
+    # is then the mean over the remaining methods
+    parser.add_argument("--exclude-methods", nargs="*", default=[], help="Methods removed from --methods")
     parser.add_argument("--bins", type=int, default=DEFAULT_BINS)
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     # also pdf since 2026-11-24, for the paper folder (uncawe/paper.py)
@@ -234,6 +238,7 @@ def parse_args(argv=None):
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--add-stem", default=None)
     args = parser.parse_args(argv)
+    args.methods = [method for method in args.methods if method not in args.exclude_methods]
     args.formats = ["png"] + (["svg"] if args.svg else []) + (["pdf"] if args.pdf else [])
     return args
 

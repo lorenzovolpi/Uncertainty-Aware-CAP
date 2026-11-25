@@ -4,7 +4,14 @@ import numpy as np
 import pandas as pd
 
 from uncawe.plots.common import method_table_label
-from uncawe.plots.shift_profile import add_bag_index, k_groups, relative_profile, shift_levels
+from uncawe.plots.shift_profile import (
+    DEFAULT_METHODS,
+    add_bag_index,
+    k_groups,
+    parse_args,
+    relative_profile,
+    shift_levels,
+)
 
 
 def _scores(shifts: dict, methods=("A", "B"), scale=None) -> pd.DataFrame:
@@ -81,6 +88,13 @@ class TestRelativeProfile(unittest.TestCase):
         groups = k_groups(profile)
         self.assertEqual([label for label, _ in groups], ["$K=2$", "$3\\leq K\\leq 7$", "$K\\geq 10$"])
         self.assertEqual([part["dataset"].nunique() for _, part in groups], [1, 2, 1])
+
+
+class TestExcludeMethods(unittest.TestCase):
+    def test_excluded_methods_leave_the_plotted_set(self):
+        self.assertEqual(parse_args([]).methods, list(DEFAULT_METHODS))
+        methods = parse_args(["--exclude-methods", "SQS-B"]).methods
+        self.assertEqual(methods, [m for m in DEFAULT_METHODS if m != "SQS-B"])
 
 
 class TestMethodTableLabel(unittest.TestCase):

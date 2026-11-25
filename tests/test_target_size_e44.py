@@ -453,6 +453,17 @@ class TestScores(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             plots.plot_scores(self.out["summary"].iloc[:0], "a")
 
+    def test_excluded_methods_are_not_drawn(self):
+        methods = sorted(set(self.out["summary"]["method"]))
+        fig = plots.plot_scores(self.out["summary"], "a", exclude=methods[:1])
+        self.assertEqual(len(fig.axes[0].containers), len(methods) - 1)
+        self.assertNotIn(
+            plots.SHORT_LABELS.get(methods[0], methods[0]), [t.get_text() for t in fig.legends[0].get_texts()]
+        )
+        plt.close(fig)
+        self.assertEqual(plots.parse_args(["--exclude-methods", "SQS-B"]).exclude_methods, ["SQS-B"])
+        self.assertEqual(plots.parse_args([]).exclude_methods, [])
+
 
 class TestE42TablesKeepTheirGrid(unittest.TestCase):
     def test_load_results_leaves_out_the_cells_of_e44(self):

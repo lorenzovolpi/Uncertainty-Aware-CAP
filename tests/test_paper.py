@@ -53,6 +53,12 @@ class TestManifest(unittest.TestCase):
         self.assertEqual(paper.MAIN.make(), 'make run-tables-main ARGS="--tables --no-std"')
         self.assertEqual(paper.AVC.make(), "make run-plot-avc")
 
+    def test_sqs_b_is_left_out_of_the_figures(self):
+        for command in (paper.SHIFT_PROFILE, paper.BINFORM_SIDE_PRIOR, paper.TARGET_SIZE_SCORES):
+            with self.subTest(target=command.target):
+                index = command.args.index("--exclude-methods")
+                self.assertEqual(command.args[index + 1], "SQS-B")
+
 
 class TestCollect(unittest.TestCase):
     def _write_sources(self, root, artefacts):

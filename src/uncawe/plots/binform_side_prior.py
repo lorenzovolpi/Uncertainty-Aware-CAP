@@ -10,7 +10,8 @@ against it.
   multiclass $K\ge3$; ``PAIR_GROUPS``) and metric (vanilla accuracy by default), with two panels side by side: the AE
   and the Winkler score of the per-pair means over the $100$ bags (``pair_means``), the pairs drawn as points, on a
   logarithmic vertical axis. Methods left to right in ``METHOD_ORDER`` (SQS-S, SQS-H, SQS-Hbs, SQS-B, BayCAP-Hf,
-  BayCAP-KDEy, BayCAP-KDEy-cb; the panels widen with the number of violins, ``PANEL_WIDTH``); a method without a prior has one violin, a method with a prior three, the wrong-side prior on the
+  BayCAP-KDEy, BayCAP-KDEy-cb, without those of ``--exclude-methods``; the panels widen with the number of violins,
+  ``PANEL_WIDTH``); a method without a prior has one violin, a method with a prior three, the wrong-side prior on the
   left, the uniform prior in the middle and the right-side prior on the right. The uniform prior and the methods
   without a prior are drawn light and hatched, the informative priors solid. A white dot marks the median and a black
   diamond the arithmetic mean of the values (not floored, drawn at $\max(\text{mean},10^{-5})$); the mean of a violin is
@@ -94,12 +95,14 @@ def short_label(method: str) -> str:
     return method_plot_label(method).removesuffix("-real").removesuffix("-mlp")
 
 
-def violin_cells() -> list[tuple[str, str, float]]:
-    """The ``(method, role, position)`` of the violins of a figure, left to right in ``METHOD_ORDER``: three violins
-    (wrong side, uniform, right side) for a method with a prior, one (no prior) for the others; the groups of a method
-    are separated by ``GROUP_GAP``."""
+def violin_cells(exclude=()) -> list[tuple[str, str, float]]:
+    """The ``(method, role, position)`` of the violins of a figure, left to right in ``METHOD_ORDER`` without the
+    methods of ``exclude``: three violins (wrong side, uniform, right side) for a method with a prior, one (no prior)
+    for the others; the groups of a method are separated by ``GROUP_GAP``."""
     cells, position = [], 0.0
     for method in METHOD_ORDER:
+        if method in exclude:
+            continue
         roles = SIDE_ROLES if method in E55_PRIOR_BASES else (NO_PRIOR,)
         for role in roles:
             cells.append((method, role, position))
@@ -165,10 +168,15 @@ def violin_stats(values: np.ndarray, bandwidth: float, points: int = 200) -> dic
 
 
 def plot_violins(
-    bags: pd.DataFrame, distribution: str, acc_name: str = ACC_NAME, level: str = "pairs", group: str = "all"
+    bags: pd.DataFrame,
+    distribution: str,
+    acc_name: str = ACC_NAME,
+    level: str = "pairs",
+    group: str = "all",
+    exclude=(),
 ):
     """The violin figure of ``distribution``, over the per-pair means of ``pair_means`` (``level="pairs"``) or over the
-    bags, for the pairs of ``group``; ``None`` without rows."""
+    bags, for the pairs of ``group``, without the methods of ``exclude``; ``None`` without rows."""
     if level not in LEVELS:
         raise ValueError(f"unknown level {level!r}, expected one of {LEVELS}")
     rows = bags.loc[(bags["distribution"] == distribution) & (bags["acc_name"] == acc_name)]
@@ -179,7 +187,7 @@ def plot_violins(
         rows = pair_means(rows)
     cells = [
         (method, role, position, part)
-        for method, role, position in violin_cells()
+        for method, role, position in violin_cells(exclude)
         if not (part := rows.loc[(rows["method"] == method) & (rows["role"] == role)]).empty
     ]
     width = PANEL_WIDTH * max(1.0, len(cells) / PANEL_VIOLINS)
@@ -272,7 +280,7 @@ def generate_plots(args):
         for acc_name in args.metrics:
             for distribution in args.distributions:
                 for group in args.groups:
-                    fig = plot_violins(bags, distribution, acc_name, level, group)
+                    fig = plot_violins(bags, distribution, acc_name, level, group, args.exclude_methods)
                     if fig is None:
                         print(f"no bags for {distribution}, {group} ({acc_name}), skipped")
                         continue
@@ -293,6 +301,10 @@ def parse_args(argv: list[str] | None = None):
     parser = ArgumentParser(description="Plots of E5.5, right-side and wrong-side priors under strong shifts.")
     parser.add_argument("--figures", nargs="+", choices=FIGURES, default=list(DEFAULT_FIGURES))
     parser.add_argument("--methods", nargs="+", choices=E55_PRIOR_BASES, default=list(E55_PRIOR_BASES))
+    # the paper leaves SQS-B out of the violins (uncawe/paper.py, user's decision of 2026-11-25)
+    parser.add_argument(
+        "--exclude-methods", nargs="*", choices=METHOD_ORDER, default=[], help="Methods left out of the violins"
+    )
     parser.add_argument("--distributions", nargs="+", choices=E55_DISTRIBUTIONS, default=list(E55_DISTRIBUTIONS))
     parser.add_argument("--groups", nargs="+", choices=PAIR_GROUPS, default=list(PAIR_GROUPS))
     parser.add_argument("--metrics", nargs="+", choices=get_acc_names(), default=[ACC_NAME])

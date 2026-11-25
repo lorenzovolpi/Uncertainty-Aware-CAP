@@ -73,16 +73,21 @@ COVERAGE_AMPLITUDE = Command(
     "tables-coverage-amplitude", "python -m uncawe.tables.coverage_amplitude --classic", ("--tables",)
 )
 AVC = Command("plot-avc", "python -m uncawe.plots.amplitude_vs_coverage --domain classic")
+# SQS-B left out of the shift profile, the violins of E5.5 and the figures of E4.4 (user's decision of 2026-11-25)
 SHIFT_PROFILE = Command(
-    "plot-shift-profile", "python -m uncawe.plots.shift_profile --domain classic", ("--figures", "by_k")
+    "plot-shift-profile",
+    "python -m uncawe.plots.shift_profile --domain classic",
+    ("--figures", "by_k", "--exclude-methods", "SQS-B"),
 )
 BINFORM_SIDE_PRIOR = Command(
     "plot-binform-side-prior",
     "python -m uncawe.plots.binform_side_prior",
-    ("--figures", "pair-violins", "--groups", "all", "--metrics", "vanilla_accuracy"),
+    ("--figures", "pair-violins", "--groups", "all", "--metrics", "vanilla_accuracy", "--exclude-methods", "SQS-B"),
 )
 PQ_RHO = Command("plot-pq-rho", "python -m uncawe.plots.pq_rho", ("--metrics", "vanilla_accuracy"))
-TARGET_SIZE_SCORES = Command("plot-target-size-scores", "python -m uncawe.plots.target_size_scores")
+TARGET_SIZE_SCORES = Command(
+    "plot-target-size-scores", "python -m uncawe.plots.target_size_scores", ("--exclude-methods", "SQS-B")
+)
 COMMANDS = (
     MAIN,
     RANK,

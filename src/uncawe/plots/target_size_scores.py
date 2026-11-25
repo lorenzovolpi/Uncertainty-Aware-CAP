@@ -15,7 +15,7 @@ not overlap.
 - ``v-scores`` (E4.4b): against the fraction of $V$ (logarithmic), $|U|=1000$; a level where a pair has a class with
   fewer than ``MIN_CLASS_COUNT`` validation instances has a grey tick label with $^*$.
 
-``--without poker_hand`` draws the means over the pairs without ``poker_hand`` (the check of the Analysis of E4.4b).
+``--exclude-methods`` leaves methods out of the figures (the paper leaves out SQS-B). ``--without poker_hand`` draws the means over the pairs without ``poker_hand`` (the check of the Analysis of E4.4b).
 
 Output: ``<OUT_DIR>/uncawe/plots/target_size/<figure>/`` (``u_scores``, ``v_scores``).
 """
@@ -70,13 +70,14 @@ def subset_name(without: str | None) -> str:
     return "all" if without is None else f"without {without}"
 
 
-def plot_scores(summary: pd.DataFrame, part: str, without: str | None = None):
+def plot_scores(summary: pd.DataFrame, part: str, without: str | None = None, exclude=()):
     """One figure of a part of E4.4: AE on the left and $W$ on the right, against $|U|$ (part ``a``) or the fraction of
-    $V$ (part ``b``), one line per method (mean over the pairs) with bars of ±1 standard error."""
+    $V$ (part ``b``), one line per method (mean over the pairs) with bars of ±1 standard error; the methods of
+    ``exclude`` are not drawn."""
     rows = summary.loc[(summary["part"] == part) & (summary["subset"] == subset_name(without))]
     if rows.empty or rows["x"].nunique() < 2:
         raise RuntimeError(f"No results of E4.4{part} at two or more sizes.")
-    methods = [m for m in E44_METHODS if m in set(rows["method"])]
+    methods = [m for m in E44_METHODS if m in set(rows["method"]) and m not in exclude]
     sizes = np.sort(rows["x"].unique())
     step = float(np.median(np.diff(np.log10(sizes))))
     flagged = set(rows.loc[rows["n_flagged"] > 0, "x"])
@@ -149,7 +150,7 @@ def generate_plots(args, summary: pd.DataFrame | None = None):
         summary = compute(load_results(datasets=args.datasets), split=False)["summary"]
     for name in args.figures:
         try:
-            fig = plot_scores(summary, FIGURES[name], without=args.without)
+            fig = plot_scores(summary, FIGURES[name], without=args.without, exclude=args.exclude_methods)
         except RuntimeError as error:
             print(f"{name} not drawn: {error}")
             continue
@@ -175,6 +176,8 @@ def parse_args(argv: list[str] | None = None):
         choices=(CHECK_DATASET,),
         help=f"Means over the pairs without {CHECK_DATASET} (the check of E4.4b)",
     )
+    # the paper leaves SQS-B out (uncawe/paper.py, user's decision of 2026-11-25)
+    parser.add_argument("--exclude-methods", nargs="*", choices=E44_METHODS, default=[], help="Methods not drawn")
     parser.add_argument("--datasets", nargs="+", default=None, help="Restrict the datasets (default: every one found)")
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     # also pdf since 2026-11-24, for the paper folder (uncawe/paper.py)

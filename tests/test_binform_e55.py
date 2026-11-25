@@ -546,6 +546,16 @@ class TablesTest(unittest.TestCase):
         values = plots.log_values(pd.DataFrame({"ae": [0.0, 1e-7, 0.01, np.nan]}), "ae")
         np.testing.assert_allclose(values, [-5.0, -5.0, -2.0])
 
+    def test_excluded_methods_have_no_violin(self):
+        cells = plots.violin_cells(["SQS-B"])
+        self.assertEqual(len(cells), 3 + 3 * 3)
+        self.assertNotIn("SQS-B", [method for method, _, _ in cells])
+        fig = plots.plot_violins(self.bags, "edge", exclude=["SQS-B"])
+        self.assertEqual(len(fig.axes[0].get_xticklabels()), len(cells))
+        plt.close(fig)
+        args = plots.parse_args(["--exclude-methods", "SQS-B"])
+        self.assertEqual(args.exclude_methods, ["SQS-B"])
+
     def test_violin_stats_closed_tails(self):
         values = np.array([-2.0, -1.5, -1.2, -1.0, -0.4])
         stats = plots.violin_stats(values, 0.3)
