@@ -395,6 +395,7 @@ This part tracks all implementation and experimentation work of the project: wha
 | ID | Title | Kind | Status | Depends on | Updated |
 |---|---|---|---|---|---|
 | WP-32 | E8.3: AC and CBPE with label-shift binning (`AC-LSB`, `L-CBPE-LSB`) in `main`, `AC` from `cap-ml`, pin bump | experiment | Scheduled | — | 2026-11-24 |
+| WP-35 | Placement of the temperature with the realised step of BayCAP and BayCAP-KDEy (`tempering`: the marginal likelihood of the bag, the per-instance complete-data likelihood, or the term of the observation) for `BayesCAP-real`, `BayesCAP-Hf-real`, `BayCAP-KDEy-h-inst-cb` | method | Scheduled | — | 2026-11-25 |
 | WP-34 | `BayesCAP-Hf-real-tcal` and `BayCAP-KDEy-h-inst-cb-tcal` as methods of `main`: $\tau$ selected per pair and metric on calibration bags from half of $V$ inside `fit` (protocol of E5.3) | experiment | Scheduled | WP-33 | 2026-11-25 |
 | WP-33 | E3.5: `BayCAP-KDEy-h-inst` with a bandwidth selected for calibrated class probabilities (`BayCAP-KDEy-h-inst-cb`), on the `main` protocol; the paper reruns of E5.2 + E5.3, E4.4 and E5.5 with both per-instance methods | experiment | In progress | WP-31 | 2026-11-24 |
 | WP-30 | E8.2: rate matrix of $V$ rescaled by a point quantifier (KDEy, EMQ, PACC; oracle reference) | experiment | In progress | — | 2026-11-23 |
@@ -541,6 +542,33 @@ with $J$ the classes with at least $2$ validation instances (the others stay in 
 - **Done when:** the code and tests are merged; the full run has stored results of both methods under `<OUT_DIR>/uncawe/main/` for the $75$ pairs and the three metrics; the check against the assembled columns is reported.
 - **Commands:** filled when the code exists. Cost per pair and method: $5\times50=250$ NUTS runs on the calibration bags (as one pair of `tau_select`) and up to $3\times100$ on the test bags.
 - **Log:** 2026-11-25: card added by the user, Scheduled. Decisions (user, 2026-11-25): the protocol of E5.3 (split of $V$, $50$ UPP bags from $V_{\text{cal}}$, grid $\{0.5,1,2,4,8\}$, mean Winkler score), with $\tau$ selected per metric on the Winkler score of that metric; for the KDEy method, $b^\star$ selected on $V_{\text{fit}}$ before $\tau$, and a hyperparameter for the bandwidth of the deployed fit, re-selected on the full $V$ by default or the one of $V_{\text{fit}}$ reused.
+- **Outcome:**
+
+### WP-35 Placement of the temperature with the realised step of BayCAP and BayCAP-KDEy (`tempering`)
+
+- **Kind / status:** method / Scheduled
+- **Source:** new (discussion of 2026-11-25), on the tempered methods of [[ext5_baycap_priors_tempering]] (E5.2, E5.3); toy simulations `scripts/toys/ext5_tau_placement.py` and `scripts/toys/ext5_tau_placement_baycap.py`.
+- **Goal:** in the tempered methods of E5.2 the temperature $\tau$ divides the log-likelihood of the bag inside NUTS (for BayCAP also that of $V$), and the realised step after NUTS is untempered: BayCAP draws the true classes of the $q_i$ instances predicted as $\omega_i$ from $\operatorname{Mult}(q_i,\rho_{i\cdot})$, $\rho_{ij}\propto C_{ij}\pi_j$ (`realised_tables`); BayCAP-KDEy with `estimand="realised-instance"` draws the class of each instance from $w_{nj}\propto\pi_j\hat f_j(z_n)$ (`instance_tables`). Writing the realised step as latent classes $Y_n$ of the bag in the model, the likelihood of the bag is the per-instance complete-data likelihood, $\prod_nC_{\hat y_nY_n}\pi_{Y_n}$ (BayCAP) or $\prod_n\pi_{Y_n}\hat f_{Y_n}(z_n)$ (BayCAP-KDEy): at $\tau=1$ the model with the latent classes is the current one (the two-step sampling is exact), at $\tau\ne1$ the temperature can be placed in three ways, set by a new hyperparameter `tempering`:
+  - `"marginal"` (default, the current methods): the marginal likelihood of the bag raised to $1/\tau$, the realised step untempered;
+  - `"complete"`: the per-instance complete-data likelihood raised to $1/\tau$; marginal $\sum_iq_i\ln\sum_j(C_{ij}\pi_j)^{1/\tau}$, realised step $\rho_{ij}\propto(C_{ij}\pi_j)^{1/\tau}$ (BayCAP); marginal $\sum_n\ln\sum_j(\pi_j\hat f_j(z_n))^{1/\tau}$, weights $w_{nj}\propto(\pi_j\hat f_j(z_n))^{1/\tau}$ (BayCAP-KDEy);
+  - `"observation"`: only the term of the observation, $C_{\hat y_nY_n}$ or $\hat f_{Y_n}(z_n)$, raised to $1/\tau$ (the model of the latent class, $\pi_{Y_n}$, is untempered); marginal $\sum_iq_i\ln\sum_jC_{ij}^{1/\tau}\pi_j$, $\rho_{ij}\propto C_{ij}^{1/\tau}\pi_j$ (BayCAP); marginal $\sum_n\ln\sum_j\pi_j\hat f_j(z_n)^{1/\tau}$, $w_{nj}\propto\pi_j\hat f_j(z_n)^{1/\tau}$ (BayCAP-KDEy).
+
+  In every placement the likelihood of $V$ of BayCAP stays divided by $\tau$ and the priors (on $\pi$, on $C$, on the hyperparameters of the Hf prior) are untempered. The tempered complete-data likelihood is the per-instance one, so the realised step stays multinomial per predicted class (tempering the multinomial of the counts would also temper the coefficient $N!/\prod n_{ij}!$).
+- **Bases (user's choice):** `BayesCAP-real` (BayCAP, uniform prior on $C$), `BayesCAP-Hf-real` (Hf prior on $C$) and `BayCAP-KDEy-h-inst-cb` (BayesKDEy on the outputs of $h$, fixed $\hat C$, per-instance pushforward, bandwidth $b^\star$ selected by the class-balanced leave-one-out log-loss).
+- **Estimand:** realised table of the target sample, scored against `true_cts`, as every method of `main`.
+- **Scope:**
+  - `methods/baycap.py:BayCAP`: `tempering`, with `estimand="realised"` only for a value other than `"marginal"`; with $\tau\ne1$ and `"complete"` or `"observation"` the term of the predicted counts of the bag is replaced by its marginal above, and `realised_tables` receives the tables whose columns, normalised, are the tempered $\rho$;
+  - `methods/bayes_kdey.py` (`kdey_model`, `BayesKDEy`) and `methods/baycap_kdey.py` (`instance_weights`, `instance_tables`, `BayCAPKDEy`): `tempering`, with `estimand="realised-instance"` only for a value other than `"marginal"`; the likelihood of the bag of BayesKDEy and the per-instance weights as above;
+  - with $\tau=1$, or with `"marginal"`, the model is built exactly as now, so the draws of every stored method are unchanged for the same seed;
+  - `experiments/methods.py`: for each base and $\tau\in\{0.5,2,4,8\}$ the methods `<base>-t<τ>-complete` and `<base>-t<τ>-obs`, and `BayesCAP-real-t<τ>` (`"marginal"`, not in the factory so far); in a dictionary of their own, apart from `TEMPERED_VARIANTS`, so that E5.2, E5.3 and their tables are unchanged; BayCAP pool; outside the main tables, ranks and default plots;
+  - Part II (§II.4, §II.5) and §II.12.
+- **Tests:** with $\tau=1$ every value of `tempering` gives the draws of `"marginal"`; the log-density of the models with `"complete"` and `"observation"` equals the sum over the latent classes computed by brute force on a small bag; the tempered $\rho$ and $w$ equal their closed forms; a value other than `"marginal"` is rejected with the other estimands; the factory entries.
+- **Depends on:** none.
+- **Comparability:** with the default `"marginal"` every method and stored result is unchanged; the new methods are new.
+- **Deviations from Part V:** none expected.
+- **Done when:** the code and tests are merged (method card; the methods are not evaluated by this card).
+- **Commands:** none (method card); the experiment that evaluates the methods is decided by the user.
+- **Log:** 2026-11-25: card added by the user (Scheduled). Toy results (synthetic, $K=2$, grid posterior, the selection of E5.3; not experiment results): with `"complete"` or `"observation"` any $\tau\ne1$ moves the centre of the interval (at $\tau=8$ the mean signed error is about $-0.2$ to $-0.3$), and the $\tau$ selected on the calibration bags beats $\tau=1$ in the Winkler score in at most $1.4\%$ of the replicates; with `"marginal"` the centre does not move with $\tau$.
 - **Outcome:**
 
 ## III.3 Completed cards
