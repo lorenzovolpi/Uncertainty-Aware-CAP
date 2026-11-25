@@ -104,6 +104,7 @@ EXP_tables-kdey-cal-solver := python -m uncawe.tables.kdey_cal_solver
 EXP_tables-kdey-tcal := python -m uncawe.tables.kdey_tcal
 EXP_tables-average-confidence := python -m uncawe.tables.average_confidence
 EXP_tables-ctt       := python -m uncawe.tables.ctt
+EXP_tables-ac-lsb    := python -m uncawe.tables.ac_lsb
 EXP_plot-avc         := python -m uncawe.plots.amplitude_vs_coverage --domain classic
 EXP_plot-aew         := python -m uncawe.plots.ae_vs_winkler --domain classic
 EXP_plot-rank        := python -m uncawe.plots.rank_heatmap --domain classic
@@ -135,6 +136,7 @@ EXP_plot-kdey-loo    := python -m uncawe.plots.kdey_loo
 EXP_plot-kdey-cal    := python -m uncawe.plots.kdey_cal
 EXP_plot-kdey-tcal   := python -m uncawe.plots.kdey_tcal
 EXP_plot-ctt         := python -m uncawe.plots.ctt
+EXP_plot-ac-lsb      := python -m uncawe.plots.ac_lsb
 EXP_plot-shift-profile := python -m uncawe.plots.shift_profile --domain classic
 # every table and figure of the extended paper, regenerated and collected in <OUT_DIR>/uncawe/paper/ (docs/paper.md);
 # then make pull PULL_DIRS=paper

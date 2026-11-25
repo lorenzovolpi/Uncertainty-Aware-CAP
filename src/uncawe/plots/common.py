@@ -67,6 +67,9 @@ METHOD_COLORS = {
     "L-CBPE": "#0000FF",
     # E8.1: Average Confidence with LasCal and the central interval (card WP-29)
     "AC": "#8C564B",
+    # E8.3: AC and L-CBPE with label-shift binning (card WP-32)
+    "AC-LSB": "#E6550D",
+    "L-CBPE-LSB": "#17BECF",
     # E8.2: the rate matrix of V rescaled by a point quantifier, and the oracle reference (card WP-30)
     "CTT-KDEy": "#1F77B4",
     "CTT-EMQ": "#D62728",

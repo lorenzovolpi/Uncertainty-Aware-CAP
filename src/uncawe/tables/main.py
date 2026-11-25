@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 
 import numpy as np
 import pandas as pd
-from cap.models.confidence import ConfidenceInterval, PoissonConfidenceInterval
+from cap.models.confidence import CentralPoissonInterval, ConfidenceInterval, PoissonConfidenceInterval
 from matplotlib.colors import Normalize, rgb2hex
 from scipy.stats import wilcoxon
 
@@ -12,7 +12,6 @@ import uncawe.env as env
 from uncawe.config import CONFIDENCE_LEVEL, acc_from_ct, get_acc_names, get_method_names
 from uncawe.experiments.methods import TCAL_VARIANTS
 from uncawe.main import EXPERIMENT
-from uncawe.methods.ac import CentralPoissonInterval
 from uncawe.pretrain.dataset import sort_datasets_by_size
 from uncawe.results import Results
 from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_MACROS, TCAL_METHODS
@@ -156,8 +155,14 @@ EXTENDED_DIR = "extended"
 # bag (n+1 values) instead of performance samples, and the interval each reads from it: the highest-density interval of
 # cap-ml for L-CBPE and the central interval for AC (E8.1 of docs/ext8_average_confidence.md, card WP-29). Before
 # WP-29 every method was scored with the percentiles of estim_acc_ranges, which is wrong for a probability mass
-# function; L-CBPE was then in no table, so no table changes
-PMF_INTERVALS = {"L-CBPE": PoissonConfidenceInterval, "AC": CentralPoissonInterval}
+# function; L-CBPE was then in no table, so no table changes. AC-LSB and L-CBPE-LSB (E8.3, card WP-32) read the
+# interval of AC and of L-CBPE
+PMF_INTERVALS = {
+    "L-CBPE": PoissonConfidenceInterval,
+    "AC": CentralPoissonInterval,
+    "AC-LSB": CentralPoissonInterval,
+    "L-CBPE-LSB": PoissonConfidenceInterval,
+}
 
 
 def get_acc_coverage(method: str, true_acc: float, accs_range: np.ndarray) -> float:

@@ -32,7 +32,7 @@ required-environments = "sys_platform == 'linux' and platform_machine == 'aarch6
 constraint-dependencies = ["numpyro<0.22"]
 
 [tool.uv.sources]
-cap-ml = { git = "https://github.com/lorenzovolpi/cap-ml.git", rev = "93ae24631d93a7230f4a4686148a87836d6edf34" }
+cap-ml = { git = "https://github.com/lorenzovolpi/cap-ml.git", rev = "eefa55063d181f94526595821fafb6606eea0fac" }
 pandatex = { git = "https://github.com/lorenzovolpi/pandatex.git" }
 
 

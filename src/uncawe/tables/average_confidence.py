@@ -1,6 +1,6 @@
 """AC against L-CBPE on the pairs of ``main`` (E8.1 of ``docs/ext8_average_confidence.md``, card WP-29).
 
-``AC`` (``methods/ac.py:AC``) is Average Confidence with the posteriors recalibrated per bag by LasCal and the central
+``AC`` (``cap-ml``'s ``cap.models.confidence.AC`` with ``LasCalPerBag``; ``methods/ac.py`` before WP-32) is Average Confidence with the posteriors recalibrated per bag by LasCal and the central
 interval of the Poisson-binomial distribution of the correct predictions; ``L-CBPE`` (``cap-ml``'s
 ``CBPE(calib_method="lascal")``, binary datasets only) is the same estimator with the highest-density interval. Both
 store the probability mass function of the number of correct predictions in ``estim_acc_ranges``, and their intervals

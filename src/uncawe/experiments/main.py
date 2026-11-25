@@ -28,8 +28,9 @@ import jax
 import numpy as np
 import quapy as qp
 from cap import env as capenv
+from cap.calibration import LSBinning
 from cap.models.base import NeedsValidationProtocol
-from cap.models.confidence import BootstrapCAP, CAPWithConfidence, PrediQuant
+from cap.models.confidence import AC, CBPE, BootstrapCAP, CAPWithConfidence, PrediQuant
 from cap.models.cont_table import CAPContingencyTable
 from cap.models.direct import CAPDirect
 from cap.utils.commons import get_shift
@@ -57,7 +58,6 @@ from uncawe.experiments.metrics import gen_acc_measure, get_acc_names
 from uncawe.experiments.per_metric import bag_runs, is_contingency_method, metric_columns, metric_run, prepare
 from uncawe.experiments.records import EvaluationContext, build_result_frame
 from uncawe.experiments.task_order import TaskKey, default_reference_experiments, sort_longest_first
-from uncawe.methods.ac import AC
 from uncawe.methods.baycap import BayCAP
 from uncawe.methods.baycap_quantifier import QuantifierBayCAP
 from uncawe.methods.sqs_b import SQSB
@@ -115,6 +115,29 @@ def _prepare_evaluation(p: PretrainInfo, method: CAPWithConfidence):
         val_prev=get_plain_prev(validation.prevalence()),
     )
     return dataset, validation, validation_posteriors, context
+
+
+def calibration_columns(method: CAPDirect) -> dict | None:
+    """The per-bag columns of the calibrator of a confidence-based method after a prediction, ``None`` for the other
+    methods and for the metrics the method does not estimate.
+
+    - ``AC`` and ``AC-LSB`` (``cap-ml``'s ``AC``, E8.1 and E8.3): ``last_calibration_columns()``, for LasCal
+      ``lascal_temperature`` and ``lascal_fallback`` (the columns of ``methods/ac.py`` before WP-32), for label-shift
+      binning ``lsb_nbins``, ``lsb_nbins_eff`` (per class), ``lsb_grid_fallback``, ``lsb_prevalence`` (the estimate
+      $\\hat\\pi^Q$ of BBSE-soft), ``lsb_n_degenerate`` and ``lsb_argmax_changed``;
+    - ``L-CBPE-LSB`` (``CBPE(calib_method="lsb")``, E8.3): the same columns of label-shift binning, from its
+      calibrator. ``L-CBPE`` (LasCal) stores none, as before WP-32, so that its stored results keep their columns.
+
+    The arrays are stored as lists, as the other per-bag columns of ``main``."""
+    if isinstance(method, AC):
+        columns = method.last_calibration_columns()
+    elif isinstance(method, CBPE) and method.calib_method == "lsb" and isinstance(method.calib, LSBinning):
+        columns = method.calib.last_columns()
+    else:
+        return None
+    if columns is None:
+        return None
+    return {name: value.tolist() if isinstance(value, np.ndarray) else value for name, value in columns.items()}
 
 
 def allocation_columns(method: PrediQuant) -> dict:
@@ -237,13 +260,14 @@ def _evaluate_direct_method(
             t_train = time() - started
 
             started = time()
-            estim_acc_ranges, lascal_columns = [], []
+            estim_acc_ranges, calibration_bags = [], []
             for sample, posteriors in zip(dataset.test_prot(), dataset.test_prot_posteriors):
                 estim_acc_ranges.append(method.predict_range(sample.X, posteriors))
-                # AC (E8.1 of docs/ext8_average_confidence.md): the temperature selected by LasCal and the fallback
-                # flag of each bag, only for the metric it estimates; reading them costs nothing measurable
-                if isinstance(method, AC) and method.last_lascal_columns() is not None:
-                    lascal_columns.append(method.last_lascal_columns())
+                # AC, AC-LSB and L-CBPE-LSB (E8.1 and E8.3 of docs/ext8_average_confidence.md): the per-bag columns of
+                # the calibrator, only for the metric the method estimates; reading them costs nothing measurable
+                columns = calibration_columns(method)
+                if columns is not None:
+                    calibration_bags.append(columns)
             t_test_ave = (time() - started) / dataset.test_prot.total()
         except Exception as error:
             print_exception(error)
@@ -263,7 +287,9 @@ def _evaluate_direct_method(
             t_train=t_train,
             t_test_ave=t_test_ave,
             extra_columns=(
-                {name: [d[name] for d in lascal_columns] for name in lascal_columns[0]} if lascal_columns else None
+                {name: [d[name] for d in calibration_bags] for name in calibration_bags[0]}
+                if calibration_bags
+                else None
             ),
         )
         results.append(

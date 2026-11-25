@@ -1,3 +1,6 @@
+# Frozen copy of src/uncawe/methods/ac.py at commit ceefbb7 (devel), kept only as the reference of tests/test_ac.py:
+# cap-ml's AC with LasCalPerBag (cap.models.confidence.AC, which replaces it; work-plan card WP-32) must reproduce it
+# bit for bit. Do not edit.
 """Average Confidence (AC) with LasCal and the central Poisson-binomial interval (E8.1 of
 ``docs/ext8_average_confidence.md``, card WP-29).
 
