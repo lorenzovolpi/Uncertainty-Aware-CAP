@@ -1,3 +1,15 @@
+r"""Coverage against amplitude of the intervals, one facet per method: each point is a pair (dataset, classifier), the
+mean over its target bags; each score is against the realised table of the bag (``true_cts``).
+
+The shading is a KDE of the points of each facet (``seaborn.kdeplot``). By default it has seaborn's ten levels, the
+outer one holding 95% of the density. ``--kde-mass`` draws instead the regions that hold the given shares of the
+density (e.g. ``0.5 0.7 0.99``), ``--kde-bw-adjust`` scales the bandwidth of Scott's rule. ``--summary-box`` writes in
+each facet the means over the pairs shown of the Winkler score, amplitude and coverage; ``--exclude dataset:classifier``
+leaves pairs out of the facets, of the KDE and of the box. ``--zoom`` draws both axes on scales that enlarge the region
+around the nominal values (amplitude $0.05$, coverage $0.95$), $u=\log_{10}(1+A/a_0)$ and
+$v=-\log_{10}(1+(1-C)/m_0)$, with the KDE computed on the transformed coordinates.
+"""
+
 import os
 import tempfile
 from argparse import ArgumentParser, BooleanOptionalAction
@@ -37,6 +49,43 @@ PLOT_NAME = "amplitude_vs_coverage"
 # without BayesCAP (BayCAP-pop), which the main tables show since 2026-11-23 (user's decision of 2026-11-24); SQS-B
 # left MAIN_METHODS on 2026-11-24
 PLOT_METHODS = [method for method in MAIN_METHODS if method != "BayesCAP"]
+# --zoom: amplitude and miscoverage below these values are drawn almost linearly, above them logarithmically
+ZOOM_AMPLITUDE = 0.01
+ZOOM_MISCOVERAGE = 0.02
+ZOOM_X_TICKS = [0, 0.01, 0.05, 0.2, 0.5]
+ZOOM_Y_TICKS = [1, 0.95, 0.9, 0.8, 0.6, 0.3, 0]
+ZOOM_X_MAX = 0.8
+
+
+def zoom_x(amplitude):
+    return np.log10(1 + np.asarray(amplitude, dtype=float) / ZOOM_AMPLITUDE)
+
+
+def zoom_y(coverage):
+    # negative, so that coverage 1 is at the top
+    return -np.log10(1 + (1 - np.asarray(coverage, dtype=float)) / ZOOM_MISCOVERAGE)
+
+
+def kde_levels(masses: list[float] | None):
+    """seaborn levels (iso-proportions of the density, from the lowest) of the regions holding ``masses``."""
+    if not masses:
+        return None
+    if not all(0 < m < 1 for m in masses):
+        raise ValueError(f"--kde-mass values must be in (0, 1), got {masses}")
+    return sorted(1 - m for m in masses) + [1.0]
+
+
+def exclude_pairs(df: pd.DataFrame, pairs: list[str] | None) -> pd.DataFrame:
+    """Drop the pairs given as ``dataset:classifier``."""
+    if not pairs:
+        return df
+    keep = np.ones(len(df), dtype=bool)
+    for pair in pairs:
+        dataset, sep, classifier = pair.partition(":")
+        if not sep:
+            raise ValueError(f"--exclude takes dataset:classifier, got {pair!r}")
+        keep &= ~((df["dataset"].astype(str) == dataset) & (df["classifier"].astype(str) == classifier)).to_numpy()
+    return df.loc[keep, :]
 
 
 def _plot_dir() -> str:
@@ -54,20 +103,24 @@ def _ensure_interval_metrics(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     coverages = []
     amplitudes = []
+    winklers = []
 
     for row in df.itertuples(index=False):
         true_acc = acc_from_ct(row.acc_name, row.true_cts, type="selection")
-        coverage, amplitude, _, _, _ = interval_metrics(true_acc, row.estim_acc_ranges)
+        coverage, amplitude, winkler, _, _ = interval_metrics(true_acc, row.estim_acc_ranges)
         if not np.isfinite(coverage) or not np.isfinite(amplitude):
             coverages.append(np.nan)
             amplitudes.append(np.nan)
+            winklers.append(np.nan)
             continue
 
         coverages.append(coverage)
         amplitudes.append(amplitude)
+        winklers.append(winkler)
 
     df["coverage"] = coverages
     df["amplitude"] = amplitudes
+    df["winkler"] = winklers
     return df.loc[np.isfinite(df["coverage"]) & np.isfinite(df["amplitude"]) & (df["amplitude"] >= 0), :]
 
 
@@ -81,6 +134,7 @@ def _load_plot_source(args) -> pd.DataFrame:
         df = df.loc[df["dataset"].isin(args.datasets), :]
     if args.classifiers:
         df = df.loc[df["classifier"].isin(args.classifiers), :]
+    df = exclude_pairs(df, getattr(args, "exclude", None))
     if df.empty:
         raise RuntimeError("No results left after applying filters.")
 
@@ -93,20 +147,43 @@ def _load_plot_source(args) -> pd.DataFrame:
 def _aggregate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return (
         df.groupby(["dataset", "classifier", "method"], observed=True, sort=False)
-        .agg(mean_coverage=("coverage", "mean"), mean_amplitude=("amplitude", "mean"))
+        .agg(
+            mean_coverage=("coverage", "mean"),
+            mean_amplitude=("amplitude", "mean"),
+            mean_winkler=("winkler", "mean"),
+        )
         .reset_index()
     )
 
 
-def _draw_facet(data: pd.DataFrame, sample_alpha: float, classifiers: list[str], **_):
+def summary_text(data: pd.DataFrame) -> str:
+    """Means over the pairs of ``data`` (one method) of the Winkler score, amplitude and coverage."""
+    return (
+        f"W = {data['mean_winkler'].mean():.3f}\n"
+        f"A = {data['mean_amplitude'].mean():.3f}\n"
+        f"C = {data['mean_coverage'].mean():.3f}"
+    )
+
+
+def _draw_facet(
+    data: pd.DataFrame,
+    sample_alpha: float,
+    classifiers: list[str],
+    x: str = "mean_amplitude",
+    y: str = "mean_coverage",
+    kde_kws: dict | None = None,
+    summary_box: bool = False,
+    **_,
+):
     if data.empty:
         return
 
     method = str(data["method"].iloc[0])
+    ax = plt.gca()
     sns.scatterplot(
         data=data,
-        x="mean_amplitude",
-        y="mean_coverage",
+        x=x,
+        y=y,
         style="classifier",
         style_order=classifiers,
         markers=classifier_markers(classifiers),
@@ -115,20 +192,34 @@ def _draw_facet(data: pd.DataFrame, sample_alpha: float, classifiers: list[str],
         s=34,
         edgecolor=None,
         legend=False,
-        ax=plt.gca(),
+        ax=ax,
         zorder=2,
     )
     sns.kdeplot(
         data=data,
-        x="mean_amplitude",
-        y="mean_coverage",
+        x=x,
+        y=y,
         color=METHOD_COLORS.get(method, "#4C78A8"),
         legend=False,
-        ax=plt.gca(),
+        ax=ax,
         zorder=3,
         alpha=sample_alpha - 0.2,
         fill=True,
+        **(kde_kws or {}),
     )
+    if summary_box:
+        ax.text(
+            0.97,
+            0.03,
+            summary_text(data),
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=font_size(10),
+            family="monospace",
+            zorder=5,
+            bbox={"boxstyle": "round,pad=0.3", "facecolor": "white", "edgecolor": "#bbbbbb", "alpha": 0.9},
+        )
 
 
 def _plot(
@@ -140,6 +231,9 @@ def _plot(
     formats: Iterable[str],
     dpi: int,
     add_stem: str,
+    kde_kws: dict | None = None,
+    summary_box: bool = False,
+    zoom: bool = False,
 ):
     present_methods = [method for method in methods if method in set(df["method"].astype(str))]
     if not present_methods:
@@ -163,11 +257,36 @@ def _plot(
         aspect=1,
         despine=False,
     )
-    grid.map_dataframe(_draw_facet, sample_alpha=sample_alpha, classifiers=classifiers)
+    if zoom:
+        df = df.assign(zoom_x=zoom_x(df["mean_amplitude"]), zoom_y=zoom_y(df["mean_coverage"]))
+        grid.data = df
+    grid.map_dataframe(
+        _draw_facet,
+        sample_alpha=sample_alpha,
+        classifiers=classifiers,
+        x="zoom_x" if zoom else "mean_amplitude",
+        y="zoom_y" if zoom else "mean_coverage",
+        kde_kws=kde_kws,
+        summary_box=summary_box,
+    )
     grid.set_axis_labels("Amplitude", "Coverage")
 
     for ax, method in zip(grid.axes.flat, present_methods):
         ax.set_title(method_plot_label(method), fontsize=font_size(14))
+        if zoom:
+            ax.set_xlim(float(zoom_x(0)) - 0.03, float(zoom_x(ZOOM_X_MAX)))
+            ax.set_ylim(float(zoom_y(0)) - 0.04, float(zoom_y(1)) + 0.04)
+            ax.set_xticks(zoom_x(ZOOM_X_TICKS))
+            ax.set_xticklabels([fmt_tick(tick) for tick in ZOOM_X_TICKS])
+            ax.set_yticks(zoom_y(ZOOM_Y_TICKS))
+            ax.set_yticklabels([fmt_tick(tick) for tick in ZOOM_Y_TICKS])
+            ax.axvline(float(zoom_x(1 - CONFIDENCE_LEVEL)), color="#333333", linestyle=":", linewidth=1.0, alpha=0.8)
+            ax.axhline(float(zoom_y(CONFIDENCE_LEVEL)), color="#333333", linestyle=":", linewidth=1.0, alpha=0.8)
+            ax.grid(True, color="#d9d9d9", linewidth=0.7, alpha=0.7)
+            ax.tick_params(axis="both", labelsize=font_size(12))
+            ax.xaxis.label.set_size(font_size(13))
+            ax.yaxis.label.set_size(font_size(13))
+            continue
         ax.set_xlim(*xlim)
         if x_scale == "symlog":
             ax.set_xscale("symlog", linthresh=0.05, linscale=1.0)
@@ -222,7 +341,23 @@ def generate_plots(args):
     if df.empty:
         raise RuntimeError("No aggregated coverage/amplitude rows available for plotting.")
 
-    _plot(df, args.domain, args.methods, args.alpha, args.x_scale, args.formats, args.dpi, args.add_stem)
+    kde_kws = {"bw_adjust": args.kde_bw_adjust}
+    levels = kde_levels(args.kde_mass)
+    if levels is not None:
+        kde_kws["levels"] = levels
+    _plot(
+        df,
+        args.domain,
+        args.methods,
+        args.alpha,
+        args.x_scale,
+        args.formats,
+        args.dpi,
+        args.add_stem,
+        kde_kws=kde_kws,
+        summary_box=args.summary_box,
+        zoom=args.zoom,
+    )
     print(f"plot generated: {args.domain}/{ACC_NAME}")
 
 
@@ -234,6 +369,17 @@ def parse_args():
     parser.add_argument("--methods", nargs="*", default=PLOT_METHODS)
     parser.add_argument("--alpha", type=float, default=0.6)
     parser.add_argument("--x-scale", choices=["symlog", "linear"], default="linear")
+    parser.add_argument(
+        "--kde-mass",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Shares of density held by the KDE regions, e.g. 0.5 0.7 0.99",
+    )
+    parser.add_argument("--kde-bw-adjust", type=float, default=1.0, help="Factor on the bandwidth of Scott's rule")
+    parser.add_argument("--summary-box", action="store_true", help="Means of W, A, C over the pairs shown, per facet")
+    parser.add_argument("--exclude", nargs="*", default=None, help="Pairs dataset:classifier to leave out")
+    parser.add_argument("--zoom", action="store_true", help="Axes that enlarge the region around (0.05, 0.95)")
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     parser.add_argument("--pdf", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
