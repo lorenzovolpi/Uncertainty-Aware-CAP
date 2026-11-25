@@ -14,6 +14,7 @@ from uncawe.experiments.methods import (
     KDEY_HF_VARIANTS,
     LOO_VARIANTS,
     METHOD_CLASS,
+    PLACEMENT_VARIANTS,
     PQ_RHO_VARIANTS,
     SAMPLE_SIZE,
     SQS_B,
@@ -140,6 +141,7 @@ class BayCAPFactoryTest(unittest.TestCase):
             | {"BayCAP-KDEy-h-inst-cb"}
             | {"SQS-B"}
             | set(TEMPERED_VARIANTS)
+            | set(PLACEMENT_VARIANTS)
             | set(LOO_VARIANTS)
             | set(CAL_VARIANTS),
         )

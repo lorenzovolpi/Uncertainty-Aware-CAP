@@ -44,6 +44,7 @@ from scipy import optimize
 from scipy.special import logsumexp
 from sklearn.neighbors import KernelDensity
 
+from uncawe.methods.baycap import TEMPERINGS, tempered_latent_loglik
 from uncawe.methods.bayesian_quantifier import PREV, BayesianQuantifier, confidence_ece
 
 # the selection of the bandwidth by leave-one-out likelihood (E7.1)
@@ -90,14 +91,21 @@ LOGLOSS_SUMMARIES = (
 )
 
 
-def kdey_model(test_log_densities, alpha, temperature: float = 1.0) -> None:
+def kdey_model(test_log_densities, alpha, temperature: float = 1.0, tempering: str = "marginal") -> None:
     r"""The NUTS model of BayesKDEy (QuaPy's ``BayesianKDEy._numpyro_model``).
 
     $\pi\sim\operatorname{Dir}(\alpha)$, and the log-likelihood $\sum_n\ln\sum_j\pi_jp_j(x_n)$ of the outputs $x_n$ of
     the bag, with $p_j$ the kernel density of class $\omega_j$ on $V$ (``test_log_densities[j, n]``$=\ln p_j(x_n)$),
-    divided by the temperature $\tau$.
+    divided by the temperature $\tau$. With ``tempering`` ``"complete"`` or ``"observation"`` and $\tau\ne1$
+    (WP-35), the log-likelihood is that of the per-instance complete-data likelihood with the latent classes, tempered as
+    set (:func:`uncawe.methods.baycap.tempered_latent_loglik`): $\sum_n\ln\sum_j(\pi_jp_j(x_n))^{1/\tau}$ or
+    $\sum_n\ln\sum_j\pi_jp_j(x_n)^{1/\tau}$.
     """
     prev = numpyro.sample(PREV, dist.Dirichlet(jnp.asarray(alpha)))
+    if tempering != "marginal" and temperature != 1.0:
+        loglik = tempered_latent_loglik(jnp.asarray(test_log_densities).T, jnp.log(prev), temperature, tempering)
+        numpyro.factor("loglik", loglik)
+        return
     log_likelihood = jnp.sum(jax_logsumexp(jnp.log(prev)[:, None] + test_log_densities, axis=0))
     numpyro.factor("loglik", (1.0 / temperature) * log_likelihood)
 
@@ -501,6 +509,9 @@ class BayesKDEy(BayesianQuantifier):
     :param num_warmup: number of NUTS warm-up iterations.
     :param num_samples: number of posterior draws retained after warm-up.
     :param temperature: temperature $\tau$ of the likelihood of the bag.
+    :param tempering: where the temperature acts (WP-35, ``methods/baycap.py:TEMPERINGS``): on the marginal likelihood
+        of the bag (``"marginal"``, default), or on the per-instance complete-data likelihood with the latent classes,
+        whole (``"complete"``) or its term of the observation only (``"observation"``) (:func:`kdey_model`).
     :param prior: Dirichlet parameter of the prior on $\pi$ (``"uniform"``, a positive scalar or a vector).
     :param random_state: seed of NUTS and of the MLP; ``qp.environ["_R_SEED"]`` if ``None``.
     """
@@ -517,7 +528,11 @@ class BayesKDEy(BayesianQuantifier):
         temperature: float = 1.0,
         prior: str | Number | np.ndarray = "uniform",
         random_state: int | None = None,
+        tempering: Literal["marginal", "complete", "observation"] = "marginal",
     ) -> None:
+        if tempering not in TEMPERINGS:
+            raise ValueError(f"tempering must be one of {TEMPERINGS}; found {tempering!r}")
+        self.tempering = tempering
         super().__init__(
             input_classifier=input_classifier,
             num_warmup=num_warmup,
@@ -639,7 +654,7 @@ class BayesKDEy(BayesianQuantifier):
         args = {"test_log_densities": self.kde_.log_densities(outputs), "alpha": alpha}
         # kept for the per-instance pushforward of BayCAPKDEy (E3.4), which reuses the log-densities of the bag
         self._last_log_densities = args["test_log_densities"]
-        return kdey_model, args | {"temperature": self.temperature}, None
+        return kdey_model, args | {"temperature": self.temperature, "tempering": self.tempering}, None
 
     def last_bag_log_densities(self) -> np.ndarray:
         r"""The log-densities of the classes at the outputs of the last bag sampled (:meth:`sample_prevalences`), the
