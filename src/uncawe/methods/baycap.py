@@ -18,7 +18,12 @@ the mistakes. Work-plan card WP-12 adds a non-centred form of those shares
 Work-plan card WP-20 adds the posterior temperature $\\tau$ (``temperature``,
 §T.5 and §T.7 of ``docs/ext5_baycap_priors_tempering.md``), which divides the
 log-likelihoods of the validation counts and of the predicted counts of the
-bag by $\\tau$.
+bag by $\\tau$. Work-plan card WP-35 adds the placement of the temperature
+with the realised step (``tempering``, :data:`TEMPERINGS`): with the latent
+true classes $Y_n$ of the bag, the per-instance complete-data likelihood
+$\\prod_nC_{\\hat y_nY_n}\\pi_{Y_n}$ raised to $1/\\tau$ (``"complete"``) or
+its term of the observation $C_{\\hat y_nY_n}$ only (``"observation"``), in
+place of the marginal likelihood of the bag (``"marginal"``, the default).
 """
 
 from collections.abc import Callable
@@ -48,6 +53,10 @@ HIERARCHICAL_PRIORS = ("hierarchical", "hierarchical-f")
 # coordinates of the shares of the mistakes of "hierarchical-f" (§T.17): the Dirichlet itself, or normalised Gammas
 # built from variables whose law does not depend on kappa
 SHARES_FORMS = ("centred", "non-centred")
+# where the temperature acts with the realised step (WP-35): on the marginal likelihood of the bag, the realised step
+# untempered (the default, the methods of E5.2); on the per-instance complete-data likelihood of the bag with its latent
+# true classes; on the term of the observation of that likelihood only (the prediction, or the output, given the class)
+TEMPERINGS = ("marginal", "complete", "observation")
 
 # per-bag NUTS diagnostics stored by the experiments (``nuts_diagnostics``)
 NUTS_DIAGNOSTICS = ("nuts_divergences", "nuts_max_rhat", "nuts_min_ess")
@@ -80,6 +89,53 @@ H_SHARES_GAMMA, H_SHARES_EXP = "h_shares_gamma", "h_shares_exp"
 # bounds of the empirical-Bayes fit (§T.9); the lower bound on nu is only a numerical safeguard
 EB_M_BOUNDS = (1e-3, 1 - 1e-3)
 EB_NU_BOUNDS = (1e-3, 1e4)
+
+
+def tempered_latent_loglik(log_terms, log_prev, temperature: float, tempering: str, weights=None):
+    r"""The log-likelihood of a bag with latent true classes and a tempered complete-data likelihood (WP-35).
+
+    Each instance (or group of instances that share the same terms, with ``weights`` the size of each group) has the
+    complete-data likelihood $\pi_{Y}\,\ell_{Y}$ given its true class $Y$, with $\ell_j$ the term of the observation
+    (the rate $C_{\hat y j}$ of its prediction for BayCAP, the density $\hat f_j(z)$ of its output for BayCAP-KDEy).
+    Summing out $Y$:
+
+    - ``"complete"``: $\sum_n\ln\sum_j(\pi_j\ell_{nj})^{1/\tau}$;
+    - ``"observation"``: $\sum_n\ln\sum_j\pi_j\ell_{nj}^{1/\tau}$.
+
+    Computed by log-sum-exp with ``jax.numpy``, so that it can enter a NumPyro model.
+
+    :param log_terms: $\ln\ell_{nj}$, shape ``(..., K)``, the classes on the last axis.
+    :param log_prev: $\ln\pi_j$, shape ``(K,)``.
+    :param weights: the number of instances of each row of ``log_terms`` (``None``: one each).
+    """
+    if tempering == "complete":
+        terms = (log_prev + log_terms) / temperature
+    elif tempering == "observation":
+        terms = log_prev + log_terms / temperature
+    else:
+        raise ValueError(f'tempering must be "complete" or "observation"; found {tempering!r}')
+    per_row = jax.scipy.special.logsumexp(terms, axis=-1)
+    return jnp.sum(per_row if weights is None else weights * per_row)
+
+
+def tempered_class_tables(prevalences: np.ndarray, rates: np.ndarray, temperature: float, tempering: str) -> np.ndarray:
+    r"""The tables whose columns, normalised, are the conditional laws of the true class given the prediction under the
+    placement ``tempering`` of the temperature (WP-35), for :func:`realised_tables`: $\pi_jC_{ij}$ (``"marginal"``),
+    $(\pi_jC_{ij})^{1/\tau}$ (``"complete"``) or $\pi_jC_{ij}^{1/\tau}$ (``"observation"``).
+
+    :param prevalences: the draws of $\pi$, shape ``(R, K)``.
+    :param rates: the draws of $C$ in the ``cap-ml`` layout (``[r, j, i]``$=C_{ij}$), shape ``(R, K, K)``.
+    :return: shape ``(R, K, K)``, in the ``cap-ml`` layout (true classes on rows).
+    """
+    prevalences = np.asarray(prevalences, dtype=float)
+    rates = np.asarray(rates, dtype=float)
+    if tempering == "marginal" or temperature == 1.0:
+        return prevalences[:, :, None] * rates
+    if tempering == "complete":
+        return (prevalences[:, :, None] * rates) ** (1.0 / temperature)
+    if tempering == "observation":
+        return prevalences[:, :, None] * rates ** (1.0 / temperature)
+    raise ValueError(f"tempering must be one of {TEMPERINGS}; found {tempering!r}")
 
 
 def realised_tables(cts: np.ndarray, pred_counts: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -531,6 +587,13 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         value per class.
     :param temperature: posterior temperature $\tau>0$ of the two likelihood terms; $1$ (default) leaves the model
         untempered.
+    :param tempering: where the temperature acts with the realised step (WP-35, :data:`TEMPERINGS`):
+        ``"marginal"`` (default) divides the log-likelihood of the predicted counts of the bag by $\tau$ and draws
+        the realised table from $\rho_{ij}\propto C_{ij}\pi_j$; ``"complete"`` replaces it with
+        $\sum_iq_i\ln\sum_j(C_{ij}\pi_j)^{1/\tau}$ and $\rho_{ij}\propto(C_{ij}\pi_j)^{1/\tau}$;
+        ``"observation"`` with $\sum_iq_i\ln\sum_jC_{ij}^{1/\tau}\pi_j$ and $\rho_{ij}\propto C_{ij}^{1/\tau}\pi_j$.
+        The log-likelihood of $V$ is divided by $\tau$ in every case. A value other than ``"marginal"`` needs
+        ``estimand="realised"``; with $\tau=1$ every value gives the untempered model.
     :param random_state: seed of the NUTS sampler and of the multinomial
         draws; ``qp.environ["_R_SEED"]`` if ``None``, as in ``cap-ml``.
     """
@@ -546,6 +609,7 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         random_state: int | None = None,
         shares: Literal["centred", "non-centred"] = "centred",
         temperature: float = 1.0,
+        tempering: Literal["marginal", "complete", "observation"] = "marginal",
     ):
         if estimand not in ESTIMANDS:
             raise ValueError(f"estimand must be one of {ESTIMANDS}; found {estimand!r}")
@@ -557,8 +621,13 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
             raise ValueError(f"shares={shares!r} needs c_prior='hierarchical-f'; found {c_prior!r}")
         if not temperature > 0:
             raise ValueError(f"temperature must be positive; found {temperature!r}")
+        if tempering not in TEMPERINGS:
+            raise ValueError(f"tempering must be one of {TEMPERINGS}; found {tempering!r}")
+        if tempering != "marginal" and estimand != "realised":
+            raise ValueError(f'tempering="{tempering}" needs estimand="realised"; found {estimand!r}')
         self.shares = shares
         self.temperature = float(temperature)
+        self.tempering = tempering
         CAPContingencyTable.__init__(self, acc_fn)
         self.estimand = estimand
         self.c_prior = c_prior
@@ -606,8 +675,23 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
             numpyro.sample("F_yc", dist.Multinomial(train_class_count, p_c_cond_y), obs=train_class_cond_count)
 
         p_c = numpyro.deterministic(P_TEST_C, jnp.einsum("yc,y->c", p_c_cond_y, pi_))
-        with self._tempered():
-            numpyro.sample("N_c", dist.Multinomial(jnp.sum(pred_posterior_count), p_c), obs=pred_posterior_count)
+        if self._tempers_latent:
+            # the per-instance complete-data likelihood of the bag, tempered as set by tempering (WP-35): one row per
+            # predicted class c, with the terms log C_cy of the classes y, weighted by the counts q_c
+            log_rates = jnp.log(p_c_cond_y).T
+            loglik = tempered_latent_loglik(
+                log_rates, jnp.log(pi_), self.temperature, self.tempering, jnp.asarray(pred_posterior_count)
+            )
+            numpyro.factor("N_c", loglik)
+        else:
+            with self._tempered():
+                numpyro.sample("N_c", dist.Multinomial(jnp.sum(pred_posterior_count), p_c), obs=pred_posterior_count)
+
+    @property
+    def _tempers_latent(self) -> bool:
+        """Whether the temperature acts on the complete-data likelihood of the bag (WP-35): ``tempering`` other than
+        ``"marginal"`` and $\tau\ne1$; otherwise the model is that of ``"marginal"``."""
+        return getattr(self, "tempering", "marginal") != "marginal" and self.temperature != 1.0
 
     def _tempered(self):
         r"""The scaling by $1/\tau$ of a likelihood term (``numpyro.handlers.scale``); a no-op context with $\tau=1$, so
@@ -717,7 +801,12 @@ class BayCAP(CAPContingencyTable, CTCAPWithConfidence, BayesCAP):
         p_y_and_c_test = jnp.einsum("sy,syc->syc", samples[P_TEST_Y], samples[P_C_COND_Y])
         cts = np.array(jax.device_get(p_y_and_c_test))
         if self.estimand == "realised":
-            cts = realised_tables(cts, posterior_count, np.random.default_rng(self.random_state))
+            source = cts
+            if self._tempers_latent:
+                prevalences = np.asarray(jax.device_get(samples[P_TEST_Y]))
+                rates = np.asarray(jax.device_get(samples[P_C_COND_Y]))
+                source = tempered_class_tables(prevalences, rates, self.temperature, self.tempering)
+            cts = realised_tables(source, posterior_count, np.random.default_rng(self.random_state))
         return cts
 
     def predict_ct(self, X: np.ndarray, posteriors: np.ndarray) -> np.ndarray:

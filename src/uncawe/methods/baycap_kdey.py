@@ -48,6 +48,14 @@ each class of $V$ is split into cells by the prediction of $h$, the class densit
 $f_j=\sum_kC_{kj}\hat\phi_{kj}$ of the kernel densities of its cells, and $(\pi,C)$ are sampled jointly by NUTS, with the
 Hf prior on $C$ of ``methods/baycap.py`` (centred shares) and the validation counts observed as multinomials, as in
 ``BayCAP``. This model is the project's own, not a copy of QuaPy's.
+
+Work-plan card WP-35 adds ``tempering`` (``methods/baycap.py:TEMPERINGS``), with ``"realised-instance"`` only for a
+value other than ``"marginal"``: where the temperature acts with the per-instance pushforward. ``"marginal"`` (the
+default) divides the log-likelihood of the bag by $\tau$ and leaves the weights untempered; ``"complete"`` tempers the
+per-instance complete-data likelihood $\prod_n\pi_{Y_n}\hat f_{Y_n}(z_n)$ with the latent classes, so the likelihood
+of the bag is $\sum_n\ln\sum_j(\pi_j\hat f_j(z_n))^{1/\tau}$ and $w_{nj}\propto(\pi_j\hat f_j(z_n))^{1/\tau}$;
+``"observation"`` tempers its term $\hat f_{Y_n}(z_n)$ only: $\sum_n\ln\sum_j\pi_j\hat f_j(z_n)^{1/\tau}$ and
+$w_{nj}\propto\pi_j\hat f_j(z_n)^{1/\tau}$. With $\tau=1$ every value gives the untempered method.
 """
 
 from collections.abc import Callable
@@ -79,6 +87,7 @@ from uncawe.methods.baycap import (
     H_RHO_KAPPA,
     HIERARCHICAL_SUMMARIES,
     KAPPA_SUMMARIES,
+    TEMPERINGS,
     failed_summaries,
     hierarchical_rate_sites,
     hierarchical_summaries,
@@ -274,20 +283,35 @@ def select_temperature_from_scores(grid, scores: np.ndarray, reference: float = 
     return int(min(ties, key=lambda t: (abs(np.log(grid[t]) - np.log(reference)), grid[t])))
 
 
-def instance_weights(prevalences: np.ndarray, log_densities: np.ndarray) -> np.ndarray:
+def instance_weights(
+    prevalences: np.ndarray, log_densities: np.ndarray, temperature: float = 1.0, tempering: str = "marginal"
+) -> np.ndarray:
     r"""The posterior class probabilities of each instance of the bag given each draw (§T.15), by Bayes' rule:
     $w^{(r)}_{nj}=\pi^{(r)}_j\hat f_j(z_n)/\sum_\ell\pi^{(r)}_\ell\hat f_\ell(z_n)$, computed by log-sum-exp
     from $\ln\pi^{(r)}_j+\ln\hat f_j(z_n)$. An instance whose terms are all $-\infty$ (all classes impossible) gets
     $1/K$, as an impossible predicted class in :func:`uncawe.methods.baycap.realised_tables`.
 
+    With ``tempering`` ``"complete"`` or ``"observation"`` and $\tau\ne1$ (WP-35), the weights of the tempered
+    complete-data likelihood: $w^{(r)}_{nj}\propto(\pi^{(r)}_j\hat f_j(z_n))^{1/\tau}$ or
+    $w^{(r)}_{nj}\propto\pi^{(r)}_j\hat f_j(z_n)^{1/\tau}$.
+
     :param prevalences: the draws of $\pi$, shape ``(R, K)``.
     :param log_densities: ``[j, n]``$=\ln\hat f_j(z_n)$, shape ``(K, N)``.
+    :param temperature: $\tau$, used only with ``tempering`` other than ``"marginal"``.
+    :param tempering: ``"marginal"`` (untempered weights), ``"complete"`` or ``"observation"``.
     :return: ``[r, n, j]``$=w^{(r)}_{nj}$, shape ``(R, N, K)``.
     """
+    if tempering not in TEMPERINGS:
+        raise ValueError(f"tempering must be one of {TEMPERINGS}; found {tempering!r}")
     prevalences = np.asarray(prevalences, dtype=float)
     log_densities = np.asarray(log_densities, dtype=float)
+    tempered = tempering != "marginal" and temperature != 1.0
+    if tempered and tempering == "observation":
+        log_densities = log_densities / temperature
     with np.errstate(divide="ignore"):
         log_terms = np.log(prevalences)[:, None, :] + log_densities.T[None, :, :]
+    if tempered and tempering == "complete":
+        log_terms = log_terms / temperature
     log_norm = np.max(log_terms, axis=2, keepdims=True)
     finite = np.isfinite(log_norm)
     shifted = np.exp(log_terms - np.where(finite, log_norm, 0.0))
@@ -302,6 +326,8 @@ def instance_tables(
     pred: np.ndarray,
     rng: np.random.Generator,
     chunk_entries: int = INSTANCE_CHUNK_ENTRIES,
+    temperature: float = 1.0,
+    tempering: str = "marginal",
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""The per-instance pushforward of §T.15: one realised table per draw of $\pi$.
 
@@ -316,6 +342,8 @@ def instance_tables(
     :param pred: the indices of the predictions of $h$ on the bag, shape ``(N,)``.
     :param rng: the NumPy generator of the categorical draws.
     :param chunk_entries: the largest number of weights held at once.
+    :param temperature: $\tau$ of the weights with ``tempering`` other than ``"marginal"`` (:func:`instance_weights`).
+    :param tempering: where the temperature acts (WP-35); ``"marginal"``: untempered weights.
     :return: the tables, shape ``(R, K, K)``, in the ``cap-ml`` layout (``[r, j, i]``: true class $j$, predicted
         class $i$), and the confidences $p^{(r)}_n=w^{(r)}_{n\hat y_n}$, shape ``(R, N)``.
     """
@@ -333,7 +361,7 @@ def instance_tables(
     instances = np.arange(n_instances)
     for start in range(0, n_draws, step):
         stop = min(start + step, n_draws)
-        weights = instance_weights(prevalences[start:stop], log_densities)
+        weights = instance_weights(prevalences[start:stop], log_densities, temperature, tempering)
         confidences[start:stop] = weights[:, instances, pred]
         cumulative = np.cumsum(weights, axis=2)
         uniforms = rng.random((stop - start, n_instances))
@@ -479,6 +507,8 @@ class BayCAPKDEy(QuantifierBayCAP):
     :param temperature: temperature $\tau$ of the likelihood of the bag, a positive number or ``"cal"`` (selected on the
         calibration bags of ``bandwidth="cal"``).
     :param temperature_grid: the grid of ``temperature="cal"``; ``TAU_GRID`` if ``None``.
+    :param tempering: where the temperature acts with the per-instance pushforward (WP-35): ``"marginal"`` (default),
+        ``"complete"`` or ``"observation"``; a value other than ``"marginal"`` needs ``estimand="realised-instance"``.
     :param prior: Dirichlet parameter of the prior on $\pi$ (``"uniform"``, a positive scalar or a vector).
     :param random_state: seed of NUTS, of the MLP and of the multinomial draws, and the root of the seeds of the
         calibration of ``"cal"``; ``qp.environ["_R_SEED"]`` if ``None``.
@@ -514,7 +544,13 @@ class BayCAPKDEy(QuantifierBayCAP):
         cal_bag_size: int = CAL_BAG_SIZE,
         cal_nuts_check: bool = False,
         cal_solver: Literal["em", "slsqp"] = "em",
+        tempering: Literal["marginal", "complete", "observation"] = "marginal",
     ) -> None:
+        if tempering not in TEMPERINGS:
+            raise ValueError(f"tempering must be one of {TEMPERINGS}; found {tempering!r}")
+        if tempering != "marginal" and estimand != INSTANCE:
+            raise ValueError(f'tempering="{tempering}" needs estimand="{INSTANCE}"; found {estimand!r}')
+        self.tempering = tempering
         if c_prior not in KDEY_C_PRIORS:
             raise ValueError(f"c_prior must be one of {KDEY_C_PRIORS}; found {c_prior!r}")
         calibrates_temperature = isinstance(temperature, str)
@@ -605,13 +641,18 @@ class BayCAPKDEy(QuantifierBayCAP):
             # the hyperparameters), built exactly as with a numeric bandwidth
             bandwidth = getattr(self, "cal_bandwidth_", CAL_REFERENCE)
             return BayesKDEy(
-                kernel=self.kernel, bandwidth=bandwidth, shrinkage=self.shrinkage, **self._quantifier_settings()
+                kernel=self.kernel,
+                bandwidth=bandwidth,
+                shrinkage=self.shrinkage,
+                tempering=self.tempering,
+                **self._quantifier_settings(),
             )
         return BayesKDEy(
             kernel=self.kernel,
             bandwidth=self.bandwidth,
             bandwidth_grid=self.bandwidth_grid,
             shrinkage=self.shrinkage,
+            tempering=self.tempering,
             **self._quantifier_settings(),
         )
 
@@ -932,7 +973,14 @@ class BayCAPKDEy(QuantifierBayCAP):
         prevalences = np.asarray(prevalences, dtype=float)
         pred = np.argmax(posteriors, axis=1)
         rng = np.random.default_rng(self.random_state)
-        cts, confidences = instance_tables(prevalences, self.quantifier_.last_bag_log_densities(), pred, rng)
+        cts, confidences = instance_tables(
+            prevalences,
+            self.quantifier_.last_bag_log_densities(),
+            pred,
+            rng,
+            temperature=self.temperature,
+            tempering=self.tempering,
+        )
         moments = instance_moments(confidences, pred, len(self.classes_))
         shares = pred_counts / pred_counts.sum()
         centres = class_precisions(prevalences, self.rate_matrix_) @ shares

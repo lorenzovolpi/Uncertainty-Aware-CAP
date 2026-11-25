@@ -155,6 +155,22 @@ INVALIDATED_TEMPERED_BASES = ("BayCAP-KDEy-mlp-real",)
 ALL_TEMPERED_BASES = ("BayesCAP-Hf-real", "BayCAP-KDEy-mlp-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
 TEMPERED_VARIANTS = {f"{base}-t{tau:g}": (base, tau) for base in ALL_TEMPERED_BASES for tau in TEMPERATURE_LEVELS}
 METHOD_CLASS |= {name: METHOD_CLASS[base] for name, (base, _) in TEMPERED_VARIANTS.items()}
+# the methods of card WP-35: where the temperature acts with the realised step (methods/baycap.py:TEMPERINGS), for
+# BayesCAP-real, BayesCAP-Hf-real and BayCAP-KDEy-h-inst-cb (user's choice of 2026-11-25), at the temperatures of E5.2:
+# <base>-t<tau>-complete (the per-instance complete-data likelihood of the bag, with the latent true classes, raised to
+# 1/tau) and <base>-t<tau>-obs (its term of the observation only), and BayesCAP-real-t<tau> (tempering="marginal", as
+# the methods of E5.2, absent so far); everything else, seeds included, as the untempered method. Apart from
+# TEMPERED_VARIANTS, so that E5.2, E5.3 and their tables are unchanged; outside the main tables, ranks and default plots
+# (tables/main.py); name -> (untempered method, tau, tempering)
+PLACEMENT_BASES = ("BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst-cb")
+PLACEMENT_SUFFIXES = {"complete": "complete", "observation": "obs"}
+PLACEMENT_VARIANTS = {f"BayesCAP-real-t{tau:g}": ("BayesCAP-real", tau, "marginal") for tau in TEMPERATURE_LEVELS} | {
+    f"{base}-t{tau:g}-{suffix}": (base, tau, tempering)
+    for base in PLACEMENT_BASES
+    for tau in TEMPERATURE_LEVELS
+    for tempering, suffix in PLACEMENT_SUFFIXES.items()
+}
+METHOD_CLASS |= {name: METHOD_CLASS[base] for name, (base, _, _) in PLACEMENT_VARIANTS.items()}
 # the methods of E7.1 of docs/ext7_kdey_bandwidth.md (card WP-25): BayCAP-KDEy-mlp-real and SQS-B with BayesKDEy at
 # bandwidth="loo" (one bandwidth per class, selected by leave-one-out likelihood on the cross-fitted validation outputs
 # of the MLP over methods/bayes_kdey.py:LOO_GRID, densities normalised on the simplex), everything else, seeds included,
@@ -186,6 +202,7 @@ BAYES_POOL_METHODS = (
     | frozenset(KDEY_HF_VARIANTS)
     | frozenset({SQS_B})
     | frozenset(TEMPERED_VARIANTS)
+    | frozenset(PLACEMENT_VARIANTS)
     | frozenset(LOO_VARIANTS)
     | frozenset(CAL_VARIANTS)
 )
@@ -263,10 +280,11 @@ def instance_method(acc, name: str, temperature: float = 1.0, prior="uniform") -
     return fixed_c_method(acc, INSTANCE_VARIANTS[name], estimand=INSTANCE, temperature=temperature, prior=prior)
 
 
-def logloss_method(acc, name: str, temperature: float = 1.0, prior="uniform") -> BayCAPKDEy:
+def logloss_method(acc, name: str, temperature: float = 1.0, prior="uniform", **kdey_options) -> BayCAPKDEy:
     """The method ``name`` of E3.5 (``LOGLOSS_VARIANTS``): its method of E3.4 with ``bandwidth="logloss"`` (grid
     ``LOO_GRID``), everything else as the method of E3.4; ``temperature`` and ``prior`` as in :func:`instance_method`
-    (the selection of the bandwidth depends on neither)."""
+    (the selection of the bandwidth depends on neither); ``kdey_options`` are further arguments of ``BayCAPKDEy``
+    (``tempering`` in WP-35)."""
     return fixed_c_method(
         acc,
         INSTANCE_VARIANTS[LOGLOSS_VARIANTS[name]],
@@ -274,6 +292,7 @@ def logloss_method(acc, name: str, temperature: float = 1.0, prior="uniform") ->
         bandwidth=LOGLOSS,
         temperature=temperature,
         prior=prior,
+        **kdey_options,
     )
 
 
@@ -334,9 +353,10 @@ def cal_method(acc, name: str, nuts_check: bool = False) -> BayCAPKDEy:
     )
 
 
-def baycap_method(acc, name: str, temperature: float = 1.0) -> BayCAP:
+def baycap_method(acc, name: str, temperature: float = 1.0, tempering: str = "marginal") -> BayCAP:
     """The BayCAP method ``name`` of ``BAYCAP_VARIANTS``, with the NUTS settings and default seed of BayCAP, its
-    options (``BAYCAP_OPTIONS``) and the posterior temperature ``temperature`` ($1$ except in E5.2)."""
+    options (``BAYCAP_OPTIONS``), the posterior temperature ``temperature`` ($1$ except in E5.2 and WP-35) and the
+    placement ``tempering`` of the temperature (``"marginal"`` except in WP-35)."""
     estimand, c_prior = BAYCAP_VARIANTS[name]
     return BayCAP(
         acc,
@@ -345,6 +365,7 @@ def baycap_method(acc, name: str, temperature: float = 1.0) -> BayCAP:
         num_samples=BOOTSTRAP_ITERS,
         num_warmup=BAYES_WARMUPS,
         temperature=temperature,
+        tempering=tempering,
         **BAYCAP_OPTIONS.get(name, {}),
     )
 
@@ -356,6 +377,15 @@ def tempered_method(acc, name: str) -> BayCAP | BayCAPKDEy:
     if base in BAYCAP_VARIANTS:
         return baycap_method(acc, base, temperature=tau)
     return kdey_method(acc, base, temperature=tau)
+
+
+def placement_method(acc, name: str) -> BayCAP | BayCAPKDEy:
+    """The method ``name`` of WP-35 (``PLACEMENT_VARIANTS``): its untempered method with the temperature and the
+    placement ``tempering`` of ``name``."""
+    base, tau, tempering = PLACEMENT_VARIANTS[name]
+    if base in BAYCAP_VARIANTS:
+        return baycap_method(acc, base, temperature=tau, tempering=tempering)
+    return logloss_method(acc, base, temperature=tau, tempering=tempering)
 
 
 def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
@@ -407,6 +437,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
         yield name, sqs_s(acc, rho)
     for name in TEMPERED_VARIANTS:
         yield name, tempered_method(acc, name)
+    for name in PLACEMENT_VARIANTS:
+        yield name, placement_method(acc, name)
     for name in LOO_VARIANTS:
         yield name, loo_method(acc, name)
     for name in CAL_VARIANTS:
