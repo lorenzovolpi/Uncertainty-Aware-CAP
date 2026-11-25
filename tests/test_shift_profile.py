@@ -1,5 +1,9 @@
 import unittest
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -7,9 +11,11 @@ from uncawe.plots.common import method_table_label
 from uncawe.plots.shift_profile import (
     DEFAULT_METHODS,
     add_bag_index,
+    dataset_profile,
+    geometric_summary,
     k_groups,
     parse_args,
-    relative_profile,
+    plot_profile,
     shift_levels,
 )
 
@@ -63,17 +69,75 @@ class TestShiftLevels(unittest.TestCase):
             add_bag_index(_scores({("d", "LR", 2): [0.1, 0.2]}).iloc[:-1])
 
 
-class TestRelativeProfile(unittest.TestCase):
-    def test_common_reference_cancels_pair_difficulty_and_keeps_gaps(self):
-        # two pairs of the same dataset, the second 10 times harder; B is twice A in every bag
+class TestProfile(unittest.TestCase):
+    def test_dataset_profile_averages_the_classifiers_of_a_dataset(self):
         easy = _scores({("d", "LR", 2): [0.0, 1.0]})
         hard = _scores({("d", "kNN", 2): [0.0, 1.0]}, scale={"A": 10.0, "B": 20.0})
         df = shift_levels(add_bag_index(pd.concat([easy, hard], ignore_index=True)), n_bins=2)
-        profile = relative_profile(df).set_index(["method", "level"])
-        # reference of each pair: mean of A and B over the levels = 1.5 * 1.5 = 2.25 (times 10 for the hard pair)
-        self.assertAlmostEqual(profile.loc[("A", 0), "acc_err"], 1.0 / 2.25)
-        self.assertAlmostEqual(profile.loc[("B", 1), "winkler"], 4.0 / 2.25)
-        self.assertAlmostEqual(profile.loc[("B", 0), "acc_err"] / profile.loc[("A", 0), "acc_err"], 2.0)
+        profile = dataset_profile(df).set_index(["method", "level"])
+        # A: (1 + 10) / 2 at level 0, (2 + 20) / 2 at level 1
+        self.assertAlmostEqual(profile.loc[("A", 0), "acc_err"], 5.5)
+        self.assertAlmostEqual(profile.loc[("A", 1), "winkler"], 11.0)
+
+    def test_geometric_mean_and_bars_without_the_dataset_level(self):
+        # dataset e: A=1, B=2 at both levels; dataset h: the same times 100, so the dataset levels differ a lot
+        rows = [
+            {"method": m, "dataset": d, "n_classes": 2, "level": lvl, "acc_err": v * f, "winkler": v * f}
+            for d, f in (("e", 1.0), ("h", 100.0))
+            for m, v in (("A", 1.0), ("B", 2.0))
+            for lvl in (0, 1)
+        ]
+        summary = geometric_summary(pd.DataFrame(rows), "acc_err", ["A", "B"]).set_index(["method", "level"])
+        # geometric mean of 1 and 100 is 10; B is twice A
+        self.assertAlmostEqual(summary.loc[("A", 0), "value"], 10.0)
+        self.assertAlmostEqual(summary.loc[("B", 1), "value"], 20.0)
+        # the same pattern on both datasets once their levels are removed: zero-width bars
+        np.testing.assert_allclose(summary["lower"], summary["value"])
+        np.testing.assert_allclose(summary["upper"], summary["value"])
+        self.assertEqual(summary["n_datasets"].unique().tolist(), [2])
+
+    def test_bars_are_the_standard_error_of_the_centred_logs(self):
+        rows = [
+            {"method": m, "dataset": d, "n_classes": 2, "level": 0, "acc_err": v, "winkler": v}
+            for d, values in (("e", (1.0, 4.0)), ("h", (1.0, 1.0)))
+            for m, v in zip(("A", "B"), values)
+        ]
+        summary = geometric_summary(pd.DataFrame(rows), "acc_err", ["A", "B"]).set_index("method")
+        # centred logs of A: -log 2 (e) and 0 (h); sd = log 2 / sqrt 2, SE = sd / sqrt 2 = log 2 / 2
+        self.assertAlmostEqual(summary.loc["A", "value"], np.sqrt(1.0))
+        self.assertAlmostEqual(summary.loc["A", "upper"], np.exp(np.log(2) / 2))
+        self.assertAlmostEqual(summary.loc["A", "lower"], np.exp(-np.log(2) / 2))
+
+    def test_missing_or_non_positive_values_raise(self):
+        rows = pd.DataFrame(
+            [
+                {"method": "A", "dataset": "e", "n_classes": 2, "level": 0, "acc_err": 1.0, "winkler": 1.0},
+                {"method": "B", "dataset": "e", "n_classes": 2, "level": 0, "acc_err": 0.0, "winkler": 1.0},
+                {"method": "A", "dataset": "h", "n_classes": 2, "level": 0, "acc_err": 1.0, "winkler": 1.0},
+            ]
+        )
+        with self.assertRaises(ValueError):
+            geometric_summary(rows, "winkler", ["A", "B"])
+        with self.assertRaises(ValueError):
+            geometric_summary(rows.iloc[:2], "acc_err", ["A", "B"])
+
+    def test_plot_has_log_axes_dodged_bars_and_csv_values(self):
+        rng = np.random.default_rng(0)
+        shifts = {(f"d{i}", "LR", 2): rng.random(20).round(2).tolist() for i in range(3)}
+        df = shift_levels(add_bag_index(_scores(shifts)), n_bins=4)
+        fig, values = plot_profile([("all $K$", dataset_profile(df))], ["A", "B"], 4)
+        left, right = fig.axes[:2]
+        self.assertEqual((left.get_yscale(), right.get_yscale()), ("log", "log"))
+        self.assertEqual([left.get_title(), right.get_title()], ["AE", "W"])
+        xs = [np.asarray(container.lines[0].get_xdata(), dtype=float) for container in left.containers]
+        np.testing.assert_allclose((xs[0] + xs[1]) / 2, np.arange(1, 5))
+        self.assertTrue((xs[0] < xs[1]).all())
+        self.assertEqual(len(values), 2 * 2 * 4)
+        self.assertTrue((values["lower"] <= values["value"]).all() and (values["value"] <= values["upper"]).all())
+        plt.close(fig)
+
+    def test_pooled_is_the_default_figure(self):
+        self.assertEqual(parse_args([]).figures, ["pooled"])
 
     def test_k_groups_label_the_range_present(self):
         df = _scores(
@@ -84,7 +148,7 @@ class TestRelativeProfile(unittest.TestCase):
                 ("l", "LR", 26): [0.1, 0.2],
             }
         )
-        profile = relative_profile(shift_levels(add_bag_index(df), n_bins=2))
+        profile = dataset_profile(shift_levels(add_bag_index(df), n_bins=2))
         groups = k_groups(profile)
         self.assertEqual([label for label, _ in groups], ["$K=2$", "$3\\leq K\\leq 7$", "$K\\geq 10$"])
         self.assertEqual([part["dataset"].nunique() for _, part in groups], [1, 2, 1])

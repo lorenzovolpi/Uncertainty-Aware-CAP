@@ -77,7 +77,7 @@ AVC = Command("plot-avc", "python -m uncawe.plots.amplitude_vs_coverage --domain
 SHIFT_PROFILE = Command(
     "plot-shift-profile",
     "python -m uncawe.plots.shift_profile --domain classic",
-    ("--figures", "by_k", "--exclude-methods", "SQS-B"),
+    ("--figures", "pooled", "--exclude-methods", "SQS-B"),
 )
 BINFORM_SIDE_PRIOR = Command(
     "plot-binform-side-prior",
@@ -131,7 +131,8 @@ ARTEFACTS = (
         AVC,
         name="amplitude_vs_coverage_zoom",
     ),
-    Artefact("figures", "plots/main/shift_profile/shift_profile_by_k_classic_vanilla_accuracy", SHIFT_PROFILE),
+    # the pooled shift profile with bars in place of the one by group of K (user's decision of 2026-11-25)
+    Artefact("figures", "plots/main/shift_profile/shift_profile_pooled_classic_vanilla_accuracy", SHIFT_PROFILE),
     *(
         Artefact(
             "figures",
