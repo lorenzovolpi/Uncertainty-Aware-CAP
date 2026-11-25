@@ -438,8 +438,8 @@ class TestScores(unittest.TestCase):
         for part in ("a", "b"):
             fig = plots.plot_scores(self.out["pairs"], part)
             axes = fig.axes[:4]
-            self.assertEqual([ax.get_ylabel() for ax in axes], ["AE", "Winkler score $W$", "amplitude", "coverage"])
-            self.assertEqual([ax.get_yscale() for ax in axes], ["log", "log", "log", "linear"])
+            self.assertEqual([ax.get_ylabel() for ax in axes], ["AE", "W", "Amplitude", "Coverage"])
+            self.assertEqual([ax.get_yscale() for ax in axes], ["linear"] * 4)
             self.assertTrue(all(ax.get_xscale() == "log" for ax in axes))
             # the nominal coverage line
             self.assertIn(plots.NOMINAL_COVERAGE, [line.get_ydata()[0] for line in axes[3].get_lines()])

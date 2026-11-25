@@ -9,10 +9,13 @@ absolute error (AE) of the point estimate and the Winkler score $W$ at $1-\alpha
 and the coverage of the interval; one line per method. The values and the bars follow the shift profile
 (``plots/common.py:dataset_bars``): the classifiers of a dataset are averaged first (one, LR, in E4.4), then
 
-- AE, $W$ and amplitude: the geometric mean over the datasets on a logarithmic axis, with bars of $\pm1$ standard
-  error over the datasets of the logarithms after removing each dataset's mean over the plotted methods and sizes;
+- AE, $W$ and amplitude: the geometric mean over the datasets, with bars of $\pm1$ standard error over the datasets of
+  the logarithms after removing each dataset's mean over the plotted methods and sizes (so the bars are slightly
+  longer above the point than below it);
 - coverage (which can be $0$): the arithmetic mean over the datasets on a linear axis, with bars of $\pm1$ standard
   error over the datasets of the values after removing each dataset's mean, and a dashed line at the nominal $0.95$.
+
+Every vertical axis is linear (user's decision of 2026-11-25), with the labels AE, W, Amplitude and Coverage.
 
 The bars depend on the set of plotted methods, the points do not. Before 2026-11-25: two panels (AE, $W$), arithmetic
 means over the pairs with bars of $\pm1$ standard error over the pairs. The methods are shifted sideways around each
@@ -38,7 +41,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
-from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
 
 from uncawe import env
 from uncawe.experiments.target_size import E44_LEVELS, E44_METHODS, EXPERIMENT
@@ -68,14 +70,13 @@ LEVEL_TICKS = {
     "1/(2sqrt2)": "$1/(2\\sqrt{2})$",
     "1/4": "$1/4$",
 }
-# rows of panels: (score, label, logarithmic axis)
+# rows of panels: (score, label, geometric mean with bars from the logarithms); every vertical axis is linear
 PANELS = (
-    (("ae", "AE", True), ("winkler", "Winkler score $W$", True)),
-    (("amplitude", "amplitude", True), ("coverage", "coverage", False)),
+    (("ae", "AE", True), ("winkler", "W", True)),
+    (("amplitude", "Amplitude", True), ("coverage", "Coverage", False)),
 )
 NOMINAL_COVERAGE = 0.95
 NOMINAL_LINE = {"color": "0.4", "linewidth": 0.8, "linestyle": "--", "zorder": 1}
-LOG_TICKS = (0.005, 0.007, 0.01, 0.015, 0.02, 0.03, 0.05, 0.07, 0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0)
 # sideways shift between consecutive methods, as a fraction of the spacing (in decades) between consecutive sizes
 DODGE = 0.05
 U_TICKS = (100, 300, 1000, 3000, 10000)
@@ -114,8 +115,8 @@ def plot_scores(pairs: pd.DataFrame, part: str, without: str | None = None, excl
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(4.6 * n_cols, 3.4 * n_rows), squeeze=False)
     n_datasets = 0
     for r, panel_row in enumerate(PANELS):
-        for ax, (name, label, log) in zip(axes[r], panel_row):
-            bars = dataset_bars(rows, name, "x", methods, log=log)
+        for ax, (name, label, geometric) in zip(axes[r], panel_row):
+            bars = dataset_bars(rows, name, "x", methods, log=geometric)
             n_datasets = int(bars["n_datasets"].iloc[0])
             for i, method in enumerate(methods):
                 line = bars.loc[bars["method"] == method].sort_values("x")
@@ -134,12 +135,7 @@ def plot_scores(pairs: pd.DataFrame, part: str, without: str | None = None, excl
                     capthick=0.9,
                 )
             ax.set_xscale("log")
-            if log:
-                ax.set_yscale("log")
-                ax.yaxis.set_major_locator(FixedLocator(LOG_TICKS))
-                ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
-                ax.yaxis.set_minor_formatter(NullFormatter())
-            else:
+            if name == "coverage":
                 ax.axhline(NOMINAL_COVERAGE, **NOMINAL_LINE)
             ax.grid(which="major", color="#e5e5e5", linewidth=0.5)
             ax.tick_params(labelsize=font_size(7))
