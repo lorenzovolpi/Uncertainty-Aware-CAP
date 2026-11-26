@@ -28,7 +28,8 @@ from uncawe.methods.sqs_b import SQSB
 from uncawe.methods.tcal import CAL_BAG_SIZE, CalibratedTemperature
 
 BAYES_WARMUPS = 500
-BAYES_N_JOBS = 16
+# 32 since 2026-11-26 (user's decision; 16 before), with N_JOBS 64 on bcuda (env.json): the draws do not depend on it
+BAYES_N_JOBS = 32
 # environment of the worker processes (experiments/execution.py:run_tasks): one thread in the thread pools of the
 # numerical libraries (the variables joblib sets in its workers), so that each worker keeps about one core busy
 THREAD_LIMITS = {
