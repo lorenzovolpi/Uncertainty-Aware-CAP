@@ -171,7 +171,8 @@ E55_PRIORS = E54_PRIORS
 # which stays a base of E5.1 and E5.4 (E51_BASE_METHODS)
 E55_KDEY_BASES = ("BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
 E55_PRIOR_BASES = ("BayesCAP-Hf-real", *E55_KDEY_BASES, SQS_B)
-E55_REFERENCES = ("SQS-H", "SQS-Hbs", "PQ")
+# since card WP-36 (user's decision of 2026-11-26) also the SQS methods with KDEy as quantifier, the defaults of main
+E55_REFERENCES = ("SQS-H", "SQS-Hbs", "PQ", "SQS-H-KDEy", "SQS-Hbs-KDEy", "PQ-KDEy")
 # WP-34 (user's decision of 2026-11-25): the two methods with tau selected inside the fit, with each prior on pi^Q and
 # tau selected under that prior (the calibration bags stay UPP); apart from E55_PRIOR_BASES, so that the tables and
 # plots of E5.5 are unchanged; not BayesCAP-tcal and BayesCAP-real-tcal, whose bases are not in E5.5

@@ -100,6 +100,10 @@ METHOD_CLASS = {
 PQ_RHO_LEVELS = (0.1, 0.3, 0.5, 0.7, 0.9)
 PQ_RHO_VARIANTS = {f"PQ-rho{rho}": rho for rho in PQ_RHO_LEVELS}
 METHOD_CLASS |= {name: PrediQuant for name in PQ_RHO_VARIANTS}
+# E6.2 with KDEy as the quantifier of SQS-S (card WP-36, user's decision of 2026-11-26): PQ-KDEy at the same levels,
+# everything else as PQ-rho<rho>; name -> rho. Outside the main tables, ranks and default plots, as PQ-rho<rho>
+PQ_KDEY_RHO_VARIANTS = {f"PQ-KDEy-rho{rho}": rho for rho in PQ_RHO_LEVELS}
+METHOD_CLASS |= {name: PrediQuant for name in PQ_KDEY_RHO_VARIANTS}
 # estimand and prior on the columns of C of the BayCAP methods of main (methods/baycap.py:BayCAP): BayesCAP-real is
 # E2.3, the EB methods are E2.4, BayesCAP-H-real is E2.7, BayesCAP-Hf-real is E2.8 and BayesCAP-Hfn-real is E2.9 of
 # docs/ext2_baycap.md; all share the priors on pi, NUTS settings and default seed
@@ -570,6 +574,8 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
 
     for name, rho in PQ_RHO_VARIANTS.items():
         yield name, sqs_s(acc, rho)
+    for name, rho in PQ_KDEY_RHO_VARIANTS.items():
+        yield name, sqs_s(acc, rho, quantifier="kdey")
     for name in TEMPERED_VARIANTS:
         yield name, tempered_method(acc, name)
     for name in PLACEMENT_VARIANTS:

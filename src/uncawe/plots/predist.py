@@ -19,10 +19,10 @@ def _safe_name(name: str) -> str:
     return str(name).replace(os.sep, "__").replace(" ", "_")
 
 
-def _plot_stem(dataset: str, classifier: str, acc_name: str, sample_id: int) -> str:
+def _plot_stem(dataset: str, classifier: str, acc_name: str, sample_id: int, method_name: str = METHOD_NAME) -> str:
     parent = os.path.join(env.root_dir, "plots", EXPERIMENT, dataset)
     os.makedirs(parent, exist_ok=True)
-    filename = f"{_safe_name(acc_name)}_{_safe_name(classifier)}_{METHOD_NAME}_{sample_id:02d}"
+    filename = f"{_safe_name(acc_name)}_{_safe_name(classifier)}_{method_name}_{sample_id:02d}"
     return os.path.join(parent, filename)
 
 
@@ -40,9 +40,7 @@ def _convex_hull(points: np.ndarray) -> np.ndarray:
     points = points[np.lexsort((points[:, 1], points[:, 0]))]
 
     def cross(origin, left, right):
-        return (left[0] - origin[0]) * (right[1] - origin[1]) - (left[1] - origin[1]) * (
-            right[0] - origin[0]
-        )
+        return (left[0] - origin[0]) * (right[1] - origin[1]) - (left[1] - origin[1]) * (right[0] - origin[0])
 
     lower = []
     for point in points:
@@ -148,8 +146,7 @@ def _ensure_plot_metrics(df: pd.DataFrame) -> pd.DataFrame:
     if {"ci_coverage", "ci_amplitude", "ci_winkler"}.issubset(df.columns):
         return df
     metrics = [
-        _interval_metrics(row.true_acc, row.interval_low, row.interval_high)
-        for row in df.itertuples(index=False)
+        _interval_metrics(row.true_acc, row.interval_low, row.interval_high) for row in df.itertuples(index=False)
     ]
     df["ci_coverage"] = [coverage for coverage, _, _ in metrics]
     df["ci_amplitude"] = [amplitude for _, amplitude, _ in metrics]
@@ -163,6 +160,7 @@ def plot_grouped_sample(
     classifier: str,
     acc_name: str,
     sample_id: int,
+    method_name: str = METHOD_NAME,
 ) -> None:
     plot_df = _ensure_plot_metrics(df)
     rows = plot_df.loc[plot_df["sample_id"] == sample_id, :].copy()
@@ -191,7 +189,7 @@ def plot_grouped_sample(
     fig.suptitle(f"{dataset} | {acc_name} | {classifier} | sample {sample_id:02d}", fontsize=12)
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.20, top=0.86)
-    stem = _plot_stem(dataset, classifier, acc_name, sample_id)
+    stem = _plot_stem(dataset, classifier, acc_name, sample_id, method_name)
     fig.savefig(f"{stem}.png", dpi=180)
     fig.savefig(f"{stem}.svg")
     plt.close(fig)

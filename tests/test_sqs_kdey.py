@@ -1,10 +1,14 @@
 """Tests of the SQS methods with KDEy as quantifier (work-plan card WP-36): SQS-H-KDEy, SQS-Hbs-KDEy and PQ-KDEy."""
 
+import os
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import quapy as qp
 from quapy.method.aggregative import PACC, KDEyML
 
+from uncawe import env
 from uncawe.experiments import methods as em
 from uncawe.experiments import target_size as ts
 from uncawe.experiments.metrics import gen_acc_measure
@@ -114,3 +118,56 @@ class SqsKdeyTablesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SqsKdeyStudiesTest(unittest.TestCase):
+    """E6.2, E6.1 and the references of E5.5 with KDEy as the quantifier of the SQS methods (WP-36)."""
+
+    @classmethod
+    def setUpClass(cls):
+        qp.environ["_R_SEED"] = 0
+        cls.methods = dict(em.gen_methods())
+
+    def test_e62_allocations(self):
+        from uncawe.tables import pq_rho
+
+        self.assertEqual(list(em.PQ_KDEY_RHO_VARIANTS.values()), list(em.PQ_RHO_VARIANTS.values()))
+        for (kdey, rho), (pacc, rho_pacc) in zip(em.PQ_KDEY_RHO_VARIANTS.items(), em.PQ_RHO_VARIANTS.items()):
+            with self.subTest(method=kdey):
+                self.assertEqual(rho, rho_pacc)
+                self.assertIsInstance(self.methods[kdey].q, KDEyML)
+                self.assertEqual(_settings(self.methods[kdey]), _settings(self.methods[pacc]))
+                self.assertNotIn(kdey, main_tables.MAIN_METHODS)
+        self.assertEqual(pq_rho.QUANTIFIERS["kdey"][0], em.PQ_KDEY_RHO_VARIANTS)
+        args = pq_rho.parse_args(["--tables", "--quantifier", "kdey"])
+        self.assertTrue(pq_rho.table_dir(args).endswith(os.path.join("pq_rho", "kdey")))
+        self.assertFalse(pq_rho.table_dir(pq_rho.parse_args(["--tables"])).endswith("kdey"))
+        self.assertIn("KDEyML(MLP)", pq_rho.caption({}, 0, "kdey"))
+
+    def test_e61_quantifier(self):
+        from uncawe.experiments import predist
+        from uncawe.experiments.predist_config import QUANTIFIERS
+        from uncawe.experiments.predist_io import result_path
+
+        method = predist.build_prediquant(lambda ct: 0.0, 10, 30, "l1", seed=0, quantifier="kdey")
+        self.assertIsInstance(method.q, KDEyML)
+        self.assertIsInstance(predist.build_prediquant(lambda ct: 0.0, 10, 30, "l1", seed=0).q, PACC)
+        self.assertEqual(QUANTIFIERS["pacc"], ("PrediQuant", "PACC(MLP)"))
+        with tempfile.TemporaryDirectory() as root, patch.object(env, "root_dir", root):
+            pacc_path = result_path("classic", "d", "c", "vanilla_accuracy")
+            kdey_path = result_path("classic", "d", "c", "vanilla_accuracy", QUANTIFIERS["kdey"][0])
+        self.assertNotEqual(pacc_path, kdey_path)
+        self.assertEqual(os.path.dirname(pacc_path), os.path.dirname(kdey_path))
+
+    def test_e55_references(self):
+        from uncawe.experiments import binform
+        from uncawe.plots import binform_side_prior as bsp
+
+        for name in KDEY:
+            with self.subTest(method=name):
+                self.assertIn(name, binform.E55_REFERENCES)
+                self.assertIsNone(binform.E55_METHODS[name][1])
+                self.assertIsInstance(binform.e55_method(name, 2).q, KDEyML)
+                self.assertIn(name, bsp.METHOD_ORDER)
+                self.assertNotIn(name, bsp.DEFAULT_EXCLUDE)
+        self.assertEqual(set(bsp.DEFAULT_EXCLUDE), set(PACC_METHODS))

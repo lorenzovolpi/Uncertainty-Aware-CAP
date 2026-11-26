@@ -33,7 +33,7 @@ from cap.models.confidence import PrediQuant
 from cap.utils.commons import contingency_table, parallel
 
 from uncawe.experiments.execution import shutdown_parallel_workers, worker_environment
-from uncawe.experiments.methods import CONFIDENCE_LEVEL, THREAD_LIMITS, pacc
+from uncawe.experiments.methods import CONFIDENCE_LEVEL, SQS_QUANTIFIERS, THREAD_LIMITS
 from uncawe.experiments.metrics import acc_from_ct
 from uncawe.experiments.predist_config import (
     DEFAULT_ACC_NAME,
@@ -42,16 +42,16 @@ from uncawe.experiments.predist_config import (
     DEFAULT_N_JOBS,
     DEFAULT_NUM_SAMPLES,
     DEFAULT_NUM_TEST,
+    DEFAULT_QUANTIFIER,
     DEFAULT_SAMPLE_SIZE,
     DEFAULT_SEED,
     EXPERIMENT,
     METHOD_NAME,
     PREDIQUANT_ALPHA,
     PREDIQUANT_DISTANCE_FNS,
-    QUANTIFIER_NAME,
+    QUANTIFIERS,
     RESULT_SCHEMA_VERSION,
     SAMPLE_REGIONS,
-    THREE_CLASS_DATASETS,
 )
 from uncawe.experiments.predist_io import (
     atomic_save_parquet as _atomic_save_parquet,
@@ -152,13 +152,16 @@ def _interval_metrics(
     return coverage, amplitude, float(winkler)
 
 
-def build_prediquant(acc_fn, num_samples: int, sample_size: int, distance: str, seed: int) -> PrediQuant:
-    """PrediQuant with the settings of ``PQ`` in ``main`` (``experiments/methods.py:gen_methods``): PACC(MLP) with the
-    MLP seeded by ``qp.environ["_R_SEED"]``, $\\alpha=0.1$ (``num_samples / alpha`` candidate bags), estimated
-    prevalences of the candidates; the split of $V$ and the candidate bags are seeded by ``seed``."""
+def build_prediquant(
+    acc_fn, num_samples: int, sample_size: int, distance: str, seed: int, quantifier: str = DEFAULT_QUANTIFIER
+) -> PrediQuant:
+    """PrediQuant with the settings of ``PQ`` in ``main`` (``experiments/methods.py:gen_methods``): PACC(MLP), or
+    KDEyML(MLP) as ``PQ-KDEy`` with ``quantifier="kdey"`` (WP-36), with the MLP seeded by ``qp.environ["_R_SEED"]``,
+    $\\alpha=0.1$ (``num_samples / alpha`` candidate bags), estimated prevalences of the candidates; the split of $V$ and
+    the candidate bags are seeded by ``seed``."""
     return PrediQuant(
         acc_fn,
-        pacc(),
+        SQS_QUANTIFIERS[quantifier](),
         alpha=PREDIQUANT_ALPHA,
         num_samples=num_samples,
         sample_size=sample_size,
@@ -195,6 +198,7 @@ def _record(
     val_true_prev: np.ndarray,
     prediction: Any,
     elapsed: float,
+    quantifier: str = DEFAULT_QUANTIFIER,
 ) -> dict[str, Any]:
     distances = np.linalg.norm(val_prev - sample.actual_prev.reshape(1, 3), axis=1)
     y_hat = np.argmax(sample.posteriors, axis=-1)
@@ -208,8 +212,8 @@ def _record(
         "classifier": p.h_info.name,
         "classifier_full_name": p.h_info.full_name,
         "acc_name": acc_name,
-        "method": METHOD_NAME,
-        "quantifier": QUANTIFIER_NAME,
+        "method": QUANTIFIERS[quantifier][0],
+        "quantifier": QUANTIFIERS[quantifier][1],
         "schema_version": RESULT_SCHEMA_VERSION,
         "distance": distance,
         "sample_id": sample.sample_id,
@@ -240,11 +244,11 @@ def _record(
     }
 
 
-def _generate_plots(df: pd.DataFrame, p: PretrainInfo, acc_name: str) -> None:
+def _generate_plots(df: pd.DataFrame, p: PretrainInfo, acc_name: str, method_name: str = METHOD_NAME) -> None:
     from uncawe.plots.predist import plot_grouped_sample
 
     for sample_id in sorted(df["sample_id"].unique()):
-        plot_grouped_sample(df, p.d_info.name, p.h_info.full_name, acc_name, int(sample_id))
+        plot_grouped_sample(df, p.d_info.name, p.h_info.full_name, acc_name, int(sample_id), method_name)
 
 
 def _run_one_pretrain(
@@ -258,8 +262,10 @@ def _run_one_pretrain(
     plot: bool,
     overwrite: bool,
     log,
+    quantifier: str = DEFAULT_QUANTIFIER,
 ) -> None:
-    result_path = _result_path(p.domain, p.d_info.name, p.h_info.full_name, acc_name)
+    method_name = QUANTIFIERS[quantifier][0]
+    result_path = _result_path(p.domain, p.d_info.name, p.h_info.full_name, acc_name, method_name)
     existing = pd.DataFrame() if overwrite else _load_existing(result_path)
     done = set() if overwrite else _completed_keys(existing)
 
@@ -274,7 +280,7 @@ def _run_one_pretrain(
         sample_size,
         seed,
     )
-    method = build_prediquant(acc_fn, num_samples, sample_size, distances[0], seed)
+    method = build_prediquant(acc_fn, num_samples, sample_size, distances[0], seed, quantifier)
     method.fit(dataset.V, val_posteriors)
 
     rows = []
@@ -302,6 +308,7 @@ def _run_one_pretrain(
                     val_true_prev,
                     prediction,
                     time() - started,
+                    quantifier,
                 )
             )
         if distance_rows:
@@ -312,11 +319,12 @@ def _run_one_pretrain(
     if plot:
         final_df = _load_existing(result_path)
         if not final_df.empty:
-            _generate_plots(final_df, p, acc_name)
+            _generate_plots(final_df, p, acc_name, method_name)
 
 
 def _run_one_pretrain_args(args):
-    p, distances, num_test, sample_size, num_samples, seed, acc_name, plot, overwrite = args
+    p, distances, num_test, sample_size, num_samples, seed, acc_name, plot, overwrite, *rest = args
+    quantifier = rest[0] if rest else DEFAULT_QUANTIFIER
     qp.environ["SAMPLE_SIZE"] = sample_size
     qp.environ["_R_SEED"] = seed
     log = get_logger(EXPERIMENT)
@@ -332,6 +340,7 @@ def _run_one_pretrain_args(args):
             plot,
             overwrite,
             log,
+            quantifier,
         )
         return True, p.d_info.name, p.h_info.name, None
     except Exception as error:
@@ -351,7 +360,7 @@ def run(args) -> None:
     datasets = _three_class_dataset_names(args.datasets)
     classifiers = _parse_classifiers(args.classifiers)
     log.info(
-        f"starting {EXPERIMENT}: domain={args.domain}, classifiers={classifiers}, quantifier={QUANTIFIER_NAME}, "
+        f"starting {EXPERIMENT}: domain={args.domain}, classifiers={classifiers}, quantifier={QUANTIFIERS[getattr(args, 'quantifier', DEFAULT_QUANTIFIER)][1]}, "
         f"acc={args.acc_name}, "
         f"datasets={datasets}, distances={distances}, num_test={args.num_test}, sample_size={args.sample_size}, "
         f"num_samples={args.num_samples}, n_jobs={args.n_jobs}, plot={not args.no_plot}, overwrite={args.overwrite}"
@@ -379,6 +388,7 @@ def run(args) -> None:
             args.acc_name,
             not args.no_plot,
             args.overwrite,
+            getattr(args, "quantifier", DEFAULT_QUANTIFIER),
         )
         for p in pretrains
     ]
@@ -429,6 +439,8 @@ def parse_args():
     parser.add_argument("--n-jobs", type=int, default=DEFAULT_N_JOBS)
     parser.add_argument("--no-plot", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
+    # WP-36: the quantifier of PrediQuant, PACC(MLP) (the results of E6.1) or KDEyML(MLP), stored in its own file
+    parser.add_argument("--quantifier", choices=list(QUANTIFIERS), default=DEFAULT_QUANTIFIER)
     return parser.parse_args()
 
 
