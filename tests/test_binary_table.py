@@ -33,7 +33,7 @@ class BinaryTableTest(unittest.TestCase):
         self.assertIn("\\rotatebox{90}{AC}", latex)
         self.assertIn("\\rotatebox{90}{CBPE}", latex)
         self.assertNotIn(main_tables.EMPTY_CELL, latex)
-        self.assertIn("Wins vs LEAP", latex)
+        self.assertIn("Wins vs AC", latex)
         self.assertIn("Avg.\\ rank", latex)
 
     def test_only_binary_datasets_are_loaded(self):

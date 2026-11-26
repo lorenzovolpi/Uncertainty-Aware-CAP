@@ -120,8 +120,10 @@ EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
 # decision) AC-LSB, the default AC (label "AC"), is also a baseline of the main tables, after LEAP, while the default
 # CBPE (L-CBPE-LSB, label "CBPE") is not, as it runs only on the binary datasets
 BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP", "AC", "AC-LSB", "L-CBPE", "L-CBPE-LSB")
-# the reference of the win/tie/loss row at the bottom of the main tables (user's decision of 2026-11-24): LEAP
-WTL_REFERENCE = "O-LEAP"
+# the reference of the win/tie/loss rows at the bottom of the main tables: AC (AC-LSB) since 2026-11-27, LEAP
+# (O-LEAP) from 2026-11-24 (user's decisions); a table without the reference (AC-LSB estimates vanilla accuracy only,
+# so the macro-F1 and macro-K tables) has no win/tie/loss rows, only the average rank
+WTL_REFERENCE = "AC-LSB"
 
 
 def ordered_method_names() -> list[str]:

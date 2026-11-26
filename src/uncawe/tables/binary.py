@@ -6,7 +6,7 @@ which runs only on the binary datasets) under "Baseline methods", then the defau
 ``BayCAP-KDEy-h-inst-cb-tcal-keep``, under "Our methods". Rows: the pairs of the ``uci_binary`` datasets of ``main``
 (5 datasets, every classifier). The table is built by the code of the main tables (``tables/main.py``): per classifier
 and dataset, the mean (and, without ``--no-std``, the standard deviation) over the bags of AE and of the Winkler score
-at $\alpha=0.05$, the same colours and daggers, and the rows of wins, ties and losses against LEAP and of the average
+at $\alpha=0.05$, the same colours and daggers, and the rows of wins, ties and losses against AC (``tables/main.py:WTL_REFERENCE``) and of the average
 rank. Every method is scored against the realised table of the bag (``true_cts``); the intervals of ``AC-LSB`` and
 ``L-CBPE-LSB`` are read from their stored probability mass function (``tables/main.py:PMF_INTERVALS``). Vanilla
 accuracy only, since ``AC`` and ``CBPE`` estimate no other metric.

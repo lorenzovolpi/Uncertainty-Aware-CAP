@@ -49,7 +49,7 @@ class ACCBPETableTest(unittest.TestCase):
         # the multiclass row has two empty cells per metric, those of CBPE
         multi = next(line for line in latex.splitlines() if " & multi & " in line)
         self.assertEqual(multi.count(main_tables.EMPTY_CELL), 2 * len(CBPE))
-        self.assertIn("Wins vs LEAP", latex)
+        self.assertIn("Wins vs AC", latex)
         self.assertIn("Avg.\\ rank", latex)
 
     def test_main_table_unchanged_without_methods(self):

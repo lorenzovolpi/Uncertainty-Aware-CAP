@@ -99,6 +99,21 @@ class TestSummaryRows(unittest.TestCase):
             self.assertEqual(wtl[("C", metric)], (0, 2, 0))
             self.assertNotIn((main_tables.WTL_REFERENCE, metric), wtl)
 
+    def test_reference_is_ac(self):
+        self.assertEqual(main_tables.WTL_REFERENCE, "AC-LSB")
+        self.assertEqual(main_tables.METHOD_LATEX_LABELS[main_tables.WTL_REFERENCE], "AC")
+
+    def test_no_win_tie_loss_rows_without_the_reference(self):
+        # AC-LSB has no macro-F1 or macro-K: those tables keep only the average rank
+        methods = [m for m in METHODS if m != main_tables.WTL_REFERENCE]
+        rng = np.random.default_rng(2)
+        df = pd.concat([_bags({m: list(rng.random(20)) for m in methods}, d) for d in ("d1", "d2")])
+        latex = main_tables._results_latex_table(df, METRICS, show_std=False, dataset_order=["d1", "d2"])
+        tail = latex[latex.index("\\midrule", latex.index("d2")) :]
+        lines = [line for line in tail.splitlines() if line.startswith("\\multicolumn{2}{l}")]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("Avg.", lines[0])
+
     def test_average_ranks(self):
         df = pd.concat([_bags(self.scores, "d1"), _bags({**self.scores, "A": self.scores["B"]}, "d2")])
         ranks = main_tables.average_ranks(_mean(df), self.methods, METRICS)
@@ -116,7 +131,7 @@ class TestSummaryRows(unittest.TestCase):
         self.assertEqual(len(lines), 4)
         wins, ties, losses, ranks = lines
         for line, outcome in ((wins, "Wins"), (ties, "Ties"), (losses, "Losses")):
-            self.assertIn(f"{{{outcome} vs LEAP}}", line)
+            self.assertIn(f"{{{outcome} vs AC}}", line)
         # one cell per method and metric after the label; the reference gets none
         rows = [line.removesuffix(" \\\\").split(" & ")[1:] for line in (wins, ties, losses)]
         reference = methods.index(main_tables.WTL_REFERENCE)

@@ -7,7 +7,7 @@ Columns, in this order: the baselines of the main tables (``DoC``, ``QuAcc_NxN``
 "Baseline methods", then ``BayesCAP-Hf-real-tcal`` and ``BayCAP-KDEy-h-inst-cb-tcal-keep`` (WP-34) under "Our methods".
 The table is built by the code of the main tables (``tables/main.py``): per classifier and dataset, the mean and
 standard deviation over the bags of AE and of the Winkler score at $\alpha=0.05$, the same colours and daggers, and the
-rows of wins, ties and losses against LEAP and of the average rank. Every method is scored against the realised table
+rows of wins, ties and losses against AC (``AC-LSB``, ``tables/main.py:WTL_REFERENCE``) and of the average rank. Every method is scored against the realised table
 of the bag (``true_cts``); the intervals of ``AC``, ``AC-LSB``, ``L-CBPE`` and ``L-CBPE-LSB`` are read from their
 stored probability mass function (``tables/main.py:PMF_INTERVALS``). Vanilla accuracy only, since ``AC`` and ``CBPE``
 estimate no other metric; on the multiclass datasets the ``CBPE`` cells are empty and the average rank leaves them out.
