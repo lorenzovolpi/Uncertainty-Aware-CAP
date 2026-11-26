@@ -105,8 +105,9 @@ MAIN_METHODS = (
 )
 MAIN_METHODS_BEFORE_BAYESCAP = tuple(m for m in MAIN_METHODS if m != "BayesCAP")
 EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
-# the baselines of the main tables, under "Baseline methods" and separated from the other methods by a vertical line
-BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP")
+# the baselines of the main tables, under "Baseline methods" and separated from the other methods by a vertical line;
+# AC and CBPE with their two calibrators (E8.1, E8.3) are baselines of tables/ac_cbpe.py, never in the main tables
+BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP", "AC", "AC-LSB", "L-CBPE", "L-CBPE-LSB")
 # the reference of the win/tie/loss row at the bottom of the main tables (user's decision of 2026-11-24): LEAP
 WTL_REFERENCE = "O-LEAP"
 
@@ -686,13 +687,17 @@ def _results_latex_table(
     show_std: bool = True,
     dataset_order: list[str] | None = None,
     include: tuple[str, ...] = (),
+    methods: list[str] | None = None,
 ) -> str:
+    """LaTeX of a main table; the columns are the methods of the main tables plus ``include``, or ``methods`` in
+    their order if given (``tables/ac_cbpe.py``), restricted to those with results in ``df``."""
     row_levels = _row_levels(df)
     stats = df.groupby(row_levels + ["method"], sort=False)[list(metrics)].agg(["mean", "std"])
     mean = stats.xs("mean", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
     std = stats.xs("std", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
 
-    methods = [method for method in table_method_names(include) if method in mean.columns.get_level_values("method")]
+    candidates = table_method_names(include) if methods is None else methods
+    methods = [method for method in candidates if method in mean.columns.get_level_values("method")]
     columns = _ordered_columns(methods, metrics)
     rows = _ordered_row_index(mean.index, dataset_order)
     mean = mean.reindex(index=rows)
@@ -991,11 +996,18 @@ def _table_dir(pargs) -> str:
 
 
 def load_table_frame(
-    main_base_dir: str, domain: str, acc: str, classifiers: list[str], include: tuple[str, ...] = ()
+    main_base_dir: str,
+    domain: str,
+    acc: str,
+    classifiers: list[str],
+    include: tuple[str, ...] = (),
+    methods: list[str] | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """The per-bag scores of the main-table methods (AE, coverage, amplitude and Winkler score of the realised
-    accuracy, from ``true_cts``), with the display names of the datasets and their order."""
-    results = load_results(main_base_dir, acc, domain, classifiers, table_method_names(include))
+    """The per-bag scores of the main-table methods plus ``include``, or of ``methods`` if given (AE, coverage,
+    amplitude and Winkler score of the realised accuracy, from ``true_cts``), with the display names of the datasets
+    and their order."""
+    names = table_method_names(include) if methods is None else list(methods)
+    results = load_results(main_base_dir, acc, domain, classifiers, names)
     dataset_order = _ordered_dataset_names(results.df)
     df = (
         results.map_column_values("dataset", dataset_map)
