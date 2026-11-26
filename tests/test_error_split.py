@@ -185,7 +185,7 @@ class TestTables(unittest.TestCase):
         self.assertLess(max(self.table[f"{m}_max_identity_gap"].max() for m in tables.METHODS), tables.IDENTITY_TOL)
         wine = self.table.loc[self.table["dataset"] == "wine"].iloc[0]
         self.assertEqual(wine["BayesCAP-Hf-real-tcal_n_dropped"], 1)
-        self.assertEqual(wine["PQ_n_dropped"], 0)
+        self.assertEqual(wine["PQ-KDEy_n_dropped"], 0)
         self.assertEqual(len(self.bags), len(PAIRS) * N_BAGS * len(tables.METHODS) - 1)
         self.assertEqual(wine["oracle_oracle_ae_pool"], 0.0)
         # the oracle cell (pi^Q, d^pool) of every method equals the e3 of the bag

@@ -64,10 +64,14 @@ METHOD_CLASS = {
     "AC-LSB": AC,
     "L-CBPE-LSB": CBPE,
     "SQS-H": RQBS,
+    # the SQS methods with KDEy as quantifier (card WP-36), see SQS_KDEY_VARIANTS below, each after its PACC version
+    "SQS-H-KDEy": RQBS,
     "SQS-Hbs": RQBS,
+    "SQS-Hbs-KDEy": RQBS,
     # SQS-B of E3.3 (card WP-18), see SQS_B below
     "SQS-B": SQSB,
     "PQ": PrediQuant,
+    "PQ-KDEy": PrediQuant,
     "BayesCAP": BayCAP,
     "BayesCAP-real": BayCAP,
     "BayesCAP-EB": BayCAP,
@@ -282,19 +286,31 @@ def pacc():
     return PACC(MLP(random_state=qp.environ["_R_SEED"]))
 
 
-def sqs_h(acc, bootstrap: bool, sample_size: int = SAMPLE_SIZE) -> RQBS:
+# the quantifiers of the SQS methods: PACC(MLP), as in the paper, or KDEyML(MLP) (card WP-36, the kdey() of LEAP and
+# QuAcc: its own seeded MLP, QuaPy's default bandwidth 0.1)
+SQS_QUANTIFIERS = {"pacc": pacc, "kdey": kdey}
+# the SQS methods with KDEy as quantifier (card WP-36, user's decision of 2026-11-26): name -> (PACC method, everything
+# else, seeds included, as the PACC method); the defaults of the main tables, ranks and plots since 2026-11-26
+SQS_KDEY_VARIANTS = {"SQS-H-KDEy": "SQS-H", "SQS-Hbs-KDEy": "SQS-Hbs", "PQ-KDEy": "PQ"}
+
+
+def sqs_h(acc, bootstrap: bool, sample_size: int = SAMPLE_SIZE, quantifier: str = "pacc") -> RQBS:
     """SQS-H (``bootstrap=False``, one estimate of the target prevalence) or SQS-Hbs (``bootstrap=True``, one bag per
-    bootstrap estimate of the prevalence): cap-ml's RQBS with PACC(MLP), ``BOOTSTRAP_ITERS`` bags of ``sample_size``
+    bootstrap estimate of the prevalence): cap-ml's RQBS with the quantifier ``quantifier`` of ``SQS_QUANTIFIERS``
+    (PACC(MLP) by default, KDEyML(MLP) for the methods of WP-36), ``BOOTSTRAP_ITERS`` bags of ``sample_size``
     instances of $V$ ($1000$ in ``main``; the size of the target bag in E4.4, ``experiments/target_size.py``)."""
-    return RQBS(acc, pacc(), num_samples=BOOTSTRAP_ITERS, sample_size=sample_size, bootstrap=bootstrap)
+    return RQBS(
+        acc, SQS_QUANTIFIERS[quantifier](), num_samples=BOOTSTRAP_ITERS, sample_size=sample_size, bootstrap=bootstrap
+    )
 
 
-def sqs_s(acc, rho: float | None = None, sample_size: int = SAMPLE_SIZE) -> PrediQuant:
-    """SQS-S as in ``PQ`` (PACC(MLP), 10,000 candidates, gamma=0.1, L1, m=1000), with the allocation ``rho``;
-    ``sample_size`` is the size of the candidate bags ($1000$ in ``main``; the size of the target bag in E4.4)."""
+def sqs_s(acc, rho: float | None = None, sample_size: int = SAMPLE_SIZE, quantifier: str = "pacc") -> PrediQuant:
+    """SQS-S as in ``PQ`` (PACC(MLP) by default, KDEyML(MLP) for ``PQ-KDEy`` of WP-36; 10,000 candidates, gamma=0.1,
+    L1, m=1000), with the allocation ``rho``; ``sample_size`` is the size of the candidate bags ($1000$ in ``main``;
+    the size of the target bag in E4.4)."""
     return PrediQuant(
         acc,
-        pacc(),
+        SQS_QUANTIFIERS[quantifier](),
         num_samples=BOOTSTRAP_ITERS,
         sample_size=sample_size,
         alpha=0.1,
@@ -520,9 +536,12 @@ def gen_methods() -> Iterator[tuple[str, CAPWithConfidence]]:
     # SQS-H as in the paper (one estimate of the target prevalence) and with a bootstrap of the prevalence (one bag per
     # bootstrap estimate; the method called RQBS until 2026-11-10), cap-ml's RQBS with bootstrap=False and True (FIX-2)
     yield "SQS-H", sqs_h(acc, bootstrap=False)
+    yield "SQS-H-KDEy", sqs_h(acc, bootstrap=False, quantifier="kdey")
     yield "SQS-Hbs", sqs_h(acc, bootstrap=True)
+    yield "SQS-Hbs-KDEy", sqs_h(acc, bootstrap=True, quantifier="kdey")
     yield SQS_B, sqs_b(acc)
     yield "PQ", sqs_s(acc)
+    yield "PQ-KDEy", sqs_s(acc, quantifier="kdey")
     # BayesCAP is built from BayCAP, with the draws of cap-ml's ACC_BayesCAP, so that it stores the NUTS diagnostics
     for name in BAYCAP_VARIANTS:
         yield name, baycap_method(acc, name)

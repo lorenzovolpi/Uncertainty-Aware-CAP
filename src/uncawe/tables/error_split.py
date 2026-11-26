@@ -73,10 +73,14 @@ TABLE_SETS = {"e4.1": ("rms", "signed"), "e4.3": ("oracle_realised", "oracle_poo
 SHORT_LABELS = {
     "QuAcc_NxN": "QuAcc",
     "O-LEAP": "LEAP",
-    "SQS-H": "SQS-H",
-    "SQS-Hbs": "SQS-H\\textsubscript{bs}",
+    "SQS-H": "SQS-H-PACC",
+    "SQS-Hbs": "SQS-H\\textsubscript{bs}-PACC",
+    # card WP-36: the SQS methods with KDEy, in MAIN_METHODS since 2026-11-26, with the plain labels
+    "SQS-H-KDEy": "SQS-H",
+    "SQS-Hbs-KDEy": "SQS-H\\textsubscript{bs}",
+    "PQ-KDEy": "SQS-S",
     "SQS-B": "SQS-B",
-    "PQ": "SQS-S",
+    "PQ": "SQS-S-PACC",
     "BayesCAP-real": "\\bcap{}",
     "BayesCAP-Hf-real": "Hf",
     "BayCAP-KDEy-mlp-real": "KDEy mlp",

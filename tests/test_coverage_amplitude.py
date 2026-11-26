@@ -50,7 +50,7 @@ class TestCoverageAmplitude(unittest.TestCase):
         # 0.8496 prints as 0.850: in the band; 0.0996 prints as 0.100: not below the threshold
         coverage = dict.fromkeys(METHODS, 0.95)
         coverage["DoC"] = 0.8496
-        coverage["PQ"] = 0.8494
+        coverage["PQ-KDEy"] = 0.8494
         amplitude = dict.fromkeys(METHODS, 0.05)
         amplitude["DoC"] = 0.0996
         mean = _frame(coverage, amplitude).groupby(["classifier", "dataset", "method"])[list(ca.METRICS)].mean()
@@ -59,26 +59,26 @@ class TestCoverageAmplitude(unittest.TestCase):
         styles = ca.cell_styles(mean)
         row = ("LR", "d1")
         self.assertIn(ca.GREEN, styles.loc[row, ("DoC", "coverage")])
-        self.assertIn("#ffffff", styles.loc[row, ("PQ", "coverage")])
+        self.assertIn("#ffffff", styles.loc[row, ("PQ-KDEy", "coverage")])
         self.assertIn("#ffffff", styles.loc[row, ("DoC", "amplitude")])
-        self.assertIn(ca.GREEN, styles.loc[row, ("PQ", "amplitude")])
+        self.assertIn(ca.GREEN, styles.loc[row, ("PQ-KDEy", "amplitude")])
 
     def test_bold_goes_to_closest_coverage_and_narrowest_amplitude(self):
         coverage = dict.fromkeys(METHODS, 0.80)
-        coverage["SQS-H"] = 0.99
-        coverage["PQ"] = 0.93  # closest to 0.95
+        coverage["SQS-H-KDEy"] = 0.99
+        coverage["PQ-KDEy"] = 0.93  # closest to 0.95
         amplitude = {m: 0.1 + 0.01 * i for i, m in enumerate(METHODS)}
-        amplitude["SQS-Hbs"] = 0.01  # narrowest
+        amplitude["SQS-Hbs-KDEy"] = 0.01  # narrowest
         mean = _frame(coverage, amplitude).groupby(["classifier", "dataset", "method"])[list(ca.METRICS)].mean()
         mean = mean.unstack("method").swaplevel(0, 1, axis=1)
         mean.columns = mean.columns.set_names(["method", "metric"])
         styles = ca.cell_styles(mean)
         row = ("LR", "d1")
         bold = [col for col in styles.columns if "bold" in styles.loc[row, col]]
-        self.assertEqual(sorted(bold), [("PQ", "coverage"), ("SQS-Hbs", "amplitude")])
+        self.assertEqual(sorted(bold), [("PQ-KDEy", "coverage"), ("SQS-Hbs-KDEy", "amplitude")])
         # coverage 0.80 is 0.15 away: white; 0.93 is in the band: green
         self.assertIn("#ffffff", styles.loc[row, ("DoC", "coverage")])
-        self.assertIn(ca.GREEN, styles.loc[row, ("PQ", "coverage")])
+        self.assertIn(ca.GREEN, styles.loc[row, ("PQ-KDEy", "coverage")])
 
     def test_latex_table_has_the_main_table_structure(self):
         coverage = dict.fromkeys(METHODS, 0.95)
