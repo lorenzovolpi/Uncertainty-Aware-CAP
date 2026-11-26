@@ -155,7 +155,7 @@ def _synthetic():
                 est_props = np.abs(props + prev_err * rng.normal(size=k))
                 est_props /= est_props.sum()
                 est = _table(est_props, np.clip(d_pool + rec_err, 0, 1))
-                failed = m == "BayesCAP-Hf-real" and dataset == "wine" and b == 0
+                failed = m == "BayesCAP-Hf-real-tcal" and dataset == "wine" and b == 0
                 if failed:
                     est = np.full((k, k), np.nan)
                 row = {
@@ -167,7 +167,7 @@ def _synthetic():
                     "estim_cts": est,
                     "estim_accs": np.nan if failed else float(np.trace(est)),
                 }
-                if m == "BayesCAP-Hf-real":
+                if m == "BayesCAP-Hf-real-tcal":
                     row["nuts_failed"] = int(failed)
                 results[m].append(row)
     return {m: pd.DataFrame(rows) for m, rows in results.items()}, pool
@@ -184,7 +184,7 @@ class TestTables(unittest.TestCase):
         self.assertEqual(list(self.table["dataset"].astype(str)), ["spam", "spam", "wine"])
         self.assertLess(max(self.table[f"{m}_max_identity_gap"].max() for m in tables.METHODS), tables.IDENTITY_TOL)
         wine = self.table.loc[self.table["dataset"] == "wine"].iloc[0]
-        self.assertEqual(wine["BayesCAP-Hf-real_n_dropped"], 1)
+        self.assertEqual(wine["BayesCAP-Hf-real-tcal_n_dropped"], 1)
         self.assertEqual(wine["PQ_n_dropped"], 0)
         self.assertEqual(len(self.bags), len(PAIRS) * N_BAGS * len(tables.METHODS) - 1)
         self.assertEqual(wine["oracle_oracle_ae_pool"], 0.0)
@@ -194,7 +194,7 @@ class TestTables(unittest.TestCase):
 
     def test_check_summary(self):
         checks = tables.check_summary(self.table).set_index("method")
-        self.assertEqual(checks.loc["BayesCAP-Hf-real", "dropped_bags"], 1)
+        self.assertEqual(checks.loc["BayesCAP-Hf-real-tcal", "dropped_bags"], 1)
         self.assertEqual(checks["pairs_above_tol"].sum(), 0)
 
     def test_rms_styler(self):

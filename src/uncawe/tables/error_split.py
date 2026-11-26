@@ -4,7 +4,10 @@ E4.1 and E4.3 of ``docs/ext4_uncertainty_budget.md``).
 Methods: the methods of the main table whose estimate comes from a contingency table, ``tables/main.py:MAIN_METHODS``
 without ``DoC`` (which estimates accuracy directly): ``QuAcc_NxN``, ``O-LEAP``, ``SQS-H``, ``SQS-Hbs`` (SQS-H with a bootstrap of the prevalence), ``SQS-B`` (E3.3, since card
 WP-18), ``PQ`` (SQS-S),
-``BayesCAP-real``, ``BayesCAP-Hf-real`` and ``BayCAP-KDEy-mlp-real``. Vanilla accuracy, $|U|=1000$, the pairs of
+``BayesCAP-real``, ``BayesCAP-Hf-real`` and ``BayCAP-KDEy-mlp-real`` (since 2026-11-26 the BayCAP methods with the
+temperature calibrated per pair and metric, WP-34: ``BayesCAP-real-tcal``, ``BayesCAP-Hf-real-tcal`` and
+``BayCAP-KDEy-h-inst-cb-tcal-keep``, whose tables for vanilla accuracy are those of the fit at the $\tau$ selected for
+it). Vanilla accuracy, $|U|=1000$, the pairs of
 ``main`` stored for all the methods. Every method and every quantity is scored against the realised table of each bag
 (``true_cts``).
 
@@ -60,7 +63,8 @@ from uncawe.util import decorate_dataset
 TABLE_NAME = "error_split"
 KEYS = ["dataset", "classifier"]
 # SQS-B (E3.3) from card WP-18 (user's decision of 2026-11-13) to 2026-11-24, when it left MAIN_METHODS (user's decision
-# of 2026-11-24); BayesCAP, shown in the main tables since 2026-11-23, is left out (user's decision of 2026-11-23)
+# of 2026-11-24); BayesCAP, shown in the main tables since 2026-11-23, is left out (user's decision of 2026-11-23), and
+# so is BayesCAP-tcal, which replaces it since 2026-11-26
 METHODS = tuple(m for m in main_tables.MAIN_METHODS_BEFORE_BAYESCAP if m != "DoC")
 IDENTITY_TOL = 1e-9
 TABLE_SETS = {"e4.1": ("rms", "signed"), "e4.3": ("oracle_realised", "oracle_pool")}
@@ -76,6 +80,10 @@ SHORT_LABELS = {
     "BayCAP-KDEy-mlp-real": "KDEy mlp",
     # since WP-31 the BayCAP-KDEy of MAIN_METHODS (E3.4)
     "BayCAP-KDEy-h-inst": "KDEy",
+    # since 2026-11-26 the BayCAP methods of MAIN_METHODS, with the temperature calibrated per pair (WP-34)
+    "BayesCAP-real-tcal": "\\bcap{}-tcal",
+    "BayesCAP-Hf-real-tcal": "Hf-tcal",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "KDEy-tcal",
 }
 PART_LABELS = {"e1": "$e_1$", "e2": "$e_2$", "e3": "$e_3$", "total": "$\\hat A-A$"}
 CELL_LABELS = {

@@ -236,9 +236,11 @@ class FactoryTest(unittest.TestCase):
         self.assertEqual(experiment_methods.get_method_names().index(INST), names.index("BayCAP-KDEy-h-real") + 1)
 
     def test_main_tables_and_shift_profile(self):
-        self.assertIn(INST, main_tables.MAIN_METHODS)
+        # since 2026-11-26 the BayCAP-KDEy of the main tables and of the shift profile is
+        # BayCAP-KDEy-h-inst-cb-tcal-keep (tests/test_tcal.py)
+        self.assertNotIn(INST, main_tables.MAIN_METHODS)
         self.assertNotIn("BayCAP-KDEy-mlp-real", main_tables.MAIN_METHODS)
-        self.assertIn(INST, shift_profile.DEFAULT_METHODS)
+        self.assertNotIn(INST, shift_profile.DEFAULT_METHODS)
         self.assertNotIn("BayCAP-KDEy-mlp-real", shift_profile.DEFAULT_METHODS)
         self.assertEqual(METHOD_LATEX_LABELS[INST], "\\bcapkdey")
         self.assertEqual(METHOD_LATEX_LABELS["BayCAP-KDEy-mlp-real"], "\\bcap{}-KDEy-mlp-real")

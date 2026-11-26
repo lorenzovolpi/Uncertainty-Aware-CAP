@@ -395,6 +395,35 @@ class FactoryTest(unittest.TestCase):
         self.assertEqual(METHOD_PLOT_LABELS["BayesCAP-tcal"], "BayCAP-pop-tcal")
         self.assertEqual(METHOD_PLOT_LABELS["BayesCAP-real-tcal"], "BayCAP-sample-tcal")
 
+    def test_default_methods_of_tables_and_plots(self):
+        # user's decision of 2026-11-26: each BayCAP family is shown with its calibrated temperature
+        from uncawe.plots import amplitude_vs_coverage, shift_profile
+        from uncawe.plots.common import DEFAULT_METHODS
+        from uncawe.tables import coverage_amplitude, error_split
+        from uncawe.tables import main as main_tables
+
+        defaults = ("BayesCAP-tcal", "BayesCAP-real-tcal", "BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal-keep")
+        self.assertEqual(main_tables.MAIN_METHODS[-4:], defaults)
+        for untempered in ("BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst"):
+            self.assertNotIn(untempered, main_tables.MAIN_METHODS)
+            self.assertNotIn(untempered, DEFAULT_METHODS)
+            self.assertNotIn(untempered, shift_profile.DEFAULT_METHODS)
+        # every default is a stored method of main (no rerun)
+        for name in defaults:
+            self.assertIn(name, em.get_method_names())
+        # the population method is left out where BayesCAP was
+        self.assertEqual(main_tables.MAIN_METHODS_BEFORE_BAYESCAP, main_tables.MAIN_METHODS[:-4] + defaults[1:])
+        self.assertEqual(amplitude_vs_coverage.PLOT_METHODS, list(main_tables.MAIN_METHODS_BEFORE_BAYESCAP))
+        self.assertNotIn("BayesCAP-tcal", error_split.METHODS)
+        self.assertEqual(error_split.METHODS, main_tables.MAIN_METHODS_BEFORE_BAYESCAP[1:])
+        for name in error_split.METHODS:
+            self.assertIn(name, error_split.SHORT_LABELS)
+        self.assertIs(coverage_amplitude.main_tables, main_tables)
+        self.assertIn("BayesCAP-tcal", DEFAULT_METHODS)
+        self.assertEqual(shift_profile.DEFAULT_METHODS[-2:], defaults[2:])
+        for name in shift_profile.DEFAULT_METHODS:
+            self.assertIn(name, shift_profile.SHIFT_PROFILE_COLORS)
+
     def test_keep_grid(self):
         self.assertEqual(
             em.KEEP_VARIANTS,

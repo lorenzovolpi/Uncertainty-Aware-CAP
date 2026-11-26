@@ -63,8 +63,9 @@ FIGURES = ("by_k", "pooled")
 DEFAULT_FIGURES = ("pooled",)
 METRICS = (("acc_err", "AE"), ("winkler", "W"))
 # BayCAP-KDEy-h-inst in place of BayCAP-KDEy-mlp-real since E3.4 (card WP-31, user's decision of 2026-11-24), with its
-# colour
-DEFAULT_METHODS = ("O-LEAP", "SQS-Hbs", "SQS-B", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst")
+# colour; since 2026-11-26 (user's decision) BayCAP-Hf and BayCAP-KDEy with their calibrated temperature (WP-34),
+# BayesCAP-Hf-real-tcal and BayCAP-KDEy-h-inst-cb-tcal-keep, with the colours of the methods they replace
+DEFAULT_METHODS = ("O-LEAP", "SQS-Hbs", "SQS-B", "BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal-keep")
 # colours of this figure only (user's decision of 2026-11-21): the shared METHOD_COLORS of BayesCAP-Hf-real and
 # BayCAP-KDEy-mlp-real are too faint next to the other three; methods not listed fall back to grey
 SHIFT_PROFILE_COLORS = {
@@ -73,6 +74,8 @@ SHIFT_PROFILE_COLORS = {
     "SQS-B": "#F58518",
     "BayesCAP-Hf-real": "#E45756",
     "BayCAP-KDEy-h-inst": "#54A24B",
+    "BayesCAP-Hf-real-tcal": "#E45756",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "#54A24B",
 }
 # groups of the number of classes K, as (lower, upper) bounds, upper None for no bound
 K_GROUPS = ((2, 2), (3, 9), (10, None))

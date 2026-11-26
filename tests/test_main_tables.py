@@ -133,10 +133,12 @@ class TestSummaryRows(unittest.TestCase):
 
 class TestIncludedMethods(unittest.TestCase):
     def test_included_method_sits_next_to_its_sibling(self):
-        methods = main_tables.table_method_names(("BayCAP-KDEy-h-real",))
+        # since 2026-11-26 the BayCAP-KDEy of the main tables is BayCAP-KDEy-h-inst-cb-tcal-keep, which follows
+        # BayCAP-KDEy-h-inst in the order of the stored methods
+        methods = main_tables.table_method_names(("BayCAP-KDEy-h-inst",))
         self.assertEqual(len(methods), N + 1)
-        i = methods.index("BayCAP-KDEy-h-real")
-        self.assertEqual(methods[i + 1], "BayCAP-KDEy-h-inst")
+        i = methods.index("BayCAP-KDEy-h-inst")
+        self.assertEqual(methods[i + 1], "BayCAP-KDEy-h-inst-cb-tcal-keep")
         self.assertEqual(main_tables.table_method_names(), METHODS)
 
     def test_kdey_labels(self):
@@ -155,7 +157,7 @@ class TestIncludedMethods(unittest.TestCase):
         latex = main_tables._results_latex_table(df, METRICS, False, ["d1", "d2"], ("BayCAP-KDEy-h-real",))
         self.assertIn(f"\\multicolumn{{{N + 1 - 3}}}{{c|}}{{Our methods}}", latex)
         self.assertEqual(latex.count("\\rotatebox{90}{\\bcap{}-KDEy-h-real}"), 2)
-        self.assertEqual(latex.count("\\rotatebox{90}{\\bcapkdey}"), 2)
+        self.assertEqual(latex.count("\\rotatebox{90}{\\bcapkdey{}-cb-tcal-keep}"), 2)
         # without --include the extra method is not shown even if stored
         latex = main_tables._results_latex_table(df, METRICS, False, ["d1", "d2"])
         self.assertNotIn("-h}", latex)

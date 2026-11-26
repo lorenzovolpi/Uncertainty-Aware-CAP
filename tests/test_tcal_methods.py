@@ -53,7 +53,8 @@ class TcalMethodsTest(unittest.TestCase):
         for name, base in TCAL_VARIANTS.items():
             stored = [n for n, b in TCAL_VARIANTS.items() if b == base]
             self.assertEqual(names.index(name), names.index(base) + 1 + stored.index(name))
-        shown = main_tables.table_method_names((TCAL, HF_TCAL, "BayesCAP-Hf-real-tcal"))
+        # since 2026-11-26 BayesCAP-Hf-real-tcal is in the main tables, in place of BayesCAP-Hf-real
+        shown = main_tables.table_method_names((TCAL, HF_TCAL, "BayesCAP-Hf-real"))
         self.assertIn(TCAL, shown)
         self.assertEqual(shown.index("BayesCAP-Hf-real-tcal"), shown.index("BayesCAP-Hf-real") + 1)
         self.assertEqual(shown.index(HF_TCAL), shown.index("BayesCAP-Hf-real") + 2)

@@ -47,7 +47,8 @@ E2_METHODS = [
     "BayesCAP-Hfn-real",
 ]
 BAYCAP_METHODS = ["BayesCAP", *E2_METHODS]
-# the methods of the main tables, ranks and coverage vs amplitude plot (user's decision of 2026-11-09)
+# the methods of the main tables, ranks and coverage vs amplitude plot (user's decision of 2026-11-09); since
+# 2026-11-26 (user's decision) the BayCAP methods with the temperature calibrated per pair (WP-34)
 MAIN_SET = [
     "DoC",
     "QuAcc_NxN",
@@ -55,10 +56,10 @@ MAIN_SET = [
     "SQS-H",
     "SQS-Hbs",
     "PQ",
-    "BayesCAP",
-    "BayesCAP-real",
-    "BayesCAP-Hf-real",
-    "BayCAP-KDEy-h-inst",
+    "BayesCAP-tcal",
+    "BayesCAP-real-tcal",
+    "BayesCAP-Hf-real-tcal",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep",
 ]
 # the eight methods with a fixed rate matrix of E3.1 (docs/ext3_posterior_propagation.md)
 E31_METHODS = [f"BayCAP-{q}-{s}{x}" for q in ("KDEy", "EMQ") for s in ("h", "mlp") for x in ("", "-real")]
@@ -162,7 +163,7 @@ class BayCAPFactoryTest(unittest.TestCase):
     def test_main_tables_ranks_and_plots_show_the_main_set(self):
         self.assertEqual(main_tables.table_method_names(), MAIN_SET)
         self.assertEqual(rank._methods(), MAIN_SET)
-        self.assertEqual(AVC_METHODS, [m for m in MAIN_SET if m != "BayesCAP"])
+        self.assertEqual(AVC_METHODS, [m for m in MAIN_SET if m != "BayesCAP-tcal"])
         for name in ("BayesCAP", "L-CBPE", *E2_METHODS, *E31_METHODS, *E32_METHODS):
             with self.subTest(method=name):
                 if name not in MAIN_SET:

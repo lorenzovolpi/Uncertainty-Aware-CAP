@@ -1,7 +1,7 @@
 """Coverage and amplitude of the main-table methods, per classifier and dataset (decided on 2026-11-18).
 
 The table has the structure of the main table (``tables/main.py``): one row per classifier and dataset, one column
-group per score and, within it, the baselines and the other methods of ``MAIN_METHODS`` except BayesCAP (``MAIN_METHODS_BEFORE_BAYESCAP``). Each cell is the mean over
+group per score and, within it, the baselines and the other methods of ``MAIN_METHODS`` except the population BayCAP (``BayesCAP-tcal`` since 2026-11-26, ``BayesCAP`` before; ``MAIN_METHODS_BEFORE_BAYESCAP``). Each cell is the mean over
 the bags of the pair of:
 
 - the coverage $\\mathcal C$: the share of bags whose interval contains the accuracy of the realised table of the
@@ -110,7 +110,8 @@ def latex_table(df: pd.DataFrame, dataset_order: list[str] | None = None) -> str
     mean = mean.swaplevel(0, 1, axis=1)
     mean.columns = mean.columns.set_names(["method", "metric"])
 
-    # the methods of the main table without BayesCAP, shown there since 2026-11-23 (user's decision of 2026-11-23)
+    # the methods of the main table without the population BayCAP (BayesCAP until 2026-11-26, BayesCAP-tcal since),
+    # shown there since 2026-11-23 (user's decision of 2026-11-23)
     methods = [
         m
         for m in main_tables.table_method_names()

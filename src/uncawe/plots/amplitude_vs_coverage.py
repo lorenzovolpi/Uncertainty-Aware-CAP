@@ -46,14 +46,14 @@ from uncawe.plots.common import (
     plot_dir,
     safe_name,
 )
-from uncawe.tables.main import MAIN_METHODS, PMF_INTERVALS, _confidence_interval, _no_estimate
+from uncawe.tables.main import MAIN_METHODS_BEFORE_BAYESCAP, PMF_INTERVALS, _confidence_interval, _no_estimate
 
 PLOT_NAME = "amplitude_vs_coverage"
 # the methods of the main tables (tables/main.py:MAIN_METHODS, user's decision of 2026-11-09), one facet each; before,
 # DEFAULT_METHODS plus BayesCAP-real, BayesCAP-EB-real, BayesCAP-Hf-real, BayCAP-KDEy-h-real and BayCAP-KDEy-mlp-real
 # without BayesCAP (BayCAP-pop), which the main tables show since 2026-11-23 (user's decision of 2026-11-24); SQS-B
-# left MAIN_METHODS on 2026-11-24
-PLOT_METHODS = [method for method in MAIN_METHODS if method != "BayesCAP"]
+# left MAIN_METHODS on 2026-11-24; since 2026-11-26 the -tcal methods of MAIN_METHODS, without BayesCAP-tcal
+PLOT_METHODS = list(MAIN_METHODS_BEFORE_BAYESCAP)
 # the KDE regions and bandwidth, the box and the excluded pairs of the default figures (user's decision of 2026-11-25)
 DEFAULT_KDE_MASS = [0.5, 0.7, 0.99]
 DEFAULT_KDE_BW_ADJUST = 0.75

@@ -15,7 +15,9 @@ from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_MACROS
 
 EXPERIMENT = "main"
 DEFAULT_DOMAIN = "classic"
-DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "SQS-H", "SQS-Hbs", "PQ", "BayesCAP"]
+# BayCAP-pop with its calibrated temperature (BayesCAP-tcal, WP-34) in place of BayesCAP since 2026-11-26 (user's
+# decision), as in tables/main.py:MAIN_METHODS
+DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "SQS-H", "SQS-Hbs", "PQ", "BayesCAP-tcal"]
 METHOD_COLORS = {
     "O-LEAP": "#4C78A8",
     "BayesCAP": "#F58518",

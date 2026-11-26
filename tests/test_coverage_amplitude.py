@@ -8,7 +8,7 @@ from uncawe.tables import main as main_tables
 from uncawe.tables import rank
 
 METHODS = list(main_tables.MAIN_METHODS)
-# the coverage/amplitude table shows the methods of the main table without BayesCAP
+# the coverage/amplitude table shows the methods of the main table without the population BayCAP (BayesCAP-tcal)
 N = len(main_tables.MAIN_METHODS_BEFORE_BAYESCAP)
 
 

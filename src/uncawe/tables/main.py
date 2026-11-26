@@ -90,7 +90,11 @@ metrics_map = {
 # for the error-split and coverage/amplitude tables. SQS-B is left out since 2026-11-24 (user's decision of 2026-11-24),
 # also from the error-split and coverage/amplitude tables. Since E3.4 (card WP-31, user's decision of 2026-11-24) the
 # BayCAP-KDEy of the tables is BayCAP-KDEy-h-inst (input classifier h, per-instance pushforward) in place of
-# BayCAP-KDEy-mlp-real, whose results are invalidated.
+# BayCAP-KDEy-mlp-real, whose results are invalidated. Since 2026-11-26 (user's decision) each BayCAP family is shown
+# with its temperature calibrated per pair and metric on calibration bags (WP-34, stored methods of main): BayCAP-pop
+# BayesCAP-tcal, BayCAP-sample BayesCAP-real-tcal, BayCAP-Hf BayesCAP-Hf-real-tcal and BayCAP-KDEy
+# BayCAP-KDEy-h-inst-cb-tcal-keep, in place of BayesCAP, BayesCAP-real, BayesCAP-Hf-real and BayCAP-KDEy-h-inst
+# (tau=1); the population method is still left out where BayesCAP was (MAIN_METHODS_BEFORE_BAYESCAP)
 MAIN_METHODS = (
     "DoC",
     "QuAcc_NxN",
@@ -98,12 +102,15 @@ MAIN_METHODS = (
     "SQS-H",
     "SQS-Hbs",
     "PQ",
-    "BayesCAP",
-    "BayesCAP-real",
-    "BayesCAP-Hf-real",
-    "BayCAP-KDEy-h-inst",
+    "BayesCAP-tcal",
+    "BayesCAP-real-tcal",
+    "BayesCAP-Hf-real-tcal",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep",
 )
-MAIN_METHODS_BEFORE_BAYESCAP = tuple(m for m in MAIN_METHODS if m != "BayesCAP")
+# the BayCAP-pop of MAIN_METHODS, left out of the error-split and coverage/amplitude tables and of the coverage vs
+# amplitude plot
+MAIN_POPULATION_METHOD = "BayesCAP-tcal"
+MAIN_METHODS_BEFORE_BAYESCAP = tuple(m for m in MAIN_METHODS if m != MAIN_POPULATION_METHOD)
 EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
 # the baselines of the main tables, under "Baseline methods" and separated from the other methods by a vertical line;
 # AC and CBPE with their two calibrators (E8.1, E8.3) are baselines of tables/ac_cbpe.py, never in the main tables
