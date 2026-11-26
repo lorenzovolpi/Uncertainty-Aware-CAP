@@ -491,7 +491,8 @@ class TestScores(unittest.TestCase):
         )
         plt.close(fig)
         self.assertEqual(plots.parse_args(["--exclude-methods", "SQS-B"]).exclude_methods, ["SQS-B"])
-        self.assertEqual(plots.parse_args([]).exclude_methods, [])
+        # the SQS methods with PACC are left out by default since 2026-11-26 (their KDEy versions are drawn)
+        self.assertEqual(plots.parse_args([]).exclude_methods, list(plots.DEFAULT_EXCLUDE))
 
 
 class TestE42TablesKeepTheirGrid(unittest.TestCase):

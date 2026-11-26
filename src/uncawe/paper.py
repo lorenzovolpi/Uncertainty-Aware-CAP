@@ -86,15 +86,39 @@ SHIFT_PROFILE = Command(
     "python -m uncawe.plots.shift_profile --domain classic",
     ("--figures", "pooled", "--exclude-methods", "SQS-B"),
 )
+# the SQS methods of the paper are those with KDEy as quantifier (card WP-36, user's decision of 2026-11-26): the main,
+# rank and coverage/amplitude tables and the coverage vs amplitude plot follow tables/main.py:MAIN_METHODS, the shift
+# profile its DEFAULT_METHODS; the violins of E5.5 and the figures of E4.4 leave out the PACC versions (passed with
+# SQS-B, since --exclude-methods replaces the default), and the figure of E6.2 is that of PQ-KDEy-rho*
+PACC_SQS = ("SQS-H", "SQS-Hbs", "PQ")
 BINFORM_SIDE_PRIOR = Command(
     "plot-binform-side-prior",
     "python -m uncawe.plots.binform_side_prior",
-    ("--figures", "pair-violins", "--groups", "all", "--metrics", "vanilla_accuracy", "--exclude-methods", "SQS-B"),
+    (
+        "--figures",
+        "pair-violins",
+        "--groups",
+        "all",
+        "--metrics",
+        "vanilla_accuracy",
+        "--exclude-methods",
+        "SQS-B",
+        *PACC_SQS,
+    ),
 )
-PQ_RHO = Command("plot-pq-rho", "python -m uncawe.plots.pq_rho", ("--metrics", "vanilla_accuracy"))
+PQ_RHO = Command(
+    "plot-pq-rho", "python -m uncawe.plots.pq_rho", ("--metrics", "vanilla_accuracy", "--quantifier", "kdey")
+)
 TARGET_SIZE_SCORES = Command(
-    "plot-target-size-scores", "python -m uncawe.plots.target_size_scores", ("--exclude-methods", "SQS-B")
+    "plot-target-size-scores", "python -m uncawe.plots.target_size_scores", ("--exclude-methods", "SQS-B", *PACC_SQS)
 )
+# the tables whose CSV a figure reads, run before it (by --generate, also with --only): the per-pair CSV of E6.2 with
+# KDEy and that of the E5.5 violins (which since WP-36 also has the KDEy references)
+PQ_RHO_TABLES = Command("tables-pq-rho", "python -m uncawe.tables.pq_rho", ("--tables", "--quantifier", "kdey"))
+BINFORM_SIDE_PRIOR_TABLES = Command(
+    "tables-binform-side-prior", "python -m uncawe.tables.binform_side_prior", ("--tables",)
+)
+PREREQUISITES = {PQ_RHO: (PQ_RHO_TABLES,), BINFORM_SIDE_PRIOR: (BINFORM_SIDE_PRIOR_TABLES,)}
 COMMANDS = (
     MAIN,
     RANK,
@@ -151,7 +175,8 @@ ARTEFACTS = (
         )
         for position in ("edge", "centre")
     ),
-    Artefact("figures", "plots/pq_rho/pq_rho_ae_w_vanilla_accuracy", PQ_RHO),
+    # with KDEy since 2026-11-26 (PQ-KDEy-rho*, under kdey/)
+    Artefact("figures", "plots/pq_rho/kdey/pq_rho_ae_w_vanilla_accuracy", PQ_RHO),
     Artefact("figures", "plots/target_size/u_scores/target_size_u-scores", TARGET_SIZE_SCORES),
     Artefact("figures", "plots/target_size/v_scores/target_size_v-scores", TARGET_SIZE_SCORES),
 )
@@ -166,8 +191,13 @@ def item_name(command: Command) -> str:
 ITEMS = {item_name(command): (command, tuple(a for a in ARTEFACTS if a.command == command)) for command in COMMANDS}
 
 
+def with_prerequisites(commands) -> list[Command]:
+    """``commands``, each preceded by the commands of ``PREREQUISITES`` it needs (once each)."""
+    return list(dict.fromkeys(c for command in commands for c in (*PREREQUISITES.get(command, ()), command)))
+
+
 def generate(commands=COMMANDS) -> None:
-    for command in commands:
+    for command in with_prerequisites(commands):
         print(f"paper: {command.make()}", flush=True)
         subprocess.run(command.argv(), check=True)
 
@@ -209,7 +239,7 @@ def main(argv=None):
         parser.error("choose at least one of --generate, --collect, --list")
     commands, artefacts = (COMMANDS, ARTEFACTS) if args.only is None else ((ITEMS[args.only][0],), ITEMS[args.only][1])
     if args.list:
-        for command in commands:
+        for command in with_prerequisites(commands):
             print(command.make())
         for artefact in artefacts:
             for source, destination in artefact.files():

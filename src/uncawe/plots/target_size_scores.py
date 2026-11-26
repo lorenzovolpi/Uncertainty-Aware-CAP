@@ -48,6 +48,9 @@ from uncawe.plots.common import dataset_bars, font_size
 from uncawe.tables.target_size_scores import CHECK_DATASET, SHORT_LABELS, compute, load_results, part_rows
 
 FIGURES = {"u-scores": "a", "v-scores": "b"}
+# the SQS methods with PACC as quantifier, left out by default since 2026-11-26 (user's decision): the figures show
+# their KDEy versions (card WP-36), the SQS methods of main
+DEFAULT_EXCLUDE = ("SQS-H", "SQS-Hbs", "PQ")
 METHOD_COLORS = {
     "BayesCAP-Hf-real": "#1f77b4",
     "BayCAP-KDEy-h-inst": "#d62728",
@@ -213,8 +216,11 @@ def parse_args(argv: list[str] | None = None):
         choices=(CHECK_DATASET,),
         help=f"Means over the pairs without {CHECK_DATASET} (the check of E4.4b)",
     )
-    # the paper leaves SQS-B out (uncawe/paper.py, user's decision of 2026-11-25)
-    parser.add_argument("--exclude-methods", nargs="*", choices=E44_METHODS, default=[], help="Methods not drawn")
+    # the paper leaves SQS-B out (uncawe/paper.py, user's decision of 2026-11-25); since 2026-11-26 the SQS methods with
+    # PACC are left out by default (DEFAULT_EXCLUDE; their KDEy versions, WP-36, are drawn)
+    parser.add_argument(
+        "--exclude-methods", nargs="*", choices=E44_METHODS, default=list(DEFAULT_EXCLUDE), help="Methods not drawn"
+    )
     parser.add_argument("--datasets", nargs="+", default=None, help="Restrict the datasets (default: every one found)")
     parser.add_argument("--svg", action=BooleanOptionalAction, default=True)
     # also pdf since 2026-11-24, for the paper folder (uncawe/paper.py)

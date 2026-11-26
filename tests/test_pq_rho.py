@@ -110,11 +110,12 @@ class PQRhoTableTest(unittest.TestCase):
             RDF.from_df(frame.assign(method="PQ").reset_index(drop=True)).save_result(
                 os.path.join(folder, "PQ.parquet")
             )
-            loaded = tables.load_results("vanilla_accuracy", root=root)
+            # the stored PQ-rho* are the PACC set (KDEy is the default since 2026-11-26)
+            loaded = tables.load_results("vanilla_accuracy", root=root, quantifier="pacc")
             self.assertEqual(sorted(loaded["method"].unique()), [f"PQ-rho{rho}" for rho in LEVELS])
             self.assertEqual(len(loaded), 2 * len(LEVELS) * N_BAGS)
             np.testing.assert_allclose(np.stack(loaded["true_cts"].to_numpy()), np.stack(sub["true_cts"].to_numpy()))
-            self.assertTrue(tables.load_results("macro-F1", root=root).empty)
+            self.assertTrue(tables.load_results("macro-F1", root=root, quantifier="pacc").empty)
 
 
 class PQRhoPlotTest(unittest.TestCase):
