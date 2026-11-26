@@ -60,7 +60,9 @@ QUANTIFIERS = {
     "pacc": (LEVELS, "PACC(MLP)", None),
     "kdey": (dict(PQ_KDEY_RHO_VARIANTS), "KDEyML(MLP)", "kdey"),
 }
-DEFAULT_QUANTIFIER = "pacc"
+# KDEy by default since 2026-11-26 (user's decision): the SQS-S of the main tables (PQ-KDEy, WP-36); the tables of E6.2
+# with PACC (the stored PQ-rho*) with --quantifier pacc, in the folder of E6.2
+DEFAULT_QUANTIFIER = "kdey"
 # every stored method of the two sets -> rho
 ALL_LEVELS = {**LEVELS, **PQ_KDEY_RHO_VARIANTS}
 assert tuple(QUANTIFIERS["kdey"][0].values()) == LEVEL_VALUES

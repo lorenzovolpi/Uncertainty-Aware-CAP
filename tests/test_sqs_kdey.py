@@ -139,9 +139,11 @@ class SqsKdeyStudiesTest(unittest.TestCase):
                 self.assertEqual(_settings(self.methods[kdey]), _settings(self.methods[pacc]))
                 self.assertNotIn(kdey, main_tables.MAIN_METHODS)
         self.assertEqual(pq_rho.QUANTIFIERS["kdey"][0], em.PQ_KDEY_RHO_VARIANTS)
-        args = pq_rho.parse_args(["--tables", "--quantifier", "kdey"])
+        # KDEy by default since 2026-11-26, under kdey/; the PACC set of E6.2 in the folder of E6.2
+        args = pq_rho.parse_args(["--tables"])
+        self.assertEqual(args.quantifier, "kdey")
         self.assertTrue(pq_rho.table_dir(args).endswith(os.path.join("pq_rho", "kdey")))
-        self.assertFalse(pq_rho.table_dir(pq_rho.parse_args(["--tables"])).endswith("kdey"))
+        self.assertFalse(pq_rho.table_dir(pq_rho.parse_args(["--tables", "--quantifier", "pacc"])).endswith("kdey"))
         self.assertIn("KDEyML(MLP)", pq_rho.caption({}, 0, "kdey"))
 
     def test_e61_quantifier(self):

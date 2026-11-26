@@ -19,7 +19,7 @@ def _make_experiments() -> dict[str, str]:
 class TestManifest(unittest.TestCase):
     def test_commands_are_the_make_targets(self):
         experiments = _make_experiments()
-        for command in paper.COMMANDS:
+        for command in paper.with_prerequisites(paper.COMMANDS):
             with self.subTest(target=command.target):
                 self.assertEqual(experiments[command.target], command.module)
         self.assertEqual(experiments["paper"], "python -m uncawe.paper --generate --collect")
@@ -69,6 +69,35 @@ class TestManifest(unittest.TestCase):
                 self.assertTrue(artefacts)
                 self.assertTrue(all(a.command == command for a in artefacts))
         self.assertEqual(sum(len(a) for _, a in paper.ITEMS.values()), len(paper.ARTEFACTS))
+
+    def test_sqs_methods_are_the_kdey_versions(self):
+        from uncawe.experiments.methods import SQS_KDEY_VARIANTS
+        from uncawe.plots import shift_profile, target_size_scores
+        from uncawe.tables import main as main_tables
+        from uncawe.tables import pq_rho
+
+        pacc = tuple(SQS_KDEY_VARIANTS.values())
+        self.assertEqual(paper.PACC_SQS, pacc)
+        for command in (paper.BINFORM_SIDE_PRIOR, paper.TARGET_SIZE_SCORES):
+            with self.subTest(target=command.target):
+                excluded = command.args[command.args.index("--exclude-methods") + 1 :]
+                self.assertEqual(set(excluded), {"SQS-B", *pacc})
+        self.assertFalse(set(pacc) & set(main_tables.MAIN_METHODS))
+        self.assertFalse(set(pacc) & set(shift_profile.DEFAULT_METHODS))
+        self.assertEqual(set(target_size_scores.DEFAULT_EXCLUDE), set(pacc))
+        self.assertEqual(pq_rho.DEFAULT_QUANTIFIER, "kdey")
+        for command in (paper.PQ_RHO, paper.PQ_RHO_TABLES):
+            self.assertEqual(command.args[command.args.index("--quantifier") + 1], "kdey")
+        figure = next(a for a in paper.ARTEFACTS if a.command == paper.PQ_RHO)
+        self.assertTrue(figure.source.startswith("plots/pq_rho/kdey/"))
+
+    def test_prerequisites_run_first(self):
+        order = paper.with_prerequisites(paper.COMMANDS)
+        for command, needed in paper.PREREQUISITES.items():
+            for prerequisite in needed:
+                self.assertLess(order.index(prerequisite), order.index(command))
+        self.assertEqual(paper.with_prerequisites([paper.PQ_RHO]), [paper.PQ_RHO_TABLES, paper.PQ_RHO])
+        self.assertEqual(len(order), len(set(order)))
 
     def test_sqs_b_is_left_out_of_the_figures(self):
         for command in (paper.SHIFT_PROFILE, paper.BINFORM_SIDE_PRIOR, paper.TARGET_SIZE_SCORES):
