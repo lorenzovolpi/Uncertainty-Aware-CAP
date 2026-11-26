@@ -18,7 +18,7 @@ This extension adds baselines to the project, against which the methods under st
 | `cap-ml`'s `ContTableTransferCAP`: the table of $h$ on $V$ rescaled by the prevalences of a quantifier | in `cap-ml`, not used by `uncawe` |
 | E8.2 (`CTT-KDEy`, `CTT-EMQ`, `CTT-ACC`, `CTT-PACC` and the reference `CTT-oracle`, point estimates, in an experiment module of their own) | [proposed] (user's decision of 2026-11-23); code on branch `wp-30/ctt` (`experiments/ctt.py`, `tables/ctt.py`, `plots/ctt.py`), card WP-30 (In progress), not run |
 | `cap-ml`'s `AC` (moved from `methods/ac.py`, with a calibrator argument), `LasCalPerBag`, `LSBinning`, `CBPE(calib_method="lsb")` | in `cap-ml` `eefa550` (version 0.1.1.15), pinned by `uncawe` on branch `wp-32/ac-lsb` |
-| E8.3 (`AC-LSB` and `L-CBPE-LSB` against the stored `AC` and `L-CBPE`, in `main`) | [proposed] (user's decision of 2026-11-24), card WP-32 (In progress); code on branch `wp-32/ac-lsb` (factory entries, `tables/ac_lsb.py`, `plots/ac_lsb.py`), not run |
+| E8.3 (`AC-LSB` and `L-CBPE-LSB` against the stored `AC` and `L-CBPE`, in `main`) | [run] (user's decision of 2026-11-24), card WP-32 (In progress); code merged into `devel` (`7daa9b7`: factory entries, `tables/ac_lsb.py`, `plots/ac_lsb.py`); full run on 2026-11-26 (`e0766c4`, all $75$ pairs, results in `main`); tables, plot and analysis pending |
 
 # Experiments
 
