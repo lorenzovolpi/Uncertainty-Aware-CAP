@@ -6,8 +6,8 @@ which runs only on the binary datasets) under "Baseline methods", then the defau
 ``BayCAP-KDEy-h-inst-cb-tcal-keep``, under "Our methods". Rows: the pairs of the ``uci_binary`` datasets of ``main``
 (5 datasets, every classifier). The table is built by the code of the main tables (``tables/main.py``): per classifier
 and dataset, the mean (and, without ``--no-std``, the standard deviation) over the bags of AE and of the Winkler score
-at $\alpha=0.05$, the same colours and daggers, and the rows of wins, ties and losses against AC (``tables/main.py:WTL_REFERENCE``) and of the average
-rank. Every method is scored against the realised table of the bag (``true_cts``); the intervals of ``AC-LSB`` and
+at $\alpha=0.05$, the same colours and daggers, and the row of the average rank, without the rows of wins, ties and losses (user's
+decision of 2026-11-27). Every method is scored against the realised table of the bag (``true_cts``); the intervals of ``AC-LSB`` and
 ``L-CBPE-LSB`` are read from their stored probability mass function (``tables/main.py:PMF_INTERVALS``). Vanilla
 accuracy only, since ``AC`` and ``CBPE`` estimate no other metric.
 
@@ -55,7 +55,13 @@ def table_latex(main_base_dir: str, domain: str, metrics=main_tables.METRICS, sh
     )
     if df.empty:
         raise RuntimeError(f"No results of the binary datasets on {domain} in {main_base_dir}.")
-    return main_tables._results_latex_table(df, metrics, show_std, dataset_order, methods=list(METHODS))
+    return results_latex(df, metrics, show_std, dataset_order)
+
+
+def results_latex(df, metrics=main_tables.METRICS, show_std: bool = True, dataset_order=None) -> str:
+    """The main-table LaTeX of ``df`` with the columns of ``METHODS``, without the rows of wins, ties and losses (user's
+    decision of 2026-11-27), keeping the average rank."""
+    return main_tables._results_latex_table(df, metrics, show_std, dataset_order, methods=list(METHODS), wtl=False)
 
 
 def gen_tables(pargs):

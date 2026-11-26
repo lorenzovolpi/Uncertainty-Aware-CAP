@@ -702,9 +702,11 @@ def _results_latex_table(
     dataset_order: list[str] | None = None,
     include: tuple[str, ...] = (),
     methods: list[str] | None = None,
+    wtl: bool = True,
 ) -> str:
     """LaTeX of a main table; the columns are the methods of the main tables plus ``include``, or ``methods`` in
-    their order if given (``tables/ac_cbpe.py``), restricted to those with results in ``df``."""
+    their order if given (``tables/ac_cbpe.py``), restricted to those with results in ``df``; ``wtl=False`` leaves out
+    the rows of wins, ties and losses (``tables/binary.py``), keeping the average rank."""
     row_levels = _row_levels(df)
     stats = df.groupby(row_levels + ["method"], sort=False)[list(metrics)].agg(["mean", "std"])
     mean = stats.xs("mean", axis=1, level=1).unstack("method").swaplevel(0, 1, axis=1)
@@ -724,7 +726,7 @@ def _results_latex_table(
     sigma_zscores, sigmas = _metric_sigma_context(df, row_levels, mean, methods, metrics)
     styles = _cell_styles(mean, metrics, sigma_zscores, sigmas)
     # win/tie/loss against WTL_REFERENCE and average rank under the results (user's decision of 2026-11-24)
-    wtl = win_tie_loss(df, row_levels, mean, methods, metrics) if WTL_REFERENCE in methods else None
+    wtl = win_tie_loss(df, row_levels, mean, methods, metrics) if wtl and WTL_REFERENCE in methods else None
     summary = _summary_lines(wtl, average_ranks(mean, methods, metrics), methods, metrics, len(row_levels))
     return _render_latex_table(table, styles, methods, metrics, row_levels, summary)
 

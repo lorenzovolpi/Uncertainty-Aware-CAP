@@ -28,12 +28,14 @@ class BinaryTableTest(unittest.TestCase):
             for m in METHODS
             for v in rng.random(10)
         ]
-        latex = main_tables._results_latex_table(pd.DataFrame(rows), METRICS, False, ["a", "b"], methods=METHODS)
+        latex = binary.results_latex(pd.DataFrame(rows), METRICS, False, ["a", "b"])
         self.assertEqual(latex.count("\\multicolumn{5}{c|}{Baseline methods}"), 2)
         self.assertIn("\\rotatebox{90}{AC}", latex)
         self.assertIn("\\rotatebox{90}{CBPE}", latex)
         self.assertNotIn(main_tables.EMPTY_CELL, latex)
-        self.assertIn("Wins vs AC", latex)
+        self.assertNotIn("Wins vs", latex)
+        self.assertNotIn("Ties vs", latex)
+        self.assertNotIn("Losses vs", latex)
         self.assertIn("Avg.\\ rank", latex)
 
     def test_only_binary_datasets_are_loaded(self):
