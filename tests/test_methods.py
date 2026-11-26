@@ -53,6 +53,7 @@ MAIN_SET = [
     "DoC",
     "QuAcc_NxN",
     "O-LEAP",
+    "AC-LSB",
     "SQS-H",
     "SQS-Hbs",
     "PQ",

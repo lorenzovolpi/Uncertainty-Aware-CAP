@@ -10,25 +10,27 @@ from uncawe.tables.common import METHOD_LATEX_LABELS, METHOD_LATEX_PREAMBLE
 METHODS = list(main_tables.MAIN_METHODS)
 METRICS = ("acc_err", "winkler")
 N = len(METHODS)
-OURS = N - 3
+# the baselines: DoC, QuAcc, LEAP and, since 2026-11-26, AC-LSB (the default AC)
+B = 4
+OURS = N - B
 NUMERIC = "S[table-format=1.3,table-align-text-post=false]"
 
 
 class TestMainTableHeader(unittest.TestCase):
-    def test_baselines_are_doc_quacc_leap(self):
-        self.assertEqual(main_tables._baseline_count(METHODS), 3)
-        self.assertEqual(METHODS[:3], ["DoC", "QuAcc_NxN", "O-LEAP"])
+    def test_baselines_are_doc_quacc_leap_ac(self):
+        self.assertEqual(main_tables._baseline_count(METHODS), B)
+        self.assertEqual(METHODS[:B], ["DoC", "QuAcc_NxN", "O-LEAP", "AC-LSB"])
 
     def test_column_format_has_a_line_after_leap_and_between_metrics(self):
-        group = NUMERIC * 3 + "|" + NUMERIC * OURS
+        group = NUMERIC * B + "|" + NUMERIC * OURS
         self.assertEqual(main_tables._latex_column_format(METHODS, METRICS, 2), "ll" + group + "|" + group)
 
     def test_family_header_spans_baselines_and_other_methods(self):
         line = main_tables._method_family_header_line(2, METHODS, METRICS)
         self.assertEqual(
             line,
-            f" &  & \\multicolumn{{3}}{{c|}}{{Baseline methods}} & \\multicolumn{{{OURS}}}{{c|}}{{Our methods}}"
-            f" & \\multicolumn{{3}}{{c|}}{{Baseline methods}} & \\multicolumn{{{OURS}}}{{c}}{{Our methods}} \\\\",
+            f" &  & \\multicolumn{{{B}}}{{c|}}{{Baseline methods}} & \\multicolumn{{{OURS}}}{{c|}}{{Our methods}}"
+            f" & \\multicolumn{{{B}}}{{c|}}{{Baseline methods}} & \\multicolumn{{{OURS}}}{{c}}{{Our methods}} \\\\",
         )
 
     def test_rules_span_the_methods_of_each_metric(self):
@@ -127,7 +129,13 @@ class TestSummaryRows(unittest.TestCase):
             if column % N != reference:
                 self.assertEqual(sum(int(cells[column].strip("{}")) for cells in rows), 2)
         self.assertIn("Avg.\\ rank", ranks)
-        self.assertEqual(ranks.count("\\bfseries"), 2)
+        # the best average rank of each metric is in bold (ties all in bold)
+        cells = ranks.removesuffix(" \\\\").split(" & ")[1:]
+        for metric_cells in (cells[:N], cells[N:]):
+            values = [float(c.strip("{}").replace("\\bfseries ", "")) for c in metric_cells]
+            bold = [float(c.strip("{}").replace("\\bfseries ", "")) for c in metric_cells if "\\bfseries" in c]
+            self.assertTrue(bold)
+            self.assertTrue(all(np.isclose(v, min(values)) for v in bold))
         self.assertTrue(latex.rstrip().endswith("\\bottomrule\n\\end{tabular}"))
 
 
@@ -155,7 +163,7 @@ class TestIncludedMethods(unittest.TestCase):
         rng = np.random.default_rng(2)
         df = pd.concat([_bags({m: list(rng.random(10)) for m in methods}, d) for d in ("d1", "d2")])
         latex = main_tables._results_latex_table(df, METRICS, False, ["d1", "d2"], ("BayCAP-KDEy-h-real",))
-        self.assertIn(f"\\multicolumn{{{N + 1 - 3}}}{{c|}}{{Our methods}}", latex)
+        self.assertIn(f"\\multicolumn{{{N + 1 - B}}}{{c|}}{{Our methods}}", latex)
         self.assertEqual(latex.count("\\rotatebox{90}{\\bcap{}-KDEy-h-real}"), 2)
         self.assertEqual(latex.count("\\rotatebox{90}{\\bcapkdey{}-cb-tcal-keep}"), 2)
         # without --include the extra method is not shown even if stored

@@ -415,7 +415,10 @@ class FactoryTest(unittest.TestCase):
         self.assertEqual(main_tables.MAIN_METHODS_BEFORE_BAYESCAP, main_tables.MAIN_METHODS[:-4] + defaults[1:])
         self.assertEqual(amplitude_vs_coverage.PLOT_METHODS, list(main_tables.MAIN_METHODS_BEFORE_BAYESCAP))
         self.assertNotIn("BayesCAP-tcal", error_split.METHODS)
-        self.assertEqual(error_split.METHODS, main_tables.MAIN_METHODS_BEFORE_BAYESCAP[1:])
+        self.assertEqual(
+            error_split.METHODS,
+            tuple(m for m in main_tables.MAIN_METHODS_BEFORE_BAYESCAP if m not in error_split.DIRECT_METHODS),
+        )
         for name in error_split.METHODS:
             self.assertIn(name, error_split.SHORT_LABELS)
         self.assertIs(coverage_amplitude.main_tables, main_tables)

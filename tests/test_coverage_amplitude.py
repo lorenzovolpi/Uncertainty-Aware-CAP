@@ -88,9 +88,9 @@ class TestCoverageAmplitude(unittest.TestCase):
             f"\\multicolumn{{{N}}}{{c|}}{{$\\mathcal{{C}}$}} & \\multicolumn{{{N}}}{{c}}{{$\\mathcal{{A}}$}}", latex
         )
         self.assertIn(
-            f"\\multicolumn{{3}}{{c|}}{{Baseline methods}} & \\multicolumn{{{N - 3}}}{{c|}}{{Our methods}}", latex
+            f"\\multicolumn{{4}}{{c|}}{{Baseline methods}} & \\multicolumn{{{N - 4}}}{{c|}}{{Our methods}}", latex
         )
-        self.assertIn("\\multicolumn{1}{c|}{\\rotatebox{90}{LEAP}}", latex)
+        self.assertIn("\\multicolumn{1}{c|}{\\rotatebox{90}{AC}}", latex)
         self.assertNotIn("\\pm", latex)
         self.assertNotIn("\\dag", latex)
 

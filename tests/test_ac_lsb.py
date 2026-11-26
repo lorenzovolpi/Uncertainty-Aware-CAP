@@ -103,14 +103,33 @@ class FactoryTest(unittest.TestCase):
         # AC keeps LasCal (E8.1)
         self.assertIsInstance(methods[AC_METHOD].calibrator, LasCalPerBag)
 
-    def test_out_of_the_main_tables_ranks_and_plots(self):
+    def test_default_ac_in_the_main_tables_ranks_and_plots(self):
+        # user's decision of 2026-11-26: AC-LSB is the default AC, a baseline of the main tables, ranks and plots;
+        # L-CBPE-LSB, the default CBPE, stays out (binary datasets only)
+        self.assertIn(AC_LSB_METHOD, main_tables.MAIN_METHODS)
+        self.assertIn(AC_LSB_METHOD, main_tables.BASELINE_METHODS)
+        self.assertIn(AC_LSB_METHOD, rank._methods())
+        self.assertIn(AC_LSB_METHOD, PLOT_METHODS)
+        self.assertNotIn(L_CBPE_LSB_METHOD, main_tables.MAIN_METHODS)
+        self.assertIn(L_CBPE_LSB_METHOD, main_tables.EXCLUDED_METHODS)
+        self.assertIn(L_CBPE_LSB_METHOD, rank.EXCLUDED_METHODS)
+        self.assertNotIn(L_CBPE_LSB_METHOD, PLOT_METHODS)
         for method in (AC_LSB_METHOD, L_CBPE_LSB_METHOD):
-            self.assertNotIn(method, main_tables.MAIN_METHODS)
-            self.assertIn(method, main_tables.EXCLUDED_METHODS)
-            self.assertIn(method, rank.EXCLUDED_METHODS)
-            self.assertNotIn(method, rank._methods())
-            self.assertNotIn(method, PLOT_METHODS)
             self.assertIn(method, METHOD_COLORS)
+
+    def test_labels_of_the_default_ac_and_cbpe(self):
+        from uncawe.plots.common import METHOD_PLOT_LABELS
+        from uncawe.tables.common import METHOD_LATEX_LABELS
+
+        expected = {"AC-LSB": "AC", "L-CBPE-LSB": "CBPE", "AC": "AC-LasCal", "L-CBPE": "CBPE-LasCal"}
+        for labels in (METHOD_PLOT_LABELS, METHOD_LATEX_LABELS):
+            self.assertEqual({m: labels[m] for m in expected}, expected)
+
+    def test_methods_without_estimates_are_dropped(self):
+        df = pd.DataFrame(
+            {"method": ["DoC", "DoC", "AC-LSB", "AC-LSB"], "acc_err": [0.1, 0.2, np.nan, np.nan], "winkler": 1.0}
+        )
+        self.assertEqual(set(main_tables.drop_methods_without_estimates(df)["method"]), {"DoC"})
 
     def test_intervals_read_from_the_pmf(self):
         self.assertIs(main_tables.PMF_INTERVALS[AC_LSB_METHOD], CentralPoissonInterval)

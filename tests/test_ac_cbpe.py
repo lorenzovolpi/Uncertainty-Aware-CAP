@@ -31,7 +31,7 @@ class ACCBPETableTest(unittest.TestCase):
 
     def test_ac_and_cbpe_are_baselines(self):
         self.assertEqual(main_tables._baseline_count(METHODS), 7)
-        self.assertEqual(main_tables._baseline_count(list(main_tables.MAIN_METHODS)), 3)
+        self.assertEqual(main_tables._baseline_count(list(main_tables.MAIN_METHODS)), 4)
 
     def test_table(self):
         df = _frame(np.random.default_rng(0))
@@ -60,8 +60,10 @@ class ACCBPETableTest(unittest.TestCase):
             for v in rng.random(5)
         ]
         latex = main_tables._results_latex_table(pd.DataFrame(rows), METRICS, False, ["d"])
-        self.assertNotIn("{AC}", latex)
-        self.assertEqual(latex.count("\\multicolumn{3}{c|}{Baseline methods}"), 2)
+        # AC (LasCal) is not a main-table method; AC-LSB is, with the label AC
+        self.assertNotIn("AC-LasCal", latex)
+        self.assertIn("\\rotatebox{90}{AC}", latex)
+        self.assertEqual(latex.count("\\multicolumn{4}{c|}{Baseline methods}"), 2)
 
 
 if __name__ == "__main__":
