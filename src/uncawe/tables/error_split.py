@@ -2,7 +2,7 @@
 E4.1 and E4.3 of ``docs/ext4_uncertainty_budget.md``).
 
 Methods: the methods of the main table whose estimate comes from a contingency table, ``tables/main.py:MAIN_METHODS``
-without ``DoC`` (which estimates accuracy directly): ``QuAcc_NxN``, ``O-LEAP``, ``SQS-H``, ``SQS-Hbs`` (SQS-H with a bootstrap of the prevalence), ``SQS-B`` (E3.3, since card
+without ``DoC`` and ``AC-LSB`` (which estimate accuracy directly): ``QuAcc_NxN``, ``O-LEAP``, ``SQS-H``, ``SQS-Hbs`` (SQS-H with a bootstrap of the prevalence), ``SQS-B`` (E3.3, since card
 WP-18), ``PQ`` (SQS-S),
 ``BayesCAP-real``, ``BayesCAP-Hf-real`` and ``BayCAP-KDEy-mlp-real`` (since 2026-11-26 the BayCAP methods with the
 temperature calibrated per pair and metric, WP-34: ``BayesCAP-real-tcal``, ``BayesCAP-Hf-real-tcal`` and
@@ -65,7 +65,9 @@ KEYS = ["dataset", "classifier"]
 # SQS-B (E3.3) from card WP-18 (user's decision of 2026-11-13) to 2026-11-24, when it left MAIN_METHODS (user's decision
 # of 2026-11-24); BayesCAP, shown in the main tables since 2026-11-23, is left out (user's decision of 2026-11-23), and
 # so is BayesCAP-tcal, which replaces it since 2026-11-26
-METHODS = tuple(m for m in main_tables.MAIN_METHODS_BEFORE_BAYESCAP if m != "DoC")
+# DoC and AC-LSB (since 2026-11-26 in the main tables) estimate accuracy directly, with no contingency table to split
+DIRECT_METHODS = ("DoC", "AC-LSB")
+METHODS = tuple(m for m in main_tables.MAIN_METHODS_BEFORE_BAYESCAP if m not in DIRECT_METHODS)
 IDENTITY_TOL = 1e-9
 TABLE_SETS = {"e4.1": ("rms", "signed"), "e4.3": ("oracle_realised", "oracle_pool")}
 SHORT_LABELS = {

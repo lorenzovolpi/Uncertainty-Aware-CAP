@@ -10,6 +10,7 @@ import uncawe.env as env
 from uncawe.config import acc_from_ct, get_acc_names, get_method_names
 from uncawe.experiments.methods import FIXED_C_VARIANTS, KDEY_HF_VARIANTS
 from uncawe.main import EXPERIMENT
+from uncawe.results import Results
 from uncawe.tables import main as main_tables
 from uncawe.tables.common import METHOD_LATEX_MACROS
 
@@ -18,8 +19,9 @@ LOWER_IS_BETTER = {"acc_err": True, "winkler": True}
 # the rank tables rank the methods of the main tables (tables/main.py:MAIN_METHODS, since 2026-11-09) except those
 # listed here; L-CBPE, which runs only on binary datasets, stays listed although the main tables no longer show it, and
 # AC (E8.1 of docs/ext8_average_confidence.md, card WP-29), a baseline compared with L-CBPE in a table of its own, is
-# listed with it (user's decision of 2026-11-20); AC-LSB and L-CBPE-LSB (E8.3, card WP-32) as AC and L-CBPE
-RANK_ONLY_EXCLUDED = {"L-CBPE", "AC", "AC-LSB", "L-CBPE-LSB"}
+# listed with it (user's decision of 2026-11-20); L-CBPE-LSB (E8.3, card WP-32) as L-CBPE; AC-LSB, the default AC, is
+# ranked since 2026-11-26 (user's decision), as a method of the main tables
+RANK_ONLY_EXCLUDED = {"L-CBPE", "AC", "L-CBPE-LSB"}
 RANK_ONLY_INCLUDED: set[str] = set()
 EXCLUDED_METHODS = (RANK_ONLY_EXCLUDED | main_tables.EXCLUDED_METHODS) - RANK_ONLY_INCLUDED
 BEST_RGB = (138, 154, 91)
@@ -338,6 +340,7 @@ def _prepare_results(acc_name: str, domain: str, methods: list[str]) -> pd.DataF
         return pd.DataFrame()
 
     results = main_tables.load_results(main_base_dir, acc_name, domain, classifiers, methods)
+    results = Results(main_tables.drop_methods_without_estimates(results.df))
     return (
         results.apply_to_column("true_cts", lambda ct: acc_from_ct(acc_name, ct), new_col="true_accs")
         .apply_to_column(["method", "true_accs", "estim_acc_ranges"], main_tables.get_acc_winkler, new_col="winkler")

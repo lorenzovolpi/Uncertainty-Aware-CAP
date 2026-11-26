@@ -92,6 +92,12 @@ METHOD_PLOT_LABELS = {
     "SQS-B": "SQS-H$_{\\mathrm{bay}}$",
     "SQS-B-loo": "SQS-B-loo",
     "O-LEAP": "LEAP",
+    # the default AC and CBPE use label-shift binning (E8.3; user's decision of 2026-11-26): they get the plain names,
+    # and the LasCal versions (E8.1) name their calibrator
+    "AC-LSB": "AC",
+    "L-CBPE-LSB": "CBPE",
+    "AC": "AC-LasCal",
+    "L-CBPE": "CBPE-LasCal",
     "BayesCAP": "BayCAP-pop",
     "BayesCAP-real": "BayCAP-sample",
     "BayesCAP-EB": "BayCAP-EB",

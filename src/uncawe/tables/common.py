@@ -45,6 +45,12 @@ METHOD_LATEX_LABELS = {
     "BayCAP-KDEy-mlp-real-cal": "\\bcapkdey{}-cal",
     "BayCAP-KDEy-mlp-real-cal-tcal": "\\bcapkdey{}-cal-tcal",
     "O-LEAP": "LEAP",
+    # the default AC and CBPE use label-shift binning (E8.3; user's decision of 2026-11-26), the LasCal versions (E8.1)
+    # name their calibrator
+    "AC-LSB": "AC",
+    "L-CBPE-LSB": "CBPE",
+    "AC": "AC-LasCal",
+    "L-CBPE": "CBPE-LasCal",
     # the methods of WP-34 (experiments/methods.py:TCAL_VARIANTS): tau selected per pair and metric inside the fit
     "BayesCAP-tcal": "\\bcappop{}-tcal",
     "BayesCAP-real-tcal": "\\bcapsample{}-tcal",

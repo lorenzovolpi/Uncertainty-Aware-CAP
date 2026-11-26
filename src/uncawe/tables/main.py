@@ -99,6 +99,7 @@ MAIN_METHODS = (
     "DoC",
     "QuAcc_NxN",
     "O-LEAP",
+    "AC-LSB",
     "SQS-H",
     "SQS-Hbs",
     "PQ",
@@ -113,7 +114,9 @@ MAIN_POPULATION_METHOD = "BayesCAP-tcal"
 MAIN_METHODS_BEFORE_BAYESCAP = tuple(m for m in MAIN_METHODS if m != MAIN_POPULATION_METHOD)
 EXCLUDED_METHODS = set(get_method_names()) - set(MAIN_METHODS)
 # the baselines of the main tables, under "Baseline methods" and separated from the other methods by a vertical line;
-# AC and CBPE with their two calibrators (E8.1, E8.3) are baselines of tables/ac_cbpe.py, never in the main tables
+# AC and CBPE with their two calibrators (E8.1, E8.3) are baselines of tables/ac_cbpe.py; since 2026-11-26 (user's
+# decision) AC-LSB, the default AC (label "AC"), is also a baseline of the main tables, after LEAP, while the default
+# CBPE (L-CBPE-LSB, label "CBPE") is not, as it runs only on the binary datasets
 BASELINE_METHODS = ("DoC", "QuAcc_NxN", "O-LEAP", "AC", "AC-LSB", "L-CBPE", "L-CBPE-LSB")
 # the reference of the win/tie/loss row at the bottom of the main tables (user's decision of 2026-11-24): LEAP
 WTL_REFERENCE = "O-LEAP"
@@ -1002,6 +1005,14 @@ def _table_dir(pargs) -> str:
     return os.path.join(base, EXTENDED_DIR) if _included(pargs) else base
 
 
+def drop_methods_without_estimates(df: pd.DataFrame) -> pd.DataFrame:
+    """``df`` without the methods that have no finite ``acc_err`` (no estimate on any bag), e.g. ``AC-LSB`` on
+    macro-F1 and macro-K, so that the tables of those measures show no empty column."""
+    finite = pd.to_numeric(df["acc_err"], errors="coerce").notna()
+    keep = set(df.loc[finite, "method"])
+    return df.loc[df["method"].isin(keep), :]
+
+
 def load_table_frame(
     main_base_dir: str,
     domain: str,
@@ -1014,7 +1025,7 @@ def load_table_frame(
     amplitude and Winkler score of the realised accuracy, from ``true_cts``), with the display names of the datasets
     and their order."""
     names = table_method_names(include) if methods is None else list(methods)
-    results = load_results(main_base_dir, acc, domain, classifiers, names)
+    results = Results(drop_methods_without_estimates(load_results(main_base_dir, acc, domain, classifiers, names).df))
     dataset_order = _ordered_dataset_names(results.df)
     df = (
         results.map_column_values("dataset", dataset_map)
