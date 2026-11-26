@@ -46,7 +46,7 @@ from uncawe.plots.common import (
     plot_dir,
     safe_name,
 )
-from uncawe.tables.main import MAIN_METHODS
+from uncawe.tables.main import MAIN_METHODS, PMF_INTERVALS, _confidence_interval, _no_estimate
 
 PLOT_NAME = "amplitude_vs_coverage"
 # the methods of the main tables (tables/main.py:MAIN_METHODS, user's decision of 2026-11-09), one facet each; before,
@@ -109,6 +109,19 @@ def _plot_stem(domain: str, acc_name: str, add_stem: str | None, zoom: bool = Fa
     return os.path.join(_plot_dir(), filename)
 
 
+def row_interval_metrics(method: str, true_acc: float, accs_range) -> tuple[float, float, float]:
+    """Coverage, amplitude and Winkler score of one bag. The methods of ``tables/main.py:PMF_INTERVALS`` (``AC``,
+    ``AC-LSB``, ``L-CBPE``, ``L-CBPE-LSB``) store the probability mass function of the number of correct predictions,
+    so their interval is read from it as in the main tables; the other methods store samples."""
+    if method not in PMF_INTERVALS:
+        coverage, amplitude, winkler, _, _ = interval_metrics(true_acc, accs_range)
+        return coverage, amplitude, winkler
+    if _no_estimate(accs_range) or not np.isfinite(true_acc):
+        return np.nan, np.nan, np.nan
+    ci = _confidence_interval(accs_range, method)
+    return ci.coverage(true_acc), ci.amplitude(), ci.winkler(true_acc)
+
+
 def _ensure_interval_metrics(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     coverages = []
@@ -117,7 +130,7 @@ def _ensure_interval_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
     for row in df.itertuples(index=False):
         true_acc = acc_from_ct(row.acc_name, row.true_cts, type="selection")
-        coverage, amplitude, winkler, _, _ = interval_metrics(true_acc, row.estim_acc_ranges)
+        coverage, amplitude, winkler = row_interval_metrics(str(row.method), true_acc, row.estim_acc_ranges)
         if not np.isfinite(coverage) or not np.isfinite(amplitude):
             coverages.append(np.nan)
             amplitudes.append(np.nan)

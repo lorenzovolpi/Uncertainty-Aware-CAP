@@ -152,5 +152,30 @@ class DefaultsTest(unittest.TestCase):
             )
 
 
+class PMFIntervalTest(unittest.TestCase):
+    """AC-LSB stores the probability mass function of the number of correct predictions: its interval is the central
+    interval of the main tables, not the percentiles of the stored values."""
+
+    def test_pmf_method_uses_the_interval_of_the_main_tables(self):
+        from cap.models.confidence import CentralPoissonInterval
+
+        n = 40
+        pmf = np.exp(-0.5 * ((np.arange(n + 1) - 30) / 3.0) ** 2)
+        pmf /= pmf.sum()
+        ci = CentralPoissonInterval(pmf, confidence_level=0.95)
+        got = avc.row_interval_metrics("AC-LSB", 0.7, pmf)
+        np.testing.assert_allclose(got, (ci.coverage(0.7), ci.amplitude(), ci.winkler(0.7)))
+        low, high = ci.interval()
+        self.assertTrue(low < 0.75 < high and high - low < 0.4)
+
+    def test_pmf_method_without_estimate_is_nan(self):
+        self.assertTrue(np.all(np.isnan(avc.row_interval_metrics("AC-LSB", 0.7, np.nan))))
+
+    def test_sample_method_unchanged(self):
+        samples = np.random.default_rng(0).uniform(0.6, 0.8, 500)
+        coverage, amplitude, winkler, _, _ = avc.interval_metrics(0.7, samples)
+        self.assertEqual(avc.row_interval_metrics("DoC", 0.7, samples), (coverage, amplitude, winkler))
+
+
 if __name__ == "__main__":
     unittest.main()
