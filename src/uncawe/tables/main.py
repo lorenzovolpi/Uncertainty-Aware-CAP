@@ -94,15 +94,17 @@ metrics_map = {
 # with its temperature calibrated per pair and metric on calibration bags (WP-34, stored methods of main): BayCAP-pop
 # BayesCAP-tcal, BayCAP-sample BayesCAP-real-tcal, BayCAP-Hf BayesCAP-Hf-real-tcal and BayCAP-KDEy
 # BayCAP-KDEy-h-inst-cb-tcal-keep, in place of BayesCAP, BayesCAP-real, BayesCAP-Hf-real and BayCAP-KDEy-h-inst
-# (tau=1); the population method is still left out where BayesCAP was (MAIN_METHODS_BEFORE_BAYESCAP)
+# (tau=1); the population method is still left out where BayesCAP was (MAIN_METHODS_BEFORE_BAYESCAP). Since card WP-36
+# (user's decision of 2026-11-26) SQS-H, SQS-Hbs and SQS-S are shown with KDEy as quantifier (SQS-H-KDEy,
+# SQS-Hbs-KDEy, PQ-KDEy, with the plain labels), in place of the PACC versions (labels with -PACC)
 MAIN_METHODS = (
     "DoC",
     "QuAcc_NxN",
     "O-LEAP",
     "AC-LSB",
-    "SQS-H",
-    "SQS-Hbs",
-    "PQ",
+    "SQS-H-KDEy",
+    "SQS-Hbs-KDEy",
+    "PQ-KDEy",
     "BayesCAP-tcal",
     "BayesCAP-real-tcal",
     "BayesCAP-Hf-real-tcal",

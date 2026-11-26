@@ -133,7 +133,9 @@ class TestMethods(unittest.TestCase):
                 "SQS-B",
             },
         )
-        self.assertEqual({t.method_name for t in regular}, {"SQS-H", "SQS-Hbs", "PQ"})
+        self.assertEqual(
+            {t.method_name for t in regular}, {"SQS-H", "SQS-Hbs", "PQ", "SQS-H-KDEy", "SQS-Hbs-KDEy", "PQ-KDEy"}
+        )
 
     def test_kdey_methods_of_e44_since_wp33(self):
         # the per-instance methods in place of BayCAP-KDEy-mlp-real, which stays a method of E4.2 only
@@ -147,9 +149,13 @@ class TestMethods(unittest.TestCase):
                 "BayesCAP-Hf-real-tcal",
                 "BayCAP-KDEy-h-inst-cb-tcal-keep",
                 "BayCAP-KDEy-h-inst-cb-tcal-resel",
+                # WP-36: each SQS method with KDEy after its PACC version
                 "SQS-H",
+                "SQS-H-KDEy",
                 "SQS-Hbs",
+                "SQS-Hbs-KDEy",
                 "PQ",
+                "PQ-KDEy",
                 "SQS-B",
             ),
         )
@@ -404,7 +410,8 @@ class TestScores(unittest.TestCase):
         self.assertEqual(b.shape, (3 * 2 * 3, 9))
         levels = [index[2] for index in b.index]
         self.assertIn("1/4$^*$", levels)
-        self.assertIn("SQS-S", {index[0] for index in a.index})
+        # PQ, the PACC version, names its quantifier since WP-36
+        self.assertIn("SQS-S-PACC", {index[0] for index in a.index})
 
     def test_tables_and_plots_are_written(self):
         with tempfile.TemporaryDirectory() as folder:

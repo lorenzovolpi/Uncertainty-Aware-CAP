@@ -58,9 +58,13 @@ METHOD_COLORS = {
     "BayesCAP-Hf-real-tcal": "#17becf",
     "BayCAP-KDEy-h-inst-cb-tcal-keep": "#bcbd22",
     "BayCAP-KDEy-h-inst-cb-tcal-resel": "#dbdb8d",
-    "SQS-H": "#2ca02c",
-    "SQS-Hbs": "#ff7f0e",
-    "PQ": "#9467bd",
+    # card WP-36: the SQS methods with KDEy take the colours of the PACC versions, which get lighter ones
+    "SQS-H-KDEy": "#2ca02c",
+    "SQS-Hbs-KDEy": "#ff7f0e",
+    "PQ-KDEy": "#9467bd",
+    "SQS-H": "#98df8a",
+    "SQS-Hbs": "#ffbb78",
+    "PQ": "#c5b0d5",
     "SQS-B": "#8c564b",
 }
 LEVEL_TICKS = {

@@ -17,7 +17,8 @@ EXPERIMENT = "main"
 DEFAULT_DOMAIN = "classic"
 # BayCAP-pop with its calibrated temperature (BayesCAP-tcal, WP-34) in place of BayesCAP since 2026-11-26 (user's
 # decision), as in tables/main.py:MAIN_METHODS
-DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "SQS-H", "SQS-Hbs", "PQ", "BayesCAP-tcal"]
+# and, since card WP-36 (user's decision of 2026-11-26), the SQS methods with KDEy as quantifier in place of PACC
+DEFAULT_METHODS = ["DoC", "QuAcc_NxN", "O-LEAP", "SQS-H-KDEy", "SQS-Hbs-KDEy", "PQ-KDEy", "BayesCAP-tcal"]
 METHOD_COLORS = {
     "O-LEAP": "#4C78A8",
     "BayesCAP": "#F58518",
@@ -43,9 +44,13 @@ METHOD_COLORS = {
     # E3.2: BayCAP-KDEy with a random C, one hue per input classifier
     "BayCAP-KDEy-Hf-h-real": "#17BECF",
     "BayCAP-KDEy-Hf-mlp-real": "#BCBD22",
-    "PQ": "#E45756",
-    "SQS-H": "#6B3D9A",
-    "SQS-Hbs": "#B279A2",
+    # the SQS methods with KDEy (card WP-36, the defaults) take the colours of the PACC versions, which get lighter ones
+    "PQ-KDEy": "#E45756",
+    "SQS-H-KDEy": "#6B3D9A",
+    "SQS-Hbs-KDEy": "#B279A2",
+    "PQ": "#FF9DA7",
+    "SQS-H": "#CAB2D6",
+    "SQS-Hbs": "#E7C6DD",
     "SQS-B": "#FF7F0E",
     # E7.1: the methods with per-class leave-one-out bandwidths
     "BayCAP-KDEy-mlp-real-loo": "#1B7837",
@@ -81,10 +86,15 @@ METHOD_COLORS = {
 }
 METHOD_PLOT_LABELS = {
     "QuAcc_NxN": "QuAcc",
-    "PQ": "SQS-S",
-    "SQS-H": "SQS-H",
+    # the SQS methods (card WP-36, user's decision of 2026-11-26): the default ones, with KDEy, get the plain labels,
+    # the PACC versions name their quantifier
+    "PQ-KDEy": "SQS-S",
+    "SQS-H-KDEy": "SQS-H",
+    "PQ": "SQS-S-PACC",
+    "SQS-H": "SQS-H-PACC",
     # mathtext subscripts: the plots do not use LaTeX, so \textsubscript would be printed as is
-    "SQS-Hbs": "SQS-H$_{\\mathrm{bs}}$",
+    "SQS-Hbs-KDEy": "SQS-H$_{\\mathrm{bs}}$",
+    "SQS-Hbs": "SQS-H$_{\\mathrm{bs}}$-PACC",
     "SQS-B": "SQS-H$_{\\mathrm{bay}}$",
     "SQS-B-loo": "SQS-B-loo",
     "O-LEAP": "LEAP",

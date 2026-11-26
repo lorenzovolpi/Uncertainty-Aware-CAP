@@ -1,7 +1,8 @@
 """The summary tables of the distance diagnostic ``predist`` (E6.1 of ``docs/ext6_sqs_s_design.md``, card WP-16).
 
 Inputs: the stored ``predist`` results (``experiments/predist.py``) with ``schema_version`` at least
-``RESULT_SCHEMA_VERSION`` (PACC(MLP) as the quantifier of PrediQuant), one file per (dataset, classifier) pair, one row
+``RESULT_SCHEMA_VERSION`` (PACC(MLP) as the quantifier of PrediQuant; with ``--quantifier kdey``, KDEyML(MLP), the
+files ``PrediQuant-KDEy`` of card WP-36, tables under ``tables/predist/kdey/``), one file per (dataset, classifier) pair, one row
 per (distance, test bag). Vanilla accuracy by default. Every score is computed against the realised table of the test
 bag (``true_acc``).
 
@@ -45,8 +46,10 @@ from uncawe import env
 from uncawe.experiments.predist_config import (
     DEFAULT_ACC_NAME,
     DEFAULT_DOMAIN,
+    DEFAULT_QUANTIFIER,
     EXPERIMENT,
     METHOD_NAME,
+    QUANTIFIERS,
     RESULT_SCHEMA_VERSION,
 )
 from uncawe.tables.estimand_gap import booktabs_clines
@@ -79,10 +82,16 @@ TABLE_SETS = ("summary", "region")
 # --------------------------------------------------------------------------------------------------- loading
 
 
-def load_results(domain: str = DEFAULT_DOMAIN, acc_name: str = DEFAULT_ACC_NAME, root: str | None = None):
-    """The stored ``predist`` rows of ``domain`` and ``acc_name`` with ``schema_version >= RESULT_SCHEMA_VERSION``."""
+def load_results(
+    domain: str = DEFAULT_DOMAIN,
+    acc_name: str = DEFAULT_ACC_NAME,
+    root: str | None = None,
+    method_name: str = METHOD_NAME,
+):
+    """The stored ``predist`` rows of ``domain`` and ``acc_name`` with ``schema_version >= RESULT_SCHEMA_VERSION``, from
+    the files ``method_name`` (``PrediQuant``, PACC; ``PrediQuant-KDEy``, KDEy, WP-36)."""
     root = env.root_dir if root is None else root
-    paths = sorted(glob(os.path.join(root, EXPERIMENT, domain, acc_name, "*", "*", f"{METHOD_NAME}.parquet")))
+    paths = sorted(glob(os.path.join(root, EXPERIMENT, domain, acc_name, "*", "*", f"{method_name}.parquet")))
     frames = [pd.read_parquet(path) for path in paths]
     frames = [df for df in frames if "schema_version" in df.columns]
     if not frames:
@@ -295,6 +304,9 @@ def _latex_document(tabular_path: str, caption: str) -> str:
 def table_dir(pargs=None) -> str:
     if pargs is not None and pargs.table_dir is not None:
         return pargs.table_dir
+    # WP-36: the tables of KDEyML(MLP) in their own folder, next to those of E6.1 (PACC)
+    if pargs is not None and getattr(pargs, "quantifier", DEFAULT_QUANTIFIER) != DEFAULT_QUANTIFIER:
+        return os.path.join(env.root_dir, "tables", TABLE_NAME, pargs.quantifier)
     return os.path.join(env.root_dir, "tables", TABLE_NAME)
 
 
@@ -310,7 +322,8 @@ def print_decision(result: dict) -> None:
 
 
 def gen_tables(pargs):
-    df = load_results(pargs.domain, pargs.acc_name)
+    quantifier = getattr(pargs, "quantifier", DEFAULT_QUANTIFIER)
+    df = load_results(pargs.domain, pargs.acc_name, method_name=QUANTIFIERS[quantifier][0])
     if df.empty:
         raise RuntimeError(f"No {EXPERIMENT} results with schema_version >= {RESULT_SCHEMA_VERSION} found.")
     pairs, pair_region, summary, region = compute(df)
@@ -326,7 +339,8 @@ def gen_tables(pargs):
         with open(os.path.join(tabular_dir, f"{_stem(name)}.tex"), "w") as f:
             f.write(latex[name]())
         with open(os.path.join(out_dir, f"{_stem(name)}_doc.tex"), "w") as f:
-            f.write(_latex_document(f"tabular/{_stem(name)}.tex", CAPTIONS[name]))
+            caption = CAPTIONS[name].replace("PACC(MLP)", QUANTIFIERS[quantifier][1])
+            f.write(_latex_document(f"tabular/{_stem(name)}.tex", caption))
 
     with pd.option_context("display.width", 250, "display.max_columns", None, "display.precision", 4):
         print(f"\nsummary:\n{summary.to_string(index=False)}")
@@ -370,6 +384,8 @@ if __name__ == "__main__":
         default=None,
         help="Directory where the CSVs, table documents and tabular fragments are saved",
     )
+    # WP-36: the tables of the KDEyML(MLP) runs (default: those of E6.1, PACC(MLP))
+    parser.add_argument("--quantifier", choices=list(QUANTIFIERS), default=DEFAULT_QUANTIFIER)
     pargs = parser.parse_args()
 
     if pargs.tables or pargs.all:

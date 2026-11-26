@@ -41,7 +41,7 @@ import pandas as pd
 from scipy.stats import wilcoxon
 
 from uncawe import env
-from uncawe.experiments.methods import PQ_RHO_VARIANTS
+from uncawe.experiments.methods import PQ_KDEY_RHO_VARIANTS, PQ_RHO_VARIANTS
 from uncawe.experiments.metrics import acc_from_ct, get_acc_names
 from uncawe.main import EXPERIMENT
 from uncawe.results import Results
@@ -54,6 +54,16 @@ DOMAIN = "classic"
 KEYS = ["dataset", "classifier"]
 LEVELS = dict(PQ_RHO_VARIANTS)
 LEVEL_VALUES = tuple(LEVELS.values())
+# the quantifier of SQS-S (card WP-36): key -> (methods name -> rho, label of the captions, subfolder of the outputs);
+# PACC(MLP), the methods of E6.2, or KDEyML(MLP), PQ-KDEy at the same levels, under kdey/
+QUANTIFIERS = {
+    "pacc": (LEVELS, "PACC(MLP)", None),
+    "kdey": (dict(PQ_KDEY_RHO_VARIANTS), "KDEyML(MLP)", "kdey"),
+}
+DEFAULT_QUANTIFIER = "pacc"
+# every stored method of the two sets -> rho
+ALL_LEVELS = {**LEVELS, **PQ_KDEY_RHO_VARIANTS}
+assert tuple(QUANTIFIERS["kdey"][0].values()) == LEVEL_VALUES
 REFERENCE_RHO = 0.5
 # measure column -> label
 MEASURES = {
@@ -72,15 +82,18 @@ MARK = "$^{*}$"
 # --------------------------------------------------------------------------------------------------- loading
 
 
-def load_results(acc_name: str, domain: str = DOMAIN, root: str | None = None) -> pd.DataFrame:
-    """The stored ``main`` rows of the ``PQ-rho*`` methods for ``acc_name``."""
+def load_results(
+    acc_name: str, domain: str = DOMAIN, root: str | None = None, quantifier: str = DEFAULT_QUANTIFIER
+) -> pd.DataFrame:
+    """The stored ``main`` rows of the ``PQ-rho*`` methods (``PQ-KDEy-rho*`` with ``quantifier="kdey"``, WP-36) for
+    ``acc_name``."""
     root = env.root_dir if root is None else root
     try:
         results = Results.load(
             base_dir=os.path.join(root, EXPERIMENT),
             domain=domain,
             acc_name=acc_name,
-            filter_methods=list(LEVELS),
+            filter_methods=list(QUANTIFIERS[quantifier][0]),
         )
     except ValueError:  # no file to concatenate
         return pd.DataFrame()
@@ -111,7 +124,7 @@ def bag_scores(df: pd.DataFrame, acc_name: str) -> pd.DataFrame:
                     "dataset": dataset,
                     "classifier": classifier,
                     "n_classes": int(row.n_classes),
-                    "rho": LEVELS[method],
+                    "rho": ALL_LEVELS[method],
                     "bag": bag,
                     "quant_error": quant_error(row.pq_test_prev, true_ct),
                     "acc_err": float(row.acc_err),
@@ -206,11 +219,11 @@ def summary_latex(summaries: dict[str, pd.DataFrame], levels=LEVEL_VALUES) -> st
     return booktabs_clines(latex)
 
 
-def caption(summaries: dict[str, pd.DataFrame], failed: int) -> str:
+def caption(summaries: dict[str, pd.DataFrame], failed: int, quantifier: str = DEFAULT_QUANTIFIER) -> str:
     n_pairs = sorted({int(s["n_pairs"].iloc[0]) for s in summaries.values() if not s.empty})
     pairs = "/".join(str(n) for n in n_pairs)
     return (
-        "SQS-S (PrediQuant with PACC(MLP), $n=10{,}000$ candidates, $\\gamma=0.1$, $L_1$, $m=1000$) on the pairs of "
+        f"SQS-S (PrediQuant with {QUANTIFIERS[quantifier][1]}, $n=10{{,}}000$ candidates, $\\gamma=0.1$, $L_1$, $m=1000$) on the pairs of "
         "\\texttt{main} at five allocations $\\rho=|V_q|/|V|$ with nested splits (E6.2), scored against the realised "
         f"table of each target bag ($|U|=1000$). Means over the {pairs} pairs that have every level of the per-pair "
         "means over the $100$ bags: quantification error $\\frac1K\\sum_j|\\hat\\pi^Q_j-\\pi^Q_j|$, absolute error of "
@@ -246,7 +259,8 @@ def _latex_document(tabular_path: str, caption_text: str) -> str:
 def table_dir(pargs=None) -> str:
     if pargs is not None and getattr(pargs, "table_dir", None) is not None:
         return pargs.table_dir
-    return os.path.join(env.root_dir, "tables", TABLE_NAME)
+    sub = QUANTIFIERS[getattr(pargs, "quantifier", DEFAULT_QUANTIFIER)][2]
+    return os.path.join(env.root_dir, "tables", TABLE_NAME, *([sub] if sub else []))
 
 
 def pairs_csv_path(out_dir: str | None = None) -> str:
@@ -258,17 +272,19 @@ def gen_tables(pargs):
     tabular_dir = os.path.join(out_dir, "tabular")
     os.makedirs(tabular_dir, exist_ok=True)
     all_pairs, all_failures, summaries = [], [], {}
+    quantifier = getattr(pargs, "quantifier", DEFAULT_QUANTIFIER)
+    levels = QUANTIFIERS[quantifier][0]
     for acc_name in pargs.metrics:
-        df = load_results(acc_name, pargs.domain)
+        df = load_results(acc_name, pargs.domain, quantifier=quantifier)
         if df.empty:
-            print(f"{acc_name}: no stored results of {sorted(LEVELS)}")
+            print(f"{acc_name}: no stored results of {sorted(levels)}")
             continue
         pairs, failed, summary = compute(acc_name, df)
         all_pairs.append(pairs.assign(acc_name=acc_name))
         all_failures.append(failed.assign(acc_name=acc_name))
         summaries[acc_name] = summary
     if not summaries:
-        raise RuntimeError(f"No {EXPERIMENT} results of {sorted(LEVELS)} found.")
+        raise RuntimeError(f"No {EXPERIMENT} results of {sorted(levels)} found.")
 
     pairs = pd.concat(all_pairs, ignore_index=True)
     failed = pd.concat(all_failures, ignore_index=True)
@@ -281,7 +297,7 @@ def gen_tables(pargs):
     with open(os.path.join(tabular_dir, f"{TABLE_NAME}_summary.tex"), "w") as f:
         f.write(summary_latex(summaries))
     with open(os.path.join(out_dir, f"{TABLE_NAME}_summary_doc.tex"), "w") as f:
-        f.write(_latex_document(f"tabular/{TABLE_NAME}_summary.tex", caption(summaries, n_failed)))
+        f.write(_latex_document(f"tabular/{TABLE_NAME}_summary.tex", caption(summaries, n_failed, quantifier)))
 
     with pd.option_context("display.width", 250, "display.max_columns", None, "display.precision", 4):
         for acc_name, summary in summaries.items():
@@ -320,6 +336,8 @@ def parse_args(argv=None):
         default=None,
         help="Directory where the CSVs, table document and tabular fragment are saved",
     )
+    # WP-36: SQS-S with KDEyML(MLP) (PQ-KDEy-rho*, outputs under kdey/) instead of PACC(MLP) (E6.2)
+    parser.add_argument("--quantifier", choices=list(QUANTIFIERS), default=DEFAULT_QUANTIFIER)
     return parser.parse_args(argv)
 
 

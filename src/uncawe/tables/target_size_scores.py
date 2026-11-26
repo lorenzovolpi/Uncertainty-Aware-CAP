@@ -88,7 +88,13 @@ SHORT_LABELS = {
     "BayesCAP-Hf-real-tcal": "BayCAP-Hf-tcal",
     "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy-cb-tcal-keep",
     "BayCAP-KDEy-h-inst-cb-tcal-resel": "BayCAP-KDEy-cb-tcal-resel",
-    "PQ": "SQS-S",
+    # card WP-36: the SQS methods with KDEy get the plain labels, the PACC versions name their quantifier
+    "SQS-H": "SQS-H-PACC",
+    "SQS-Hbs": "SQS-Hbs-PACC",
+    "PQ": "SQS-S-PACC",
+    "SQS-H-KDEy": "SQS-H",
+    "SQS-Hbs-KDEy": "SQS-Hbs",
+    "PQ-KDEy": "SQS-S",
 }
 SCORE_LABELS = {"ae": "AE", "winkler": "$W$", "coverage": "coverage", "amplitude": "amplitude"}
 CAPTIONS = {

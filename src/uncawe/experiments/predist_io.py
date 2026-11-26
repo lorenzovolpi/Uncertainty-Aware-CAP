@@ -9,10 +9,11 @@ import uncawe.env as env
 from uncawe.experiments.predist_config import EXPERIMENT, METHOD_NAME, RESULT_SCHEMA_VERSION
 
 
-def result_path(domain: str, dataset: str, classifier: str, acc_name: str) -> str:
+def result_path(domain: str, dataset: str, classifier: str, acc_name: str, method_name: str = METHOD_NAME) -> str:
+    """The file of one pair; ``method_name`` is that of the quantifier (``predist_config.py:QUANTIFIERS``, WP-36)."""
     parent = os.path.join(env.root_dir, EXPERIMENT, domain, acc_name, dataset, classifier)
     os.makedirs(parent, exist_ok=True)
-    return os.path.join(parent, f"{METHOD_NAME}.parquet")
+    return os.path.join(parent, f"{method_name}.parquet")
 
 
 def atomic_save_parquet(df: pd.DataFrame, path: str) -> None:

@@ -13,7 +13,8 @@ input and a fixed $\hat C$), both with the realised pushforward, built as in ``m
 with $\tau$ selected inside the fit (``E44_TCAL_METHODS``: those of ``experiments/methods.py:TCAL_VARIANTS`` whose
 base is in E4.4; ``methods/tcal.py``, on
 calibration bags of $|U|$ instances from half of the $V$ of the task, $\tau=1$ where it cannot be split), and ``SQS-H``,
-``SQS-Hbs``, ``PQ`` (SQS-S) and ``SQS-B``, built as in ``main`` except that the SQS methods draw bags of ``sample_size``
+``SQS-Hbs``, ``PQ`` (SQS-S), their versions with KDEy as quantifier (``SQS-H-KDEy``, ``SQS-Hbs-KDEy``, ``PQ-KDEy``,
+card WP-36) and ``SQS-B``, built as in ``main`` except that the SQS methods draw bags of ``sample_size``
 $=|U|$ instances from $V$ (``make_method``). The BayCAP-KDEy methods are ``BayCAP-KDEy-h-inst`` and
 ``BayCAP-KDEy-h-inst-cb`` (the per-instance pushforward with the input classifier $h$, E3.4 and E3.5) since card WP-33
 (user's decision of 2026-11-24), in place of ``BayCAP-KDEy-mlp-real``, whose results are invalidated; its stored cells
@@ -61,7 +62,7 @@ that exists is skipped. ``--counts`` writes ``<OUT_DIR>/uncawe/tables/target_siz
 ``v_counts_e44b.csv``, on the levels of E4.4b).
 
 As in ``main``, the methods that sample with NumPyro (``BAYES_POOL_METHODS``) run in one pool with ``BAYES_N_JOBS``
-workers and ``BAYES_ENV``, the others (``SQS-H``, ``SQS-Hbs``, ``PQ``) in a pool with ``N_JOBS`` of ``cap.env`` and
+workers and ``BAYES_ENV``, the others (``SQS-H``, ``SQS-Hbs``, ``PQ`` and their KDEy versions) in a pool with ``N_JOBS`` of ``cap.env`` and
 ``THREAD_LIMITS``; the caches of JAX are cleared after each task.
 """
 
@@ -96,6 +97,7 @@ from uncawe.experiments.methods import (
     BAYES_WARMUPS,
     BOOTSTRAP_ITERS,
     SAMPLE_SIZE,
+    SQS_KDEY_VARIANTS,
     TCAL_VARIANTS,
     THREAD_LIMITS,
     baycap_method,
@@ -128,12 +130,26 @@ E44_KDEY_METHODS = ("BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
 # size of the target bags and, in E4.4b, on the subsampled V of each level (fallback to tau=1 where V cannot be split)
 # (not BayesCAP-tcal and BayesCAP-real-tcal, whose bases are not in E4.4)
 E44_TCAL_METHODS = ("BayesCAP-Hf-real-tcal", "BayCAP-KDEy-h-inst-cb-tcal-keep", "BayCAP-KDEy-h-inst-cb-tcal-resel")
-E44_METHODS = ("BayesCAP-Hf-real", *E44_KDEY_METHODS, *E44_TCAL_METHODS, "SQS-H", "SQS-Hbs", "PQ", "SQS-B")
+# WP-36 (user's decision of 2026-11-26): the SQS methods with KDEy as quantifier, each after its PACC version (whose
+# cells are stored)
+E44_SQS_KDEY_METHODS = ("SQS-H-KDEy", "SQS-Hbs-KDEy", "PQ-KDEy")
+E44_METHODS = (
+    "BayesCAP-Hf-real",
+    *E44_KDEY_METHODS,
+    *E44_TCAL_METHODS,
+    "SQS-H",
+    "SQS-H-KDEy",
+    "SQS-Hbs",
+    "SQS-Hbs-KDEy",
+    "PQ",
+    "PQ-KDEy",
+    "SQS-B",
+)
 # every method the study can run: those of E4.2 and of E4.4
 STUDY_METHODS = tuple(dict.fromkeys((*METHODS, *E44_METHODS)))
 E44_CLASSIFIERS = ("LR",)
 # the SQS methods, whose bags of V get the size of the target bag in this study (make_method)
-SQS_METHODS = ("SQS-H", "SQS-Hbs", "PQ", "SQS-B")
+SQS_METHODS = ("SQS-H", "SQS-Hbs", "PQ", "SQS-B", *E44_SQS_KDEY_METHODS)
 # |V| levels of E4.2: name -> fraction of V. Also part of ``config_hash``, so this dictionary stays as it is: the hash of
 # the stored cells of E4.2 must not change (the fraction of each cell is stored in ``v_fraction``)
 LEVELS = {"full": 1.0, "1/4": 1 / 4, "1/16": 1 / 16}
@@ -365,12 +381,15 @@ def make_method(method_name: str, size: int = SAMPLE_SIZE):
     if method_name in TCAL_VARIANTS:
         # WP-34: the calibration bags have the size of the target bags (user's decision of 2026-11-25)
         return tcal_method(acc, method_name, cal_bag_size=size)
-    if method_name == "SQS-H":
-        return sqs_h(acc, bootstrap=False, sample_size=size)
-    if method_name == "SQS-Hbs":
-        return sqs_h(acc, bootstrap=True, sample_size=size)
-    if method_name == "PQ":
-        return sqs_s(acc, sample_size=size)
+    # WP-36: the KDEy versions are built as their PACC method with quantifier="kdey"
+    quantifier = "kdey" if method_name in SQS_KDEY_VARIANTS else "pacc"
+    sqs_name = SQS_KDEY_VARIANTS.get(method_name, method_name)
+    if sqs_name == "SQS-H":
+        return sqs_h(acc, bootstrap=False, sample_size=size, quantifier=quantifier)
+    if sqs_name == "SQS-Hbs":
+        return sqs_h(acc, bootstrap=True, sample_size=size, quantifier=quantifier)
+    if sqs_name == "PQ":
+        return sqs_s(acc, sample_size=size, quantifier=quantifier)
     if method_name == "SQS-B":
         return sqs_b(acc, sample_size=size)
     raise ValueError(f"Unknown method {method_name}; the study runs {list(STUDY_METHODS)}")

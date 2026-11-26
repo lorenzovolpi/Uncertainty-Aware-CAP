@@ -17,6 +17,12 @@ DEFAULT_N_JOBS = 1
 RESULT_SCHEMA_VERSION = 4
 # the surrogate quantifier of PrediQuant, as in PQ of main (experiments/methods.py:pacc)
 QUANTIFIER_NAME = "PACC(MLP)"
+# the quantifiers of PrediQuant (card WP-36, user's decision of 2026-11-26): key of experiments/methods.py:SQS_QUANTIFIERS
+# -> (name of the stored file and of the method column, quantifier column); PACC(MLP) as PQ (the results of E6.1), or
+# KDEyML(MLP) as PQ-KDEy, the SQS-S of the main tables since 2026-11-26, in its own file next to the PACC one, with the
+# same schema
+QUANTIFIERS = {"pacc": (METHOD_NAME, QUANTIFIER_NAME), "kdey": ("PrediQuant-KDEy", "KDEy(MLP)")}
+DEFAULT_QUANTIFIER = "pacc"
 # the settings of PrediQuant shared with PQ of main: m = num_samples selected bags out of num_samples / alpha candidates
 PREDIQUANT_ALPHA = 0.1
 DEFAULT_NUM_SAMPLES = 1000

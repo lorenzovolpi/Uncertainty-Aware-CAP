@@ -164,13 +164,13 @@ class TestExcludeMethods(unittest.TestCase):
 class TestMethodTableLabel(unittest.TestCase):
     def test_macros_are_resolved(self):
         self.assertEqual(method_table_label("O-LEAP"), "LEAP")
-        self.assertEqual(method_table_label("SQS-Hbs"), "SQS-H$_{\\mathrm{bs}}$")
+        self.assertEqual(method_table_label("SQS-Hbs-KDEy"), "SQS-H$_{\\mathrm{bs}}$")
         self.assertEqual(method_table_label("SQS-B"), "SQS-H$_{\\mathrm{bay}}$")
         self.assertEqual(method_table_label("BayesCAP-Hf-real"), "BayCAP-Hf")
         self.assertEqual(method_table_label("BayCAP-KDEy-h-inst"), "BayCAP-KDEy")
         self.assertEqual(method_table_label("BayCAP-KDEy-mlp-real"), "BayCAP-KDEy-mlp-real")
         self.assertEqual(method_table_label("BayesCAP-real"), "BayCAP-sample")
-        self.assertEqual(method_table_label("PQ"), "SQS-S")
+        self.assertEqual(method_table_label("PQ-KDEy"), "SQS-S")
         self.assertEqual(method_table_label("DoC"), "DoC")
 
 

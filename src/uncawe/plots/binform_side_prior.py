@@ -64,7 +64,21 @@ CUT = 2.0
 BANDWIDTHS = {"bags": 0.15, "pairs": 0.3}
 PANELS = {"ae": "AE", "winkler": "Winkler score"}
 # the per-instance BayCAP-KDEy methods in place of BayCAP-KDEy-mlp-real since card WP-33
-METHOD_ORDER = ("PQ", "SQS-H", "SQS-Hbs", SQS_B, "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+# since card WP-36 the references with KDEy (the SQS methods of main), first; the PACC references stay available and
+# are left out by default (DEFAULT_EXCLUDE)
+METHOD_ORDER = (
+    "PQ-KDEy",
+    "SQS-H-KDEy",
+    "SQS-Hbs-KDEy",
+    "PQ",
+    "SQS-H",
+    "SQS-Hbs",
+    SQS_B,
+    "BayesCAP-Hf-real",
+    "BayCAP-KDEy-h-inst",
+    "BayCAP-KDEy-h-inst-cb",
+)
+DEFAULT_EXCLUDE = ("PQ", "SQS-H", "SQS-Hbs")
 SIDE_ROLES = ("wrong", "uniform", "right")
 ROLE_TICKS = {"wrong": "wrong", "uniform": "uniform", "right": "right", NO_PRIOR: "no prior"}
 GROUP_GAP = 0.9
@@ -95,7 +109,7 @@ def short_label(method: str) -> str:
     return method_plot_label(method).removesuffix("-real").removesuffix("-mlp")
 
 
-def violin_cells(exclude=()) -> list[tuple[str, str, float]]:
+def violin_cells(exclude=DEFAULT_EXCLUDE) -> list[tuple[str, str, float]]:
     """The ``(method, role, position)`` of the violins of a figure, left to right in ``METHOD_ORDER`` without the
     methods of ``exclude``: three violins (wrong side, uniform, right side) for a method with a prior, one (no prior)
     for the others; the groups of a method are separated by ``GROUP_GAP``."""
@@ -173,7 +187,7 @@ def plot_violins(
     acc_name: str = ACC_NAME,
     level: str = "pairs",
     group: str = "all",
-    exclude=(),
+    exclude=DEFAULT_EXCLUDE,
 ):
     """The violin figure of ``distribution``, over the per-pair means of ``pair_means`` (``level="pairs"``) or over the
     bags, for the pairs of ``group``, without the methods of ``exclude``; ``None`` without rows."""
@@ -303,7 +317,11 @@ def parse_args(argv: list[str] | None = None):
     parser.add_argument("--methods", nargs="+", choices=E55_PRIOR_BASES, default=list(E55_PRIOR_BASES))
     # the paper leaves SQS-B out of the violins (uncawe/paper.py, user's decision of 2026-11-25)
     parser.add_argument(
-        "--exclude-methods", nargs="*", choices=METHOD_ORDER, default=[], help="Methods left out of the violins"
+        "--exclude-methods",
+        nargs="*",
+        choices=METHOD_ORDER,
+        default=list(DEFAULT_EXCLUDE),
+        help="Methods left out of the violins (default: the PACC references, WP-36)",
     )
     parser.add_argument("--distributions", nargs="+", choices=E55_DISTRIBUTIONS, default=list(E55_DISTRIBUTIONS))
     parser.add_argument("--groups", nargs="+", choices=PAIR_GROUPS, default=list(PAIR_GROUPS))

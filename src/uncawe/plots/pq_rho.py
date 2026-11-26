@@ -25,7 +25,15 @@ from uncawe import env
 from uncawe.experiments.methods import CONFIDENCE_LEVEL
 from uncawe.experiments.metrics import get_acc_names
 from uncawe.plots.common import font_size
-from uncawe.tables.pq_rho import KEYS, MEASURES, METRIC_LABELS, pairs_csv_path
+from uncawe.tables.pq_rho import (
+    DEFAULT_QUANTIFIER,
+    KEYS,
+    MEASURES,
+    METRIC_LABELS,
+    QUANTIFIERS,
+    pairs_csv_path,
+    table_dir,
+)
 
 PLOT_NAME = "pq_rho"
 # measures that are shares in [0, 1], drawn on a fixed range
@@ -47,8 +55,9 @@ MEDIAN_LINE = {"color": "#d62728", "linewidth": 1.6, "marker": "s", "linestyle":
 AE_W_PANELS = (("acc_err", "AE"), ("winkler", "W"))
 
 
-def plot_dir() -> str:
-    path = os.path.join(env.root_dir, "plots", PLOT_NAME)
+def plot_dir(quantifier: str = DEFAULT_QUANTIFIER) -> str:
+    sub = QUANTIFIERS[quantifier][2]
+    path = os.path.join(env.root_dir, "plots", PLOT_NAME, *([sub] if sub else []))
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -130,8 +139,9 @@ def save(fig, stem: str, args):
 
 
 def generate_plots(args):
-    table = load_table(args.csv)
-    out_dir = plot_dir()
+    quantifier = getattr(args, "quantifier", DEFAULT_QUANTIFIER)
+    table = load_table(args.csv or pairs_csv_path(table_dir(args)))
+    out_dir = plot_dir(quantifier)
     for acc_name in args.metrics:
         sub = table.loc[table["acc_name"] == acc_name]
         if sub.empty:
@@ -150,7 +160,10 @@ def parse_args(argv=None):
     parser.add_argument("--pdf", action=BooleanOptionalAction, default=True)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--add-stem", default=None)
+    # WP-36: the figures of PQ-KDEy-rho* (CSV and figures under kdey/) instead of those of E6.2 (PACC)
+    parser.add_argument("--quantifier", choices=list(QUANTIFIERS), default=DEFAULT_QUANTIFIER)
     args = parser.parse_args(argv)
+    args.table_dir = None
     args.formats = ["png"] + (["svg"] if args.svg else []) + (["pdf"] if args.pdf else [])
     return args
 

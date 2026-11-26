@@ -15,7 +15,10 @@ METHOD_LATEX_PREAMBLE = "\n".join(METHOD_LATEX_MACROS)
 
 METHOD_LATEX_LABELS = {
     "QuAcc_NxN": "QuAcc",
-    "PQ": "\\pq",
+    # the SQS methods (card WP-36, user's decision of 2026-11-26): the default ones, with KDEy as quantifier, get the
+    # plain labels, and the PACC versions of the paper name their quantifier
+    "PQ": "\\pq{}-PACC",
+    "PQ-KDEy": "\\pq",
     "BayesCAP": "\\bcappop",
     "BayesCAP-real": "\\bcapsample",
     "BayesCAP-EB": "\\bcap{}-EB",
@@ -37,8 +40,10 @@ METHOD_LATEX_LABELS = {
     "BayCAP-EMQ-mlp-real": "\\bcap{}-EMQ-mlp-real",
     "BayCAP-KDEy-Hf-h-real": "\\bcap{}-KDEy-Hf-h-real",
     "BayCAP-KDEy-Hf-mlp-real": "\\bcap{}-KDEy-Hf-mlp-real",
-    "SQS-H": "\\sqsh",
-    "SQS-Hbs": "\\sqshbs",
+    "SQS-H": "\\sqsh{}-PACC",
+    "SQS-Hbs": "\\sqshbs{}-PACC",
+    "SQS-H-KDEy": "\\sqsh",
+    "SQS-Hbs-KDEy": "\\sqshbs",
     "SQS-B": "\\sqsb",
     "SQS-B-loo": "\\sqsb{}-loo",
     "BayCAP-KDEy-mlp-real-loo": "\\bcapkdey{}-loo",
