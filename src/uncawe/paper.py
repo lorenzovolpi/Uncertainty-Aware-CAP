@@ -12,6 +12,11 @@ missing source stops the collection before anything is copied.
 Every table and figure scores the realised table of each bag (``true_cts``), as ``main`` does.
 
 On ``bcuda``: ``make run-paper`` (generate and collect), then ``make pull PULL_DIRS=paper``.
+
+One table or figure at a time (user's request of 2026-11-26): ``--only <item>`` (``ITEMS``, one per command, named
+``table-<name>`` or ``plot-<name>`` after its ``make`` target) runs that command and copies only its artefacts,
+overwriting them in the paper folder and leaving the others in place; ``make run-paper-<item>`` (e.g.
+``make run-paper-table-main``), then ``make pull PULL_DIRS=paper``.
 """
 
 import os
@@ -147,15 +152,25 @@ ARTEFACTS = (
 )
 
 
+def item_name(command: Command) -> str:
+    """The name of the item of ``command``: its ``make`` target with ``tables-`` shortened to ``table-``."""
+    return "table-" + command.target.removeprefix("tables-") if command.target.startswith("tables-") else command.target
+
+
+# one item per command: name -> (command, its artefacts), in the order of COMMANDS
+ITEMS = {item_name(command): (command, tuple(a for a in ARTEFACTS if a.command == command)) for command in COMMANDS}
+
+
 def generate(commands=COMMANDS) -> None:
     for command in commands:
         print(f"paper: {command.make()}", flush=True)
         subprocess.run(command.argv(), check=True)
 
 
-def collect(root: str | None = None, artefacts=ARTEFACTS) -> list[str]:
+def collect(root: str | None = None, artefacts=ARTEFACTS, clean: bool = True) -> list[str]:
     """Copy the artefacts into ``<root>/paper/`` (``root`` defaults to ``<OUT_DIR>/uncawe``); returns the copied
-    destination paths."""
+    destination paths. With ``clean`` (the full collection) the two subfolders are emptied first; without it (one item,
+    ``--only``) the other files of the paper folder are kept and those of ``artefacts`` overwritten."""
     root = root or env.root_dir
     pairs = [pair for artefact in artefacts for pair in artefact.files()]
     missing = [source for source, _ in pairs if not os.path.exists(os.path.join(root, source))]
@@ -164,8 +179,9 @@ def collect(root: str | None = None, artefacts=ARTEFACTS) -> list[str]:
 
     paper_dir = os.path.join(root, PAPER_DIR)
     for kind in ("tables", "figures"):
-        shutil.rmtree(os.path.join(paper_dir, kind), ignore_errors=True)
-        os.makedirs(os.path.join(paper_dir, kind))
+        if clean:
+            shutil.rmtree(os.path.join(paper_dir, kind), ignore_errors=True)
+        os.makedirs(os.path.join(paper_dir, kind), exist_ok=True)
     copied = []
     for source, destination in pairs:
         shutil.copy2(os.path.join(root, source), os.path.join(root, destination))
@@ -180,19 +196,23 @@ def main(argv=None):
     parser.add_argument("--generate", action="store_true", help="Run every command of the paper artefacts")
     parser.add_argument("--collect", action="store_true", help=f"Copy the artefacts into <OUT_DIR>/uncawe/{PAPER_DIR}/")
     parser.add_argument("--list", action="store_true", help="Print the commands and the artefacts")
+    parser.add_argument(
+        "--only", choices=list(ITEMS), default=None, help="One table or figure: its command and its artefacts only"
+    )
     args = parser.parse_args(argv)
     if not (args.generate or args.collect or args.list):
         parser.error("choose at least one of --generate, --collect, --list")
+    commands, artefacts = (COMMANDS, ARTEFACTS) if args.only is None else ((ITEMS[args.only][0],), ITEMS[args.only][1])
     if args.list:
-        for command in COMMANDS:
+        for command in commands:
             print(command.make())
-        for artefact in ARTEFACTS:
+        for artefact in artefacts:
             for source, destination in artefact.files():
                 print(f"{source} -> {destination}")
     if args.generate:
-        generate()
+        generate(commands)
     if args.collect:
-        copied = collect()
+        copied = collect(artefacts=artefacts, clean=args.only is None)
         print(f"paper: {len(copied)} files in {os.path.join(env.root_dir, PAPER_DIR)}")
 
 

@@ -53,6 +53,21 @@ class TestManifest(unittest.TestCase):
         self.assertEqual(paper.MAIN.make(), 'make run-tables-main ARGS="--tables --no-std"')
         self.assertEqual(paper.AVC.make(), "make run-plot-avc")
 
+    def test_items_have_their_make_targets(self):
+        experiments = _make_experiments()
+        self.assertEqual([command for command, _ in paper.ITEMS.values()], list(paper.COMMANDS))
+        self.assertIn("table-main", paper.ITEMS)
+        self.assertIn("table-rank", paper.ITEMS)
+        self.assertIn("plot-avc", paper.ITEMS)
+        for name, (command, artefacts) in paper.ITEMS.items():
+            with self.subTest(item=name):
+                self.assertEqual(
+                    experiments[f"paper-{name}"], f"python -m uncawe.paper --generate --collect --only {name}"
+                )
+                self.assertTrue(artefacts)
+                self.assertTrue(all(a.command == command for a in artefacts))
+        self.assertEqual(sum(len(a) for _, a in paper.ITEMS.values()), len(paper.ARTEFACTS))
+
     def test_sqs_b_is_left_out_of_the_figures(self):
         for command in (paper.SHIFT_PROFILE, paper.BINFORM_SIDE_PRIOR, paper.TARGET_SIZE_SCORES):
             with self.subTest(target=command.target):
@@ -81,6 +96,21 @@ class TestCollect(unittest.TestCase):
                 self.assertEqual(f.read(), "plots/main/amplitude_vs_coverage/classic_vanilla_accuracy.png")
             with open(os.path.join(root, "paper", "macros.tex")) as f:
                 self.assertEqual(f.read().strip(), METHOD_LATEX_PREAMBLE)
+
+    def test_collect_of_one_item_keeps_the_others(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._write_sources(root, paper.ARTEFACTS)
+            paper.collect(root)
+            other = os.path.join(root, "paper", "figures", "amplitude_vs_coverage.png")
+            _, artefacts = paper.ITEMS["table-main"]
+            source = os.path.join(root, artefacts[0].source)
+            with open(source, "w") as f:
+                f.write("new")
+            copied = paper.collect(root, artefacts, clean=False)
+            self.assertEqual(len(copied), len(artefacts))
+            self.assertTrue(os.path.exists(other))
+            with open(os.path.join(root, artefacts[0].files()[0][1])) as f:
+                self.assertEqual(f.read(), "new")
 
     def test_missing_source_stops_before_copying(self):
         with tempfile.TemporaryDirectory() as root:

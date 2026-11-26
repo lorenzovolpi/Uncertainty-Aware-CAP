@@ -12,6 +12,8 @@ This document lists the tables and figures that the extended version of the pape
 
 `uv run python -m uncawe.paper --list` prints the commands and the source and destination of every file; `--collect` alone collects again from outputs already generated.
 
+One table or figure at a time: `make run-paper-<item>` runs the command of that item on `bcuda` and copies only its files into the paper folder, overwriting them and keeping the others (`python -m uncawe.paper --generate --collect --only <item>`); then `make pull PULL_DIRS=paper`. The items (`src/uncawe/paper.py:ITEMS`), one per command of the list: `table-main`, `table-rank`, `table-tau-select`, `table-coverage-amplitude`, `plot-avc`, `plot-shift-profile`, `plot-binform-side-prior`, `plot-pq-rho`, `plot-target-size-scores` (e.g. `make run-paper-table-main`).
+
 ## The paper folder
 
 `<OUT_DIR>/uncawe/paper/` holds:

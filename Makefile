@@ -142,6 +142,17 @@ EXP_plot-shift-profile := python -m uncawe.plots.shift_profile --domain classic
 # every table and figure of the extended paper, regenerated and collected in <OUT_DIR>/uncawe/paper/ (docs/paper.md);
 # then make pull PULL_DIRS=paper
 EXP_paper            := python -m uncawe.paper --generate --collect
+# one table or figure of the paper at a time (src/uncawe/paper.py:ITEMS): its command, then only its artefacts copied
+# into <OUT_DIR>/uncawe/paper/ (the others kept); then make pull PULL_DIRS=paper
+EXP_paper-table-main := python -m uncawe.paper --generate --collect --only table-main
+EXP_paper-table-rank := python -m uncawe.paper --generate --collect --only table-rank
+EXP_paper-table-tau-select := python -m uncawe.paper --generate --collect --only table-tau-select
+EXP_paper-table-coverage-amplitude := python -m uncawe.paper --generate --collect --only table-coverage-amplitude
+EXP_paper-plot-avc   := python -m uncawe.paper --generate --collect --only plot-avc
+EXP_paper-plot-shift-profile := python -m uncawe.paper --generate --collect --only plot-shift-profile
+EXP_paper-plot-binform-side-prior := python -m uncawe.paper --generate --collect --only plot-binform-side-prior
+EXP_paper-plot-pq-rho := python -m uncawe.paper --generate --collect --only plot-pq-rho
+EXP_paper-plot-target-size-scores := python -m uncawe.paper --generate --collect --only plot-target-size-scores
 EXP_test             := python -m unittest discover -s tests
 # toy of Ext. 3/5: where tau acts in BayCAP-KDEy-h-inst and the selection of E5.3 (--reps, --jobs in ARGS)
 EXP_toy-tau-placement := python scripts/toys/ext5_tau_placement.py
