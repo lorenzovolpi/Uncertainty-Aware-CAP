@@ -420,10 +420,10 @@ def _pairs_styler(pairs: pd.DataFrame):
 
 
 COMPACT_SCORES = ("ae", "winkler")
-# the bases of the compact table of the paper (user's decision of 2026-11-26): those of the four default BayCAP methods,
-# whose tau_cal column is that method (BayCAP-pop, BayCAP-sample, BayCAP-Hf, BayCAP-KDEy; experiments/methods.py:
-# TCAL_VARIANTS and KEEP_VARIANTS); the other tables keep every base of TEMPERED_BASES
-COMPACT_BASES = ("BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", KEEP_BASE)
+# the bases of the compact table of the paper (user's decision of 2026-11-26): those of the default BayCAP-Hf and
+# BayCAP-KDEy, whose tau_cal column is that method (experiments/methods.py:TCAL_VARIANTS and KEEP_VARIANTS); from
+# earlier the same day, also those of BayCAP-pop and BayCAP-sample; the other tables keep every base of TEMPERED_BASES
+COMPACT_BASES = ("BayesCAP-Hf-real", KEEP_BASE)
 COMPACT_DIGITS = 3
 
 
@@ -454,7 +454,8 @@ def _compact_frame(pairs: pd.DataFrame) -> pd.DataFrame:
 
 def _compact_styler(pairs: pd.DataFrame):
     """The compact per-pair table (:func:`_compact_frame`, one metric) for the paper. Per method, score and row, the
-    lower of the means at $\\tau=1$ and at $\\tau_{\\text{cal}}$, at the printed precision, is in bold (both on a tie); $\\tau_{\\text{cal}}$ is
+    mean at $\\tau_{\\text{cal}}$ is in bold where it is lower than or equal to that at $\\tau=1$, and the mean at $\\tau=1$
+    only where it is strictly lower (at the printed precision; user's decision of 2026-11-26, before both on a tie); $\\tau_{\\text{cal}}$ is
     highlighted (green, bold) where it equals the oracle-best $\\tau^\\star$, which is a reference (grey)."""
     out = _compact_frame(pairs)
     styles = pd.DataFrame("", index=out.index, columns=out.columns)
@@ -465,9 +466,10 @@ def _compact_styler(pairs: pd.DataFrame):
             # compared at the printed precision, so that equal printed values are both in bold
             at_1 = out[(label, head, "$1$")].to_numpy(dtype=float).round(COMPACT_DIGITS)
             at_cal = out[(label, head, COLUMN_LABELS["cal"])].to_numpy(dtype=float).round(COMPACT_DIGITS)
-            best = np.fmin(at_1, at_cal)
-            for column, values in (("$1$", at_1), (COLUMN_LABELS["cal"], at_cal)):
-                styles.loc[np.isclose(values, best), (label, head, column)] = "bfseries: ;"
+            # a tie goes to tau_cal (lower is better for both scores)
+            cal_best = at_cal <= at_1
+            styles.loc[cal_best, (label, head, COLUMN_LABELS["cal"])] = "bfseries: ;"
+            styles.loc[at_1 < at_cal, (label, head, "$1$")] = "bfseries: ;"
         tau_cal = out[(label, "$\\tau$", COLUMN_LABELS["cal"])].to_numpy(dtype=float)
         tau_oracle = out[(label, "$\\tau$", "$\\tau^\\star$")].to_numpy(dtype=float)
         styles.loc[tau_cal == tau_oracle, (label, "$\\tau$", COLUMN_LABELS["cal"])] = MATCH_STYLE
@@ -503,7 +505,7 @@ def caption(acc_name: str, name: str) -> str:
             "(green where it equals $\\tau^\\star$); $\\tau^\\star$ (grey, a reference chosen with the target labels): "
             "the best $\\tau$ on the test bags. AE and Winkler score: means over the 100 test bags of \\texttt{main} "
             "(methods fitted on the full $V$), scored against the realised table, at $\\tau=1$ and at "
-            "$\\tau_{\\mathrm{cal}}$; the lower of the two is in bold."
+            "$\\tau_{\\mathrm{cal}}$; the one at $\\tau_{\\mathrm{cal}}$ is in bold where it is lower than or equal to the one at $\\tau=1$, the one at $\\tau=1$ only where it is strictly lower."
         )
     if name == "pairs":
         return (

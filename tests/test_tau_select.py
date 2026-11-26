@@ -452,7 +452,7 @@ class TablesTest(unittest.TestCase):
         self.assertEqual(len(data), n_pairs)
         # only the bases of the paper (COMPACT_BASES) that have results; the fixture has no KEEP_BASE
         shown = [b for b in tables.COMPACT_BASES if b in set(pairs["method"])]
-        self.assertEqual(shown, ["BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real"])
+        self.assertEqual(shown, ["BayesCAP-Hf-real"])
         self.assertEqual(list(dict.fromkeys(data.columns.get_level_values(0))), [tt.METHOD_LABELS[b] for b in shown])
         self.assertEqual(data.shape[1], len(shown) * 6)
         # rows by classifier (CLASSIFIER_ORDER), then dataset
@@ -477,7 +477,8 @@ class TablesTest(unittest.TestCase):
                     round(row["t1_winkler"], tables.COMPACT_DIGITS),
                     round(row["cal_winkler"], tables.COMPACT_DIGITS),
                 )
-                self.assertEqual(bold["$1$"], t1 <= at_cal)
+                # a tie goes to tau_cal
+                self.assertEqual(bold["$1$"], t1 < at_cal)
                 self.assertEqual(bold[cal], at_cal <= t1)
                 j = data.columns.get_loc((label, "$\\tau$", cal))
                 highlighted = any(prop == "cellcolor" for prop, _ in ctx.get((i, j), []))
@@ -555,7 +556,9 @@ class TablesTest(unittest.TestCase):
                 self.assertIn(tt.METHOD_LABELS[invalidated], f.read())
         compact = tables._compact_frame(out["pairs"])
         labels = list(dict.fromkeys(compact.columns.get_level_values(0)))
-        self.assertEqual(labels, [tt.METHOD_LABELS[b] for b in bases])
+        # the compact table shows only COMPACT_BASES, then the invalidated base
+        shown = [b for b in bases if b in (*tables.COMPACT_BASES, *INVALIDATED_TEMPERED_BASES)]
+        self.assertEqual(labels, [tt.METHOD_LABELS[b] for b in shown])
 
 
 class PlotsTest(unittest.TestCase):
