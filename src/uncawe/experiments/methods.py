@@ -214,7 +214,7 @@ METHOD_CLASS |= {name: METHOD_CLASS[base] for name, base in CAL_VARIANTS.items()
 # deployed fit reuses the bandwidth selected on V_fit (-keep) or selects it again on the full V (-resel; the method of
 # the tables of E5.3), the two sharing the calibration (user's decision of 2026-11-25). Outside the main tables, ranks
 # and default plots (tables/main.py); before WP-34, the main and rank tables assembled columns from the stored runs of
-# E5.2 and E5.3 (tables/tcal_methods.py, now <base>-tcal-asm). BayesCAP-tcal and BayesCAP-real-tcal added on 2026-11-25
+# E5.2 and E5.3 (tables/tcal_methods.py; <base>-tcal-asm from WP-34 to 2026-11-26). BayesCAP-tcal and BayesCAP-real-tcal added on 2026-11-25
 # (user's decision), run in main only, not in E4.4 and E5.5, where their bases are absent
 TCAL_VARIANTS = {
     "BayesCAP-tcal": "BayesCAP",

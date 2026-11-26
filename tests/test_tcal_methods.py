@@ -17,10 +17,10 @@ from uncawe.tables import tcal_methods as tm
 from uncawe.tables import tempering as tt
 from uncawe.tables.common import METHOD_LATEX_LABELS, TCAL_METHODS
 
-BASE = "BayCAP-KDEy-h-inst-cb"
-# the assembled column of the base, -asm since WP-34 stores its -tcal methods (-keep, -resel)
-TCAL = f"{BASE}-tcal-asm"
-HF_TCAL = "BayesCAP-Hf-real-tcal-asm"
+# the only base whose -tcal column is still assembled: the -asm columns of the bases with a stored -tcal method were
+# removed on 2026-11-26 (WP-34)
+BASE = "BayCAP-KDEy-h-inst"
+TCAL = f"{BASE}-tcal"
 
 
 def _store(root: str, base: str) -> None:
@@ -36,9 +36,9 @@ def _store(root: str, base: str) -> None:
 class TcalMethodsTest(unittest.TestCase):
     def test_one_tcal_method_per_base_with_a_label(self):
         stored = set(TCAL_VARIANTS.values())
-        self.assertEqual(
-            TCAL_METHODS, {f"{base}-tcal-asm" if base in stored else f"{base}-tcal": base for base in TEMPERED_BASES}
-        )
+        self.assertEqual(TCAL_METHODS, {f"{base}-tcal": base for base in TEMPERED_BASES if base not in stored})
+        self.assertEqual(TCAL_METHODS, {TCAL: BASE})
+        self.assertFalse(any(name.endswith("-asm") for name in METHOD_LATEX_LABELS))
         self.assertFalse(set(TCAL_METHODS) & set(TCAL_VARIANTS))
         for name in TCAL_METHODS:
             self.assertIn(name, METHOD_LATEX_LABELS)
@@ -54,10 +54,12 @@ class TcalMethodsTest(unittest.TestCase):
             stored = [n for n, b in TCAL_VARIANTS.items() if b == base]
             self.assertEqual(names.index(name), names.index(base) + 1 + stored.index(name))
         # since 2026-11-26 BayesCAP-Hf-real-tcal is in the main tables, in place of BayesCAP-Hf-real
-        shown = main_tables.table_method_names((TCAL, HF_TCAL, "BayesCAP-Hf-real"))
+        shown = main_tables.table_method_names((TCAL, BASE, "BayesCAP-Hf-real"))
         self.assertIn(TCAL, shown)
         self.assertEqual(shown.index("BayesCAP-Hf-real-tcal"), shown.index("BayesCAP-Hf-real") + 1)
-        self.assertEqual(shown.index(HF_TCAL), shown.index("BayesCAP-Hf-real") + 2)
+        self.assertEqual(shown.index(TCAL), shown.index(BASE) + 1)
+        with self.assertRaises(ValueError):
+            main_tables._included(SimpleNamespace(include=["BayesCAP-Hf-real-tcal-asm"]))
         self.assertNotIn(TCAL, main_tables.table_method_names())
         self.assertEqual(main_tables._included(SimpleNamespace(include=[TCAL])), (TCAL,))
         self.assertEqual(rank._included(SimpleNamespace(include=[TCAL])), (TCAL,))

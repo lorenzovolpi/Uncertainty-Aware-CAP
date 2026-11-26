@@ -3,11 +3,12 @@ r"""The methods of E5.3 with the temperature chosen per pair on calibration bags
 
 Since WP-34, ``BayesCAP-tcal``, ``BayesCAP-real-tcal``, ``BayesCAP-Hf-real-tcal`` and
 ``BayCAP-KDEy-h-inst-cb-tcal-resel`` are stored methods of ``main`` (the
-selection inside the fit, ``methods/tcal.py``); their assembled columns here are ``<base>-tcal-asm``, kept to check the
-stored methods against them until they match (user's decision of 2026-11-25), and ``BayCAP-KDEy-h-inst-tcal`` keeps its
-name.
+selection inside the fit, ``methods/tcal.py``); their assembled columns here, ``<base>-tcal-asm``, were kept to check
+the stored methods against them (user's decision of 2026-11-25) and removed on 2026-11-26, once the check
+(``scripts/checks/wp34_tcal_check.py``) found them equal on every pair and metric. Only ``BayCAP-KDEy-h-inst-tcal``,
+whose base has no stored ``-tcal`` method, is still assembled.
 
-``<base>-tcal`` or ``<base>-tcal-asm`` (``tables/common.py:TCAL_METHODS``, one per base of ``TEMPERED_BASES``) is not
+``<base>-tcal`` (``tables/common.py:TCAL_METHODS``, one per base of ``TEMPERED_BASES`` without a stored ``-tcal``) is not
 a stored method: on each pair and metric it is the stored test run of ``main`` (E5.2) of ``<base>`` at $\tau_{\text{cal}}$, the temperature with
 the lowest mean Winkler score of that metric on the $50$ calibration bags drawn from $V_{\text{cal}}$ by
 ``experiments/tau_select.py`` (``tables/tau_select.py:cal_taus``, ties to the $\tau$ closest to $1$). It uses only the

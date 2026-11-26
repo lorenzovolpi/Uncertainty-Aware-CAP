@@ -60,21 +60,21 @@ METHOD_LATEX_LABELS = {
     # the test grid of the -keep variant (WP-34): the base at each tau with the bandwidth of V_fit
     "BayCAP-KDEy-h-inst-cb-keep": "\\bcapkdey{}-cb-keep",
     # E5.3 with the temperature chosen per pair on calibration bags, assembled from the stored runs (tables/tcal_methods.py,
-    # card WP-33); -asm where WP-34 stores the method with that name
-    "BayesCAP-tcal-asm": "\\bcappop{}-tcal-asm",
-    "BayesCAP-real-tcal-asm": "\\bcapsample{}-tcal-asm",
-    "BayesCAP-Hf-real-tcal-asm": "\\bcaphf{}-tcal-asm",
+    # card WP-33), for the base whose -tcal method is not stored (the -asm columns of the stored ones were removed on
+    # 2026-11-26, after the check of WP-34 found them equal to the stored methods)
     "BayCAP-KDEy-h-inst-tcal": "\\bcapkdey{}-tcal",
-    "BayCAP-KDEy-h-inst-cb-tcal-asm": "\\bcapkdey{}-cb-tcal-asm",
 }
 
 
 # the bases whose -tcal method is stored since WP-34 (experiments/methods.py:TCAL_VARIANTS, checked by the tests)
 STORED_TCAL_BASES = ("BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst-cb")
 # the methods of E5.3 with the temperature chosen per pair on calibration bags, built by tables/tcal_methods.py from the
-# stored runs (not stored methods): ``<base>-tcal`` -> ``<base>``, for the bases of E5.3 (TEMPERED_BASES); since WP-34,
-# ``<base>-tcal-asm`` for the bases whose ``<base>-tcal`` is a stored method, kept to check it against the assembled one
+# stored runs (not stored methods): ``<base>-tcal`` -> ``<base>``, for the bases of E5.3 (TEMPERED_BASES) whose
+# ``<base>-tcal`` is not a stored method; from WP-34 to 2026-11-26 also ``<base>-tcal-asm`` for the stored ones, removed
+# after the check of WP-34 (scripts/checks/wp34_tcal_check.py) found them equal to the stored methods on every pair
+# and metric
 TCAL_METHODS = {
-    f"{base}-tcal-asm" if base in STORED_TCAL_BASES else f"{base}-tcal": base
+    f"{base}-tcal": base
     for base in ("BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-h-inst-cb")
+    if base not in STORED_TCAL_BASES
 }
