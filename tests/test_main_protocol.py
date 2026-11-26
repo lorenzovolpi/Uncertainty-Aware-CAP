@@ -322,7 +322,7 @@ class MainSchedulingTest(unittest.TestCase):
         self.assertEqual(regular.kwargs, {"n_jobs": 32, "env": main.THREAD_LIMITS})
         self.assertEqual([args[1] for args in bayes.args[1]], ["BayesCAP"])
         self.assertEqual(bayes.kwargs, {"n_jobs": main.BAYES_N_JOBS, "env": main.BAYES_ENV})
-        self.assertEqual(main.BAYES_N_JOBS, 16)
+        self.assertEqual(main.BAYES_N_JOBS, 32)
         self.assertEqual(main.BAYES_ENV["JAX_PLATFORMS"], "cpu")
         self.assertIn("--xla_cpu_multi_thread_eigen=false", main.BAYES_ENV["XLA_FLAGS"])
         self.assertTrue(all(main.BAYES_ENV[name] == "1" for name in main.THREAD_LIMITS))
