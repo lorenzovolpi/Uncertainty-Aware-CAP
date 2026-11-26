@@ -450,15 +450,19 @@ class TablesTest(unittest.TestCase):
         data = styler.data
         n_pairs = len(pairs[["dataset", "classifier"]].drop_duplicates())
         self.assertEqual(len(data), n_pairs)
-        self.assertEqual(data.shape[1], len(TEMPERED_BASES) * 6)
+        # only the bases of the paper (COMPACT_BASES) that have results; the fixture has no KEEP_BASE
+        shown = [b for b in tables.COMPACT_BASES if b in set(pairs["method"])]
+        self.assertEqual(shown, ["BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real"])
+        self.assertEqual(list(dict.fromkeys(data.columns.get_level_values(0))), [tt.METHOD_LABELS[b] for b in shown])
+        self.assertEqual(data.shape[1], len(shown) * 6)
         # rows by classifier (CLASSIFIER_ORDER), then dataset
         classifiers = [c for c in data.index.get_level_values(0)]
         order = [c for c in tables.CLASSIFIER_ORDER if c in classifiers]
         self.assertEqual(list(dict.fromkeys(classifiers)), order)
-        self.assertEqual(tables.compact_column_format(styler), "ll" + "|".join(["c" * 6] * len(TEMPERED_BASES)))
+        self.assertEqual(tables.compact_column_format(styler), "ll" + "|".join(["c" * 6] * len(shown)))
         ctx = styler._compute().ctx
         winkler, cal = tt.SCORE_LABELS["winkler"], tables.COLUMN_LABELS["cal"]
-        for base in TEMPERED_BASES:
+        for base in shown:
             label = tt.METHOD_LABELS[base]
             part = pairs.loc[pairs["method"] == base]
             for _, row in part.iterrows():
@@ -480,7 +484,8 @@ class TablesTest(unittest.TestCase):
                 self.assertEqual(highlighted, row["tau_cal"] == row["tau_oracle"])
         latex = styler.to_latex(column_format=tables.compact_column_format(styler))
         self.assertIn("\\bcaphf", latex)
-        self.assertIn("\\bcapkdey", latex)
+        self.assertNotIn("\\bcapkdey", latex)
+        self.assertEqual(tt.METHOD_LABELS[tables.COMPACT_BASES[-1]], "\\bcapkdey")
         self.assertIn("\\tau^\\star", latex)
         self.assertIn("\\color{gray}", latex)
         self.assertNotIn("vanilla_accuracy", tables.caption("vanilla_accuracy", "compact"))

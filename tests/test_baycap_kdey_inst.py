@@ -242,9 +242,9 @@ class FactoryTest(unittest.TestCase):
         self.assertNotIn("BayCAP-KDEy-mlp-real", main_tables.MAIN_METHODS)
         self.assertNotIn(INST, shift_profile.DEFAULT_METHODS)
         self.assertNotIn("BayCAP-KDEy-mlp-real", shift_profile.DEFAULT_METHODS)
-        self.assertEqual(METHOD_LATEX_LABELS[INST], "\\bcapkdey")
+        self.assertEqual(METHOD_LATEX_LABELS[INST], "\\bcapkdey{}-h-inst")
         self.assertEqual(METHOD_LATEX_LABELS["BayCAP-KDEy-mlp-real"], "\\bcap{}-KDEy-mlp-real")
-        self.assertEqual(method_plot_label(INST), "BayCAP-KDEy")
+        self.assertEqual(method_plot_label(INST), "BayCAP-KDEy-h-inst")
 
 
 if __name__ == "__main__":

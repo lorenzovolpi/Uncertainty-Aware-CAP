@@ -340,7 +340,7 @@ def _latex(styler, caption: str | None = None, label: str | None = None) -> str:
 def ae_caption(acc: str) -> str:
     return (
         f"E8.2, {ACC_LABELS[acc]}: mean AE over the bags of the rate matrix of $V$ rescaled by a point quantifier "
-        "(CTT-KDEy, CTT-EMQ, CTT-ACC, CTT-PACC), of the point estimates of \\bcapkdey{} and \\bcaphf{} stored by "
+        "(CTT-KDEy, CTT-EMQ, CTT-ACC, CTT-PACC), of the point estimates of \\bcap{}-KDEy-mlp-real and \\bcaphf{}-untempered stored by "
         "\\texttt{main} on the same bags, and of the reference with the true prevalence of the bag (CTT-oracle, not "
         "compared), against the realised table of each bag ($|U|=1000$). In each row, green for the smallest AE of the "
         "six methods to white for the largest; the smallest in bold. Mean rows: means of the per-pair values over the "

@@ -392,8 +392,22 @@ class FactoryTest(unittest.TestCase):
                 self.assertIn(name, METHOD_COLORS)
         for base in em.TABLE_TEMPERED_BASES:
             self.assertIn(base, tt.METHOD_LABELS)
-        self.assertEqual(METHOD_PLOT_LABELS["BayesCAP-tcal"], "BayCAP-pop-tcal")
-        self.assertEqual(METHOD_PLOT_LABELS["BayesCAP-real-tcal"], "BayCAP-sample-tcal")
+        # user's decision of 2026-11-26: the default (-tcal) methods get the plain labels, the bases are "-untempered"
+        for name, family in (
+            ("BayesCAP-tcal", "BayCAP-pop"),
+            ("BayesCAP-real-tcal", "BayCAP-sample"),
+            ("BayesCAP-Hf-real-tcal", "BayCAP-Hf"),
+            ("BayCAP-KDEy-h-inst-cb-tcal-keep", "BayCAP-KDEy"),
+        ):
+            self.assertEqual(METHOD_PLOT_LABELS[name], family)
+        for base, family in (
+            ("BayesCAP", "BayCAP-pop"),
+            ("BayesCAP-real", "BayCAP-sample"),
+            ("BayesCAP-Hf-real", "BayCAP-Hf"),
+        ):
+            self.assertEqual(METHOD_PLOT_LABELS[base], f"{family}-untempered")
+        self.assertEqual(METHOD_LATEX_LABELS["BayCAP-KDEy-h-inst-cb-tcal-keep"], "\\bcapkdey")
+        self.assertEqual(METHOD_LATEX_LABELS["BayesCAP-Hf-real"], "\\bcaphf{}-untempered")
 
     def test_default_methods_of_tables_and_plots(self):
         # user's decision of 2026-11-26: each BayCAP family is shown with its calibrated temperature

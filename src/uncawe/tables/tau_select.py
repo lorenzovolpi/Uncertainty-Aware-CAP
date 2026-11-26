@@ -420,12 +420,16 @@ def _pairs_styler(pairs: pd.DataFrame):
 
 
 COMPACT_SCORES = ("ae", "winkler")
+# the bases of the compact table of the paper (user's decision of 2026-11-26): those of the four default BayCAP methods,
+# whose tau_cal column is that method (BayCAP-pop, BayCAP-sample, BayCAP-Hf, BayCAP-KDEy; experiments/methods.py:
+# TCAL_VARIANTS and KEEP_VARIANTS); the other tables keep every base of TEMPERED_BASES
+COMPACT_BASES = ("BayesCAP", "BayesCAP-real", "BayesCAP-Hf-real", KEEP_BASE)
 COMPACT_DIGITS = 3
 
 
 def _compact_frame(pairs: pd.DataFrame) -> pd.DataFrame:
     """One row per classifier (``CLASSIFIER_ORDER``) and dataset (by $K$, then name); per method of
-    ``TEMPERED_BASES`` (then ``INVALIDATED_TEMPERED_BASES``, if present): $\\tau_{\\text{cal}}$, the oracle-best $\\tau$ and the mean test AE and Winkler score at
+    ``COMPACT_BASES`` (then ``INVALIDATED_TEMPERED_BASES``, if present): $\\tau_{\\text{cal}}$, the oracle-best $\\tau$ and the mean test AE and Winkler score at
     $\\tau=1$ and at $\\tau_{\\text{cal}}$ (NaN for a pair missing for a method)."""
     rows = pairs.assign(
         _clf=pairs["classifier"].map(lambda c: CLASSIFIER_ORDER.index(c) if c in CLASSIFIER_ORDER else 99)
@@ -434,7 +438,7 @@ def _compact_frame(pairs: pd.DataFrame) -> pd.DataFrame:
     index = pd.MultiIndex.from_frame(keys)
     by_pair = pairs.set_index(["method", "classifier", "dataset"])
     columns = {}
-    for base in [b for b in (*TEMPERED_BASES, *INVALIDATED_TEMPERED_BASES) if b in set(pairs["method"])]:
+    for base in [b for b in (*COMPACT_BASES, *INVALIDATED_TEMPERED_BASES) if b in set(pairs["method"])]:
         part = by_pair.loc[base].reindex(index)
         label = tt.METHOD_LABELS[base]
         columns[(label, "$\\tau$", COLUMN_LABELS["cal"])] = part["tau_cal"].to_numpy(dtype=float)

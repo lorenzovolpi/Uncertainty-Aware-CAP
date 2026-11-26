@@ -19,17 +19,20 @@ METHOD_LATEX_LABELS = {
     # plain labels, and the PACC versions of the paper name their quantifier
     "PQ": "\\pq{}-PACC",
     "PQ-KDEy": "\\pq",
-    "BayesCAP": "\\bcappop",
-    "BayesCAP-real": "\\bcapsample",
+    # the BayCAP families (user's decision of 2026-11-26): the default methods, with the temperature calibrated per pair
+    # (WP-34), get the plain labels, and their bases at tau=1 are "-untempered"
+    "BayesCAP": "\\bcappop{}-untempered",
+    "BayesCAP-real": "\\bcapsample{}-untempered",
     "BayesCAP-EB": "\\bcap{}-EB",
     "BayesCAP-EB-real": "\\bcap{}-EB-real",
     "BayesCAP-H-real": "\\bcap{}-H-real",
-    "BayesCAP-Hf-real": "\\bcaphf",
+    "BayesCAP-Hf-real": "\\bcaphf{}-untempered",
     "BayesCAP-Hfn-real": "\\bcap{}-Hfn-real",
     "BayCAP-KDEy-h": "\\bcap{}-KDEy-h",
     "BayCAP-KDEy-h-real": "\\bcap{}-KDEy-h-real",
-    # E3.4 (card WP-31): the BayCAP-KDEy of the project since 2026-11-24; before, \bcapkdey was BayCAP-KDEy-mlp-real
-    "BayCAP-KDEy-h-inst": "\\bcapkdey",
+    # E3.4 (card WP-31): the BayCAP-KDEy of the project from 2026-11-24 to 2026-11-26, when \bcapkdey became
+    # BayCAP-KDEy-h-inst-cb-tcal-keep; before 2026-11-24, \bcapkdey was BayCAP-KDEy-mlp-real
+    "BayCAP-KDEy-h-inst": "\\bcapkdey{}-h-inst",
     # E3.5 (card WP-33): BayCAP-KDEy with the bandwidth selected for calibrated class probabilities
     "BayCAP-KDEy-h-inst-cb": "\\bcapkdey{}-cb",
     "BayCAP-KDEy-mlp": "\\bcap{}-KDEy-mlp",
@@ -46,9 +49,9 @@ METHOD_LATEX_LABELS = {
     "SQS-Hbs-KDEy": "\\sqshbs",
     "SQS-B": "\\sqsb",
     "SQS-B-loo": "\\sqsb{}-loo",
-    "BayCAP-KDEy-mlp-real-loo": "\\bcapkdey{}-loo",
-    "BayCAP-KDEy-mlp-real-cal": "\\bcapkdey{}-cal",
-    "BayCAP-KDEy-mlp-real-cal-tcal": "\\bcapkdey{}-cal-tcal",
+    "BayCAP-KDEy-mlp-real-loo": "\\bcap{}-KDEy-mlp-real-loo",
+    "BayCAP-KDEy-mlp-real-cal": "\\bcap{}-KDEy-mlp-real-cal",
+    "BayCAP-KDEy-mlp-real-cal-tcal": "\\bcap{}-KDEy-mlp-real-cal-tcal",
     "O-LEAP": "LEAP",
     # the default AC and CBPE use label-shift binning (E8.3; user's decision of 2026-11-26), the LasCal versions (E8.1)
     # name their calibrator
@@ -56,18 +59,19 @@ METHOD_LATEX_LABELS = {
     "L-CBPE-LSB": "CBPE",
     "AC": "AC-LasCal",
     "L-CBPE": "CBPE-LasCal",
-    # the methods of WP-34 (experiments/methods.py:TCAL_VARIANTS): tau selected per pair and metric inside the fit
-    "BayesCAP-tcal": "\\bcappop{}-tcal",
-    "BayesCAP-real-tcal": "\\bcapsample{}-tcal",
-    "BayesCAP-Hf-real-tcal": "\\bcaphf{}-tcal",
-    "BayCAP-KDEy-h-inst-cb-tcal-keep": "\\bcapkdey{}-cb-tcal-keep",
+    # the methods of WP-34 (experiments/methods.py:TCAL_VARIANTS): tau selected per pair and metric inside the fit; the
+    # four default BayCAP methods since 2026-11-26, with the plain labels
+    "BayesCAP-tcal": "\\bcappop",
+    "BayesCAP-real-tcal": "\\bcapsample",
+    "BayesCAP-Hf-real-tcal": "\\bcaphf",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "\\bcapkdey",
     "BayCAP-KDEy-h-inst-cb-tcal-resel": "\\bcapkdey{}-cb-tcal-resel",
     # the test grid of the -keep variant (WP-34): the base at each tau with the bandwidth of V_fit
     "BayCAP-KDEy-h-inst-cb-keep": "\\bcapkdey{}-cb-keep",
     # E5.3 with the temperature chosen per pair on calibration bags, assembled from the stored runs (tables/tcal_methods.py,
     # card WP-33), for the base whose -tcal method is not stored (the -asm columns of the stored ones were removed on
     # 2026-11-26, after the check of WP-34 found them equal to the stored methods)
-    "BayCAP-KDEy-h-inst-tcal": "\\bcapkdey{}-tcal",
+    "BayCAP-KDEy-h-inst-tcal": "\\bcapkdey{}-h-inst-tcal",
 }
 
 

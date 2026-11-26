@@ -99,7 +99,8 @@ IDENTITY_TOL = 1e-9
 # thresholds of the NUTS diagnostics counted by ``diagnostics_table``
 RHAT_MAX = 1.01
 ESS_MIN = 400
-SHORT_LABELS = {"BayesCAP-Hf-real": "BayCAP-Hf", "BayCAP-KDEy-mlp-real": "BayCAP-KDEy"}
+# since 2026-11-26 the plain labels are those of the default (-tcal) methods (user's decision)
+SHORT_LABELS = {"BayesCAP-Hf-real": "BayCAP-Hf-untempered", "BayCAP-KDEy-mlp-real": "BayCAP-KDEy-mlp-real"}
 PART_LABELS = {"e1": "$e_1$", "e2": "$e_2$", "e3": "$e_3$"}
 LEVELS_CAPTION = (
     "Error split across $|V|$ (E4.2b), $|U|={size}$, vanilla accuracy, against the realised table of each bag. "

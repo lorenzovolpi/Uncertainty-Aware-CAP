@@ -78,15 +78,16 @@ CSV_NAMES = ("bags", "seeds", "pairs", "summary", "slopes", "diagnostics", "cost
 EXPERIMENT_PARTS = {"a": "bag_size", "b": "v_fraction"}
 # the dataset left out in the check of E4.4b (its near-vertex errors could move the multiclass pairs)
 CHECK_DATASET = "poker_hand"
-# BayCAP-KDEy is BayCAP-KDEy-h-inst since E3.4 (card WP-31); the former one keeps its full name (card WP-33)
+# the default BayCAP methods (-tcal, WP-34) get the plain labels since 2026-11-26 (user's decision), the bases at tau=1
+# are "-untempered"; the former BayCAP-KDEy keeps its full name (card WP-33)
 SHORT_LABELS = {
-    "BayesCAP-Hf-real": "BayCAP-Hf",
-    "BayCAP-KDEy-h-inst": "BayCAP-KDEy",
+    "BayesCAP-Hf-real": "BayCAP-Hf-untempered",
+    "BayCAP-KDEy-h-inst": "BayCAP-KDEy-h-inst",
     "BayCAP-KDEy-h-inst-cb": "BayCAP-KDEy-cb",
     "BayCAP-KDEy-mlp-real": "BayCAP-KDEy-mlp-real",
     # WP-34
-    "BayesCAP-Hf-real-tcal": "BayCAP-Hf-tcal",
-    "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy-cb-tcal-keep",
+    "BayesCAP-Hf-real-tcal": "BayCAP-Hf",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy",
     "BayCAP-KDEy-h-inst-cb-tcal-resel": "BayCAP-KDEy-cb-tcal-resel",
     # card WP-36: the SQS methods with KDEy get the plain labels, the PACC versions name their quantifier
     "SQS-H": "SQS-H-PACC",

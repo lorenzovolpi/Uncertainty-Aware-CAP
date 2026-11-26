@@ -212,7 +212,7 @@ def _pairs_styler(table: pd.DataFrame):
 
 def caption(verdict: dict) -> str:
     return (
-        "E7.2a, gate of the solver: the bandwidth of \\bcapkdey{} selected on the calibration bags with the "
+        "E7.2a, gate of the solver: the bandwidth of \\bcap{}-KDEy-mlp-real selected on the calibration bags with the "
         "maximum-likelihood estimate of EM and of QuaPy's \\texttt{KDEyML} (SLSQP), on the pilot pairs; label-free on "
         "the target. $b$: the selected bandwidth; steps: grid steps between them; tie gap: the largest, over the two "
         "criterion curves, of the difference at the two selections; max $\\lvert\\Delta\\mathrm{crit}\\rvert$: the "

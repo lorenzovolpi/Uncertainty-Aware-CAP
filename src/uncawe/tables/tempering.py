@@ -473,16 +473,18 @@ def oracle_distribution(selected: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------------------------------- LaTeX
 
-# BayCAP-KDEy is BayCAP-KDEy-h-inst since E3.4 (card WP-31); the former one keeps its own label (card WP-33)
+# the bases of the tempering grid: the family label (tau is in the columns), except BayCAP-KDEy-h-inst, which is not the
+# base of the default BayCAP-KDEy (BayCAP-KDEy-h-inst-cb-tcal-keep since 2026-11-26); the former BayCAP-KDEy keeps its
+# own label (card WP-33); BayCAP-KDEy-h-inst-cb-keep, the base of the default BayCAP-KDEy, has the family label
 METHOD_LABELS = {
     # WP-34: the bases of BayesCAP-tcal and BayesCAP-real-tcal
     "BayesCAP": "\\bcappop",
     "BayesCAP-real": "\\bcapsample",
     "BayesCAP-Hf-real": "\\bcaphf",
-    "BayCAP-KDEy-h-inst": "\\bcapkdey",
+    "BayCAP-KDEy-h-inst": "\\bcapkdey{}-h-inst",
     "BayCAP-KDEy-h-inst-cb": "\\bcapkdey{}-cb",
     # WP-34: BayCAP-KDEy-h-inst-cb with the bandwidth of V_fit
-    "BayCAP-KDEy-h-inst-cb-keep": "\\bcapkdey{}-cb-keep",
+    "BayCAP-KDEy-h-inst-cb-keep": "\\bcapkdey",
     "BayCAP-KDEy-mlp-real": "\\bcap{}-KDEy-mlp-real",
 }
 K_LABELS = {"all": "all", "K=2": "$K=2$", "3<=K<=7": "$3\\le K\\le7$", "K>=8": "$K\\ge8$"}

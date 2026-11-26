@@ -274,7 +274,7 @@ def _pairs_styler(table: pd.DataFrame):
 def caption(acc_name: str, name: str) -> str:
     common = (
         f"E7.1, per-class leave-one-out bandwidths of BayesKDEy on \\texttt{{main}} ({tempering.ACC_LABELS[acc_name]}); "
-        "KDEy: \\bcapkdey{} ($b=0.1$); SQS-B: \\sqsb{} ($b=0.1$); loo: the same method with one bandwidth per class "
+        "KDEy: \\bcap{}-KDEy-mlp-real ($b=0.1$); SQS-B: \\sqsb{} ($b=0.1$); loo: the same method with one bandwidth per class "
         "selected by leave-one-out likelihood on $V$. Scores against the realised table, means over the 100 bags. "
     )
     if name == "summary":

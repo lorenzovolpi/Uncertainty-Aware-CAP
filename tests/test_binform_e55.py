@@ -559,7 +559,10 @@ class TablesTest(unittest.TestCase):
                 "BayCAP-KDEy-h-inst-cb",
             ],
         )
-        self.assertEqual([plots.short_label(m) for m in methods][-3:], ["BayCAP-Hf", "BayCAP-KDEy", "BayCAP-KDEy-cb"])
+        self.assertEqual(
+            [plots.short_label(m) for m in methods][-3:],
+            ["BayCAP-Hf-untempered", "BayCAP-KDEy-h-inst", "BayCAP-KDEy-cb"],
+        )
         # wrong side on the left, uniform in the middle, right side on the right
         self.assertEqual([role for method, role, _ in cells if method == "SQS-B"], ["wrong", "uniform", "right"])
         self.assertEqual([role for method, role, _ in cells if method == "PQ-KDEy"], ["none"])

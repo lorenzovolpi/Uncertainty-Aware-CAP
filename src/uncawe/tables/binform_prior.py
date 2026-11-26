@@ -234,7 +234,8 @@ def summary_table(table: pd.DataFrame) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------------------------------- LaTeX
 
-METHOD_LABELS = {"BayesCAP-Hf-real": "\\bcaphf", "BayCAP-KDEy-mlp-real": "\\bcapkdey"}
+# since 2026-11-26 the plain labels are those of the default (-tcal) methods (user's decision)
+METHOD_LABELS = {"BayesCAP-Hf-real": "\\bcaphf{}-untempered", "BayCAP-KDEy-mlp-real": "\\bcap{}-KDEy-mlp-real"}
 PRIOR_LABELS = {"uniform": "uniform", "well": "well specified", "wrong": "misspecified"}
 K_LABELS = {"all": "all", "K=2": "$K=2$", "3<=K<=7": "$3\\le K\\le7$", "K>=8": "$K\\ge8$"}
 COLUMN_LABELS = {

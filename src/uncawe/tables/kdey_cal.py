@@ -341,7 +341,7 @@ def _check_styler(check: pd.DataFrame):
 def caption(acc_name: str, name: str) -> str:
     common = (
         f"E7.2, one bandwidth of BayesKDEy per pair selected on calibration bags drawn from half of $V$, on "
-        f"\\texttt{{main}} ({tempering.ACC_LABELS[acc_name]}); KDEy: \\bcapkdey{{}} ($b=0.1$); KDEy cal: the same "
+        f"\\texttt{{main}} ({tempering.ACC_LABELS[acc_name]}); KDEy: \\bcap{{}}-KDEy-mlp-real ($b=0.1$); KDEy cal: the same "
         "method with the bandwidth $b_{\\mathrm{cal}}$ that minimises the mean over $50$ calibration bags of the "
         "accuracy error of the quantifier, $\\lvert\\hat d^\\top(\\hat\\pi_s(b)-\\pi_s)\\rvert$. "
     )

@@ -104,17 +104,20 @@ METHOD_PLOT_LABELS = {
     "L-CBPE-LSB": "CBPE",
     "AC": "AC-LasCal",
     "L-CBPE": "CBPE-LasCal",
-    "BayesCAP": "BayCAP-pop",
-    "BayesCAP-real": "BayCAP-sample",
+    # the BayCAP families (user's decision of 2026-11-26): the default methods (-tcal, WP-34) get the plain labels, and
+    # their bases at tau=1 are "-untempered"
+    "BayesCAP": "BayCAP-pop-untempered",
+    "BayesCAP-real": "BayCAP-sample-untempered",
     "BayesCAP-EB": "BayCAP-EB",
     "BayesCAP-EB-real": "BayCAP-EB-real",
     "BayesCAP-H-real": "BayCAP-H-real",
-    "BayesCAP-Hf-real": "BayCAP-Hf",
+    "BayesCAP-Hf-real": "BayCAP-Hf-untempered",
     "BayesCAP-Hfn-real": "BayCAP-Hfn-real",
     "BayCAP-KDEy-h": "BayCAP-KDEy-h",
     "BayCAP-KDEy-h-real": "BayCAP-KDEy-h-real",
-    # E3.4 (card WP-31): the BayCAP-KDEy of the project since 2026-11-24; before, BayCAP-KDEy was BayCAP-KDEy-mlp-real
-    "BayCAP-KDEy-h-inst": "BayCAP-KDEy",
+    # E3.4 (card WP-31): the BayCAP-KDEy of the project from 2026-11-24 to 2026-11-26 (then BayCAP-KDEy-h-inst-cb-tcal-keep);
+    # before 2026-11-24, BayCAP-KDEy was BayCAP-KDEy-mlp-real
+    "BayCAP-KDEy-h-inst": "BayCAP-KDEy-h-inst",
     # E3.5 (card WP-33)
     "BayCAP-KDEy-h-inst-cb": "BayCAP-KDEy-cb",
     "BayCAP-KDEy-mlp": "BayCAP-KDEy-mlp",
@@ -129,13 +132,13 @@ METHOD_PLOT_LABELS = {
     "BayCAP-KDEy-mlp-real-cal": "BayCAP-KDEy-mlp-real-cal",
     "BayCAP-KDEy-mlp-real-cal-tcal": "BayCAP-KDEy-mlp-real-cal-tcal",
     # WP-34, and E5.3 assembled (tables/tcal_methods.py, card WP-33)
-    "BayesCAP-tcal": "BayCAP-pop-tcal",
-    "BayesCAP-real-tcal": "BayCAP-sample-tcal",
-    "BayesCAP-Hf-real-tcal": "BayCAP-Hf-tcal",
-    "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy-cb-tcal-keep",
+    "BayesCAP-tcal": "BayCAP-pop",
+    "BayesCAP-real-tcal": "BayCAP-sample",
+    "BayesCAP-Hf-real-tcal": "BayCAP-Hf",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "BayCAP-KDEy",
     "BayCAP-KDEy-h-inst-cb-tcal-resel": "BayCAP-KDEy-cb-tcal-resel",
     "BayCAP-KDEy-h-inst-cb-keep": "BayCAP-KDEy-cb-keep",
-    "BayCAP-KDEy-h-inst-tcal": "BayCAP-KDEy-tcal",
+    "BayCAP-KDEy-h-inst-tcal": "BayCAP-KDEy-h-inst-tcal",
 }
 
 ACC_NAME = "vanilla_accuracy"

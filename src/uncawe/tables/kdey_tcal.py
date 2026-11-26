@@ -371,7 +371,7 @@ def _crosstab_styler(cross: pd.DataFrame):
 def caption(acc_name: str, name: str) -> str:
     common = (
         "E7.2, ablation of the bandwidth and the temperature of BayesKDEy selected per pair on calibration bags drawn "
-        f"from half of $V$, on \\texttt{{main}} ({tempering.ACC_LABELS[acc_name]}); all cells are \\bcapkdey{{}}: "
+        f"from half of $V$, on \\texttt{{main}} ({tempering.ACC_LABELS[acc_name]}); all cells are \\bcap{{}}-KDEy-mlp-real: "
         "$b=0.1$ or $b_{\\mathrm{cal}}$ (E7.2a), $\\tau=1$ or $\\tau_{\\mathrm{cal}}$ (lowest mean Winkler score on "
         "vanilla accuracy over the calibration bags; at $b=0.1$ from E5.3, at $b_{\\mathrm{cal}}$ from E7.2b). "
     )

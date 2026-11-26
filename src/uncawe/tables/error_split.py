@@ -81,15 +81,16 @@ SHORT_LABELS = {
     "PQ-KDEy": "SQS-S",
     "SQS-B": "SQS-B",
     "PQ": "SQS-S-PACC",
-    "BayesCAP-real": "\\bcap{}",
-    "BayesCAP-Hf-real": "Hf",
+    "BayesCAP-real": "\\bcap{}-untempered",
+    "BayesCAP-Hf-real": "Hf-untempered",
     "BayCAP-KDEy-mlp-real": "KDEy mlp",
     # since WP-31 the BayCAP-KDEy of MAIN_METHODS (E3.4)
-    "BayCAP-KDEy-h-inst": "KDEy",
-    # since 2026-11-26 the BayCAP methods of MAIN_METHODS, with the temperature calibrated per pair (WP-34)
-    "BayesCAP-real-tcal": "\\bcap{}-tcal",
-    "BayesCAP-Hf-real-tcal": "Hf-tcal",
-    "BayCAP-KDEy-h-inst-cb-tcal-keep": "KDEy-tcal",
+    "BayCAP-KDEy-h-inst": "KDEy h-inst",
+    # since 2026-11-26 the BayCAP methods of MAIN_METHODS, with the temperature calibrated per pair (WP-34), with the
+    # plain labels (user's decision of 2026-11-26)
+    "BayesCAP-real-tcal": "\\bcap{}",
+    "BayesCAP-Hf-real-tcal": "Hf",
+    "BayCAP-KDEy-h-inst-cb-tcal-keep": "KDEy",
 }
 PART_LABELS = {"e1": "$e_1$", "e2": "$e_2$", "e3": "$e_3$", "total": "$\\hat A-A$"}
 CELL_LABELS = {
