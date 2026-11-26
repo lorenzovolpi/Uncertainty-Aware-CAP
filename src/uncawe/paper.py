@@ -77,6 +77,8 @@ TAU_SELECT = Command("tables-tau-select", "python -m uncawe.tables.tau_select", 
 COVERAGE_AMPLITUDE = Command(
     "tables-coverage-amplitude", "python -m uncawe.tables.coverage_amplitude --classic", ("--tables",)
 )
+# the binary datasets only: DoC, QuAcc, LEAP, AC, CBPE and BayCAP-KDEy (user's request of 2026-11-26)
+BINARY = Command("tables-binary", "python -m uncawe.tables.binary --classic", ("--tables", "--no-std"))
 AVC = Command("plot-avc", "python -m uncawe.plots.amplitude_vs_coverage --domain classic")
 # SQS-B left out of the shift profile, the violins of E5.5 and the figures of E4.4 (user's decision of 2026-11-25)
 SHIFT_PROFILE = Command(
@@ -98,6 +100,7 @@ COMMANDS = (
     RANK,
     TAU_SELECT,
     COVERAGE_AMPLITUDE,
+    BINARY,
     AVC,
     SHIFT_PROFILE,
     BINFORM_SIDE_PRIOR,
@@ -128,6 +131,8 @@ ARTEFACTS = (
         )
         for acc in ACC_NAMES
     ),
+    # the binary datasets only, vanilla accuracy only (AC and CBPE estimate no other measure)
+    Artefact("tables", "tables/binary/tabular/binary_classic_vanilla_accuracy.tex", BINARY),
     # coverage vs amplitude: linear axes and axes zoomed on the nominal values (user's decision of 2026-11-25)
     Artefact("figures", "plots/main/amplitude_vs_coverage/classic_vanilla_accuracy", AVC, name="amplitude_vs_coverage"),
     Artefact(

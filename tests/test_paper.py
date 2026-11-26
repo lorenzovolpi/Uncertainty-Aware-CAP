@@ -34,7 +34,8 @@ class TestManifest(unittest.TestCase):
 
     def test_the_list(self):
         names = [a.paper_name() for a in paper.ARTEFACTS]
-        self.assertEqual(sum(a.kind == "tables" for a in paper.ARTEFACTS), 3 + 6 + 3 + 3)
+        self.assertEqual(sum(a.kind == "tables" for a in paper.ARTEFACTS), 3 + 6 + 3 + 3 + 1)
+        self.assertIn("binary_classic_vanilla_accuracy.tex", names)
         self.assertIn("amplitude_vs_coverage", names)
         self.assertIn("amplitude_vs_coverage_zoom", names)
         self.assertIn("main_classic_macro-F1_rank_winkler.tex", names)
@@ -59,6 +60,7 @@ class TestManifest(unittest.TestCase):
         self.assertIn("table-main", paper.ITEMS)
         self.assertIn("table-rank", paper.ITEMS)
         self.assertIn("plot-avc", paper.ITEMS)
+        self.assertIn("table-binary", paper.ITEMS)
         for name, (command, artefacts) in paper.ITEMS.items():
             with self.subTest(item=name):
                 self.assertEqual(

@@ -1022,12 +1022,16 @@ def load_table_frame(
     classifiers: list[str],
     include: tuple[str, ...] = (),
     methods: list[str] | None = None,
+    collections: tuple[str, ...] | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """The per-bag scores of the main-table methods plus ``include``, or of ``methods`` if given (AE, coverage,
     amplitude and Winkler score of the realised accuracy, from ``true_cts``), with the display names of the datasets
-    and their order."""
+    and their order; with ``collections`` (e.g. ``("uci_binary",)``), only the datasets of those collections."""
     names = table_method_names(include) if methods is None else list(methods)
-    results = Results(drop_methods_without_estimates(load_results(main_base_dir, acc, domain, classifiers, names).df))
+    df = load_results(main_base_dir, acc, domain, classifiers, names).df
+    if collections is not None:
+        df = df.loc[df["collection"].isin(collections), :]
+    results = Results(drop_methods_without_estimates(df))
     dataset_order = _ordered_dataset_names(results.df)
     df = (
         results.map_column_values("dataset", dataset_map)

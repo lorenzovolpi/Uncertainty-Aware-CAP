@@ -12,7 +12,7 @@ This document lists the tables and figures that the extended version of the pape
 
 `uv run python -m uncawe.paper --list` prints the commands and the source and destination of every file; `--collect` alone collects again from outputs already generated.
 
-One table or figure at a time: `make run-paper-<item>` runs the command of that item on `bcuda` and copies only its files into the paper folder, overwriting them and keeping the others (`python -m uncawe.paper --generate --collect --only <item>`); then `make pull PULL_DIRS=paper`. The items (`src/uncawe/paper.py:ITEMS`), one per command of the list: `table-main`, `table-rank`, `table-tau-select`, `table-coverage-amplitude`, `plot-avc`, `plot-shift-profile`, `plot-binform-side-prior`, `plot-pq-rho`, `plot-target-size-scores` (e.g. `make run-paper-table-main`).
+One table or figure at a time: `make run-paper-<item>` runs the command of that item on `bcuda` and copies only its files into the paper folder, overwriting them and keeping the others (`python -m uncawe.paper --generate --collect --only <item>`); then `make pull PULL_DIRS=paper`. The items (`src/uncawe/paper.py:ITEMS`), one per command of the list: `table-main`, `table-rank`, `table-tau-select`, `table-coverage-amplitude`, `table-binary`, `plot-avc`, `plot-shift-profile`, `plot-binform-side-prior`, `plot-pq-rho`, `plot-target-size-scores` (e.g. `make run-paper-table-main`).
 
 ## The paper folder
 
@@ -34,6 +34,7 @@ Every table and figure scores the realised table of each bag (`true_cts`), as `m
 | Rank tables: mean rank per classifier, one table per score | `main_classic_<acc>_rank_<score>.tex`, $3\times2$ (score `acc_err` or `winkler`) | `make run-tables-rank ARGS="--tables"` | `tables/rank/tabular/` |
 | $\tau$ chosen per pair on calibration bags (E5.3), compact: $\tau_{\text{cal}}$, oracle-best $\tau^\star$ (a reference), AE and $\mathcal W$ at $\tau=1$ and $\tau_{\text{cal}}$, BayCAP-Hf and BayCAP-KDEy | `tau_select_compact_<acc>.tex`, one per accuracy measure | `make run-tables-tau-select ARGS="--tables"` | `tables/tau_select/tabular/` |
 | Coverage $\mathcal C$ and amplitude $\mathcal A$: mean over the bags per classifier and dataset, for the methods of the main table without BayCAP-pop; hard colours (green or white): coverage green within $0.10$ of the nominal level $0.95$, amplitude green below $0.10$ (user's decisions of 2026-11-25) | `main_classic_<acc>_coverage_amplitude.tex`, one per accuracy measure | `make run-tables-coverage-amplitude ARGS="--tables"` | `tables/coverage_amplitude/tabular/` |
+| Binary datasets (user's request of 2026-11-26): the main table restricted to the 5 binary datasets (`uci_binary`), mean AE and $\mathcal W$ per classifier and dataset, without std, for DoC, QuAcc, LEAP, AC (`AC-LSB`) and CBPE (`L-CBPE-LSB`, binary only) under "Baseline methods" and BayCAP-KDEy (`BayCAP-KDEy-h-inst-cb-tcal-keep`) under "Our methods"; rows of wins, ties and losses against LEAP and of the average rank; vanilla accuracy only (AC and CBPE estimate no other measure); `tables/binary.py` | `binary_classic_vanilla_accuracy.tex` | `make run-tables-binary ARGS="--tables --no-std"` | `tables/binary/tabular/` |
 
 ## Figures
 
