@@ -142,7 +142,9 @@ class ExperimentTest(unittest.TestCase):
             experiment.experiments(Mock())
         kwargs = run.call_args.kwargs
         self.assertEqual(run.call_args.args[1], ["task"])
-        self.assertEqual((kwargs["n_jobs"], kwargs["env"], kwargs["experiment"]), (16, main.BAYES_ENV, "eb_binary"))
+        self.assertEqual(
+            (kwargs["n_jobs"], kwargs["env"], kwargs["experiment"]), (main.BAYES_N_JOBS, main.BAYES_ENV, "eb_binary")
+        )
         self.assertIs(kwargs["worker"].func, main.exp_protocol)
         self.assertEqual(kwargs["worker"].keywords, {"experiment": "eb_binary"})
 
